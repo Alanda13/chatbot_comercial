@@ -42,3 +42,12 @@ if prompt:
     )
     with st.chat_message("assistant"):
          st.markdown(resposta)
+    with st.chat_message("assistante"):
+        st.markdown(resposta)
+
+    st.session_state.messages.append(
+        {
+            "role":"assistant",
+            "content":resposta
+        }
+    )

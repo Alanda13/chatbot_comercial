@@ -49,7 +49,7 @@ if __name__ == "__main__":
         testar_nps_por_filial()
         testar_nps_por_periodo()
         testar_comparacao_nps()
-
+        
     except Exception as error:
         print("Ocorreu um erro durante o teste:")
         print(error)
