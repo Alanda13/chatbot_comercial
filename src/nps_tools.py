@@ -6,7 +6,7 @@ e as funções reais de consulta existentes em queries.py.
 """
 
 from src.queries import (
-    comparar_nps_periodos,
+    comparar_nps_entre_periodos,
     obter_nps_por_filial,
     obter_nps_por_periodo,
     obter_resumo_nps,
@@ -19,10 +19,12 @@ def executar_nps_geral(argumentos: dict) -> dict:
 
     return obter_resumo_nps()
 
-
 def executar_nps_por_filial(argumentos: dict) -> dict:
     """
     Consulta o NPS de uma filial específica.
+
+    A busca aceita nomes parciais. Por exemplo:
+    "Timon" encontra "FERRONORTE TIMON".
     """
 
     filial_procurada = argumentos.get("filial")
@@ -33,17 +35,23 @@ def executar_nps_por_filial(argumentos: dict) -> dict:
         )
 
     filiais = obter_nps_por_filial()
-
     nome_procurado = filial_procurada.strip().casefold()
 
-    for filial in filiais:
-        nome_filial = filial["filial"]
+    for dados_filial in filiais:
+        nome_filial = dados_filial["filial"].strip()
+        nome_filial_normalizado = nome_filial.casefold()
 
-        if nome_filial.casefold() == nome_procurado:
-            return filial
+        if nome_procurado in nome_filial_normalizado:
+            return dados_filial
+
+    nomes_disponiveis = [
+        dados_filial["filial"]
+        for dados_filial in filiais
+    ]
 
     raise ValueError(
-        f"A filial '{filial_procurada}' não foi encontrada."
+        f"A filial '{filial_procurada}' não foi encontrada. "
+        f"Filiais disponíveis: {', '.join(nomes_disponiveis)}"
     )
 
 def executar_nps_por_periodo(argumentos: dict) -> dict:
@@ -111,7 +119,7 @@ def executar_comparacao_nps(argumentos: dict) -> dict:
             + ", ".join(argumentos_faltantes)
         )
 
-    return comparar_nps_periodos(
+    return comparar_nps_entre_periodos(
         data_inicial_atual,
         data_final_atual,
         data_inicial_anterior,

@@ -13,8 +13,6 @@ from src.nps_tools import (
     executar_nps_por_filial,
     executar_nps_por_periodo,
 )
-
-
 FERRAMENTAS_DISPONIVEIS = {
     "consultar_nps_geral": {
         "descricao": (
@@ -62,8 +60,6 @@ FERRAMENTAS_DISPONIVEIS = {
         "funcao": executar_comparacao_nps,
     },
 }
-
-
 def gerar_catalogo_ferramentas() -> str:
     """
     Gera o texto com as ferramentas disponíveis.

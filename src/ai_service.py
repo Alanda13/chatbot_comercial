@@ -15,6 +15,7 @@ from src.schemas import SolicitacaoFerramenta
 from src.tool_manager import gerar_catalogo_ferramentas
 
 
+# Carrega as variáveis armazenadas no arquivo .env.
 load_dotenv()
 
 
@@ -30,7 +31,25 @@ def criar_cliente_gemini() -> genai.Client:
             "A variável GEMINI_API_KEY não foi encontrada no arquivo .env."
         )
 
-    return genai.Client(api_key=api_key)
+    return genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(
+            timeout=10_000,
+            retry_options=types.HttpRetryOptions(
+                attempts=1,
+                initial_delay=1,
+                max_delay=2,
+                exp_base=2,
+                http_status_codes=[
+                    429,
+                    500,
+                    502,
+                    503,
+                    504,
+                ],
+            ),
+        ),
+    )
 
 
 def interpretar_pergunta(
@@ -70,19 +89,57 @@ Pergunta atual do usuário:
 
 {pergunta}
 """
+
     cliente = criar_cliente_gemini()
 
-    resposta = cliente.models.generate_content(
-        model="gemini-3.5-flash",
-        contents=conteudo,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            temperature=0,
-        ),
+    # Os nomes dos modelos ficam no .env.
+    # Caso não estejam preenchidos, estes valores serão usados.
+    modelo_principal = os.getenv(
+        "GEMINI_MODEL",
+        "gemini-3.5-flash-lite",
     )
 
+    modelo_reserva = os.getenv(
+        "GEMINI_MODEL_FALLBACK",
+        "gemini-3.6-flash",
+    )
+
+    modelos = [
+        modelo_principal,
+        modelo_reserva,
+    ]
+
+    resposta = None
+    ultimo_erro = None
+
+    # Tenta primeiro o modelo principal.
+    # Se falhar, tenta automaticamente o modelo reserva.
+    for modelo in modelos:
+        try:
+            resposta = cliente.models.generate_content(
+                model=modelo,
+                contents=conteudo,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                ),
+            )
+
+            break
+
+        except Exception as error:
+            ultimo_erro = error
+
+    if resposta is None:
+        raise RuntimeError(
+            "Não foi possível acessar o Gemini neste momento. "
+            "Os modelos disponíveis podem estar temporariamente "
+            "sobrecarregados. Tente novamente mais tarde."
+        ) from ultimo_erro
+
     if not resposta.text:
-        raise RuntimeError("O Gemini não retornou uma resposta.")
+        raise RuntimeError(
+            "O Gemini não retornou uma resposta."
+        )
 
     try:
         dados = json.loads(resposta.text)
@@ -97,11 +154,18 @@ Pergunta atual do usuário:
 
     except ValidationError as error:
         print("\n=== JSON RECEBIDO DO GEMINI ===")
-        print(json.dumps(dados, indent=2, ensure_ascii=False))
+        print(
+            json.dumps(
+                dados,
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
 
         print("\n=== ERRO DE VALIDAÇÃO ===")
         print(error)
 
         raise ValueError(
-               "O JSON retornado pelo Gemini não segue o contrato esperado."
+            "O JSON retornado pelo Gemini não segue "
+            "o contrato esperado."
         ) from error
