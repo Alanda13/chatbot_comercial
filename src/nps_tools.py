@@ -12,7 +12,6 @@ from src.queries import (
     obter_resumo_nps,
 )
 
-
 def executar_nps_geral(argumentos: dict) -> dict:
     """
     Consulta o NPS geral da empresa.
@@ -47,7 +46,6 @@ def executar_nps_por_filial(argumentos: dict) -> dict:
         f"A filial '{filial_procurada}' não foi encontrada."
     )
 
-
 def executar_nps_por_periodo(argumentos: dict) -> dict:
     """
     Consulta o NPS dentro de um intervalo de datas.
@@ -66,7 +64,6 @@ def executar_nps_por_periodo(argumentos: dict) -> dict:
         data_inicial,
         data_final,
     )
-
 
 def executar_comparacao_nps(argumentos: dict) -> dict:
     """

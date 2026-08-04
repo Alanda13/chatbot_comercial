@@ -91,7 +91,6 @@ def gerar_catalogo_ferramentas() -> str:
 
     return "\n\n".join(linhas)
 
-
 def ferramenta_existe(nome_ferramenta: str) -> bool:
     """
     Verifica se uma ferramenta está cadastrada
@@ -99,7 +98,6 @@ def ferramenta_existe(nome_ferramenta: str) -> bool:
     """
 
     return nome_ferramenta in FERRAMENTAS_DISPONIVEIS
-
 
 def obter_argumentos_obrigatorios(
     nome_ferramenta: str,
@@ -116,8 +114,6 @@ def obter_argumentos_obrigatorios(
         return []
 
     return ferramenta["argumentos_obrigatorios"]
-
-
 def executar_ferramenta(
     nome_ferramenta: str,
     argumentos: dict,

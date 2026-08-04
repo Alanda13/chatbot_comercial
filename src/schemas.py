@@ -11,12 +11,9 @@ class SolicitacaoFerramenta(BaseModel):
         "pedir_esclarecimento",
         "fora_do_escopo",
     ]
-
     ferramenta: str | None = None
-
     argumentos: dict[str, Any] = Field(
         default_factory=dict
     )
-
     mensagem: str | None = None
    
