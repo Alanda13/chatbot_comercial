@@ -1,7 +1,7 @@
 from src.chatbot import processar_pergunta
 
 def testar_chatbot():
-    pergunta = "Qual é o NPS da Ferronorte Timon?"
+    pergunta = "Qual é o NPS de uma filial?"
 
     resposta = processar_pergunta(pergunta)
 

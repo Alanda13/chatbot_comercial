@@ -4,6 +4,7 @@ Ferramentas do módulo de NPS.
 Este arquivo faz a ponte entre os nomes conhecidos pela IA
 e as funções reais de consulta existentes em queries.py.
 """
+import difflib
 
 from src.queries import (
     comparar_nps_entre_periodos,
@@ -23,8 +24,14 @@ def executar_nps_por_filial(argumentos: dict) -> dict:
     """
     Consulta o NPS de uma filial específica.
 
-    A busca aceita nomes parciais. Por exemplo:
-    "Timon" encontra "FERRONORTE TIMON".
+    A busca aceita:
+    - nomes completos;
+    - nomes parciais;
+    - pequenas diferenças de escrita.
+
+    Exemplos:
+    - "Timon" encontra "FERRONORTE TIMON";
+    - "Campo Sales" encontra "FERRONORTE CAMPOS SALES".
     """
 
     filial_procurada = argumentos.get("filial")
@@ -35,23 +42,70 @@ def executar_nps_por_filial(argumentos: dict) -> dict:
         )
 
     filiais = obter_nps_por_filial()
+
     nome_procurado = filial_procurada.strip().casefold()
+
+    # Remove palavras que podem aparecer ou não no nome informado.
+    nome_procurado_simplificado = (
+        nome_procurado
+        .replace("ferronorte", "")
+        .replace("ferroleste", "")
+        .replace("filial", "")
+        .replace("loja", "")
+        .strip()
+    )
+
+    correspondencias = []
 
     for dados_filial in filiais:
         nome_filial = dados_filial["filial"].strip()
         nome_filial_normalizado = nome_filial.casefold()
 
-        if nome_procurado in nome_filial_normalizado:
+        nome_filial_simplificado = (
+            nome_filial_normalizado
+            .replace("ferronorte", "")
+            .replace("ferroleste", "")
+            .replace("filial", "")
+            .replace("loja", "")
+            .strip()
+        )
+
+        # Primeiro tenta encontrar pelo nome completo ou parcial.
+        if (
+            nome_procurado in nome_filial_normalizado
+            or nome_procurado_simplificado
+            in nome_filial_simplificado
+        ):
             return dados_filial
 
-    nomes_disponiveis = [
-        dados_filial["filial"]
-        for dados_filial in filiais
-    ]
+        # Se não encontrar, calcula a semelhança entre os nomes.
+        similaridade = difflib.SequenceMatcher(
+            None,
+            nome_procurado_simplificado,
+            nome_filial_simplificado,
+        ).ratio()
+
+        correspondencias.append(
+            (
+                similaridade,
+                dados_filial,
+            )
+        )
+
+    # Ordena da filial mais parecida para a menos parecida.
+    correspondencias.sort(
+        key=lambda item: item[0],
+        reverse=True,
+    )
+
+    melhor_similaridade, melhor_filial = correspondencias[0]
+
+    # Aceita a filial quando a semelhança for suficiente.
+    if melhor_similaridade >= 0.75:
+        return melhor_filial
 
     raise ValueError(
-        f"A filial '{filial_procurada}' não foi encontrada. "
-        f"Filiais disponíveis: {', '.join(nomes_disponiveis)}"
+        f"A filial '{filial_procurada}' não foi encontrada."
     )
 
 def executar_nps_por_periodo(argumentos: dict) -> dict:

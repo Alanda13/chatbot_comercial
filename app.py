@@ -1,53 +1,75 @@
-import streamlit as st 
+import streamlit as st
 
-## CONFIGURAÇÃO DE PÁGINA
+from src.chatbot import processar_pergunta
+
+
 st.set_page_config(
     page_title="Chatbot Comercial Ferronorte",
-    page_icon="💬",
-    layout="wide"
+    page_icon="🤖",
+    layout="centered",
 )
-st.title("💬 Chatbot Comercial Ferronorte")
-st.write("Bem vindo! Faça uma pergunta sobre os indicadores comerciais.")
+st.title("🤖 Chatbot Comercial Ferronorte")
 
-##  HISTÓRICO DE MENSAGENSSS
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+st.caption(
+    "Consulte indicadores de NPS em linguagem natural."
+)
 
-#   PARA MOSTRAR O HISTÓRICO
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+if "mensagens" not in st.session_state:
+    st.session_state.mensagens = []
 
-#   CAIXA DE TEXTO
-prompt = st.chat_input("Digite sua pergunta...")
-if prompt:
-    st.session_state.messages.append(
+for mensagem in st.session_state.mensagens:
+    with st.chat_message(mensagem["papel"]):
+        st.markdown(mensagem["conteudo"])
+
+pergunta = st.chat_input(
+    "Digite sua pergunta sobre NPS..."
+)
+
+if pergunta:
+    st.session_state.mensagens.append(
         {
-            "role":"user",
-            "content":prompt
-        }  
-    )
-    with st.chat_message("user"):
-         st.markdown(prompt)
- 
-    resposta = (
-         "Ainda estou em desenvolvimento! \n\n"   #RESPOSTA TEMPORÁRIA -----> DEPOIS TROCARRRR!!!!!
-         "Na próxima etapa vou consultar o banco de dados."
-    )
-    st.session_state.messages.append(
-         {
-              "role":"assistante",
-              "content":resposta
-         }
-    )
-    with st.chat_message("assistant"):
-         st.markdown(resposta)
-    with st.chat_message("assistante"):
-        st.markdown(resposta)
-
-    st.session_state.messages.append(
-        {
-            "role":"assistant",
-            "content":resposta
+            "papel": "user",
+            "conteudo": pergunta,
         }
     )
+
+    with st.chat_message("user"):
+        st.markdown(pergunta)
+
+    historico = [
+        mensagem
+        for mensagem in st.session_state.mensagens[:-1]
+    ]
+
+    try:
+        with st.chat_message("assistant"):
+            with st.spinner("Consultando..."):
+                resposta = processar_pergunta(
+                    pergunta=pergunta,
+                    historico=historico,
+                )
+
+            st.markdown(resposta)
+
+        st.session_state.mensagens.append(
+            {
+                "papel": "assistant",
+                "conteudo": resposta,
+            }
+        )
+
+    except Exception as error:
+        mensagem_erro = str(error)
+
+        with st.chat_message("assistant"):
+            st.error(mensagem_erro)
+
+        st.session_state.mensagens.append(
+            {
+                "papel": "assistant",
+                "conteudo": mensagem_erro,
+            }
+        )
+
+        print("\n===== ERRO COMPLETO =====")
+        print(error)
