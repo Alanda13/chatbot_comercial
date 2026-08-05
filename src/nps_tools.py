@@ -54,7 +54,6 @@ def executar_nps_por_filial(argumentos: dict) -> dict:
         .replace("loja", "")
         .strip()
     )
-
     correspondencias = []
 
     for dados_filial in filiais:

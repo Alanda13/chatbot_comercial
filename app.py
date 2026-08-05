@@ -11,7 +11,7 @@ st.set_page_config(
 st.title("🤖 Chatbot Comercial Ferronorte")
 
 st.caption(
-    "Consulte indicadores de NPS em linguagem natural."
+    "Consulte Indicadores de NPS em Linguagem Natural."
 )
 
 if "mensagens" not in st.session_state:

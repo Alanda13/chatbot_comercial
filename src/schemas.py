@@ -16,4 +16,3 @@ class SolicitacaoFerramenta(BaseModel):
         default_factory=dict
     )
     mensagem: str | None = None
-   

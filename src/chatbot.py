@@ -5,7 +5,6 @@ Este módulo recebe a pergunta do usuário, solicita a interpretação
 ao Gemini, executa ferramentas autorizadas e monta a resposta final.
 """
 from typing import Any
-
 from src.ai_service import interpretar_pergunta
 from src.tool_manager import executar_ferramenta
 
