@@ -9,6 +9,7 @@ que devem ser executadas.
 
 from src.nps_tools import (
     executar_comparacao_nps,
+    executar_nps_filial_periodo,
     executar_nps_geral,
     executar_nps_por_filial,
     executar_nps_por_periodo,
@@ -59,6 +60,21 @@ FERRAMENTAS_DISPONIVEIS = {
         ],
         "funcao": executar_comparacao_nps,
     },
+
+    "consultar_nps_filial_periodo": {
+    "descricao": (
+        "Consulta os indicadores de NPS de uma filial específica "
+        "dentro de um intervalo de datas. Pode retornar NPS, "
+        "quantidade de respostas e percentuais de promotores, "
+        "neutros e detratores."
+    ),
+    "argumentos_obrigatorios": [
+        "filial",
+        "data_inicial",
+        "data_final",
+    ],
+    "funcao": executar_nps_filial_periodo,
+},
 }
 def gerar_catalogo_ferramentas() -> str:
     """

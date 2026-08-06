@@ -60,6 +60,30 @@ def formatar_resultado(
             f"**{formatar_numero(resultado['total_respostas'])} respostas**."
         )
 
+    if nome_ferramenta == "consultar_nps_filial_periodo":
+        if resultado["nps"] is None:
+            return (
+                f"Não foram encontradas avaliações válidas da filial "
+                f"**{resultado['filial']}** entre "
+                f"**{resultado['data_inicial']}** e "
+                f"**{resultado['data_final']}**."
+            )
+
+        return (
+            f"O NPS da filial **{resultado['filial']}** entre "
+            f"**{resultado['data_inicial']}** e "
+            f"**{resultado['data_final']}** foi "
+            f"**{formatar_numero(resultado['nps'])}**, "
+            f"com base em "
+            f"**{formatar_numero(resultado['total_respostas'])} respostas**.\n\n"
+            f"Promotores: "
+            f"**{formatar_numero(resultado['percentual_promotores'])}%**  \n"
+            f"Neutros: "
+            f"**{formatar_numero(resultado['percentual_neutros'])}%**  \n"
+            f"Detratores: "
+            f"**{formatar_numero(resultado['percentual_detratores'])}%**"
+        )
+
     if nome_ferramenta == "consultar_nps_por_periodo":
         if resultado["nps"] is None:
             return (

@@ -270,6 +270,183 @@ def obter_nps_por_filial():
 
         if connection is not None:
             connection.close()
+         
+ 
+###  FUNÇÃO NOVAAAAA
+def obter_nps_filial_periodo(
+    filial: str,
+    data_inicial: str,
+    data_final: str,
+):
+    """
+    Calcula os indicadores de NPS de uma filial
+    dentro de um período informado.
+
+    Parâmetros:
+    - filial: nome da filial.
+    - data_inicial: data inicial (YYYY-MM-DD).
+    - data_final: data final (YYYY-MM-DD).
+
+    Retorna:
+    - filial;
+    - total de respostas;
+    - total de promotores;
+    - total de neutros;
+    - total de detratores;
+    - percentual de promotores;
+    - percentual de neutros;
+    - percentual de detratores;
+    - NPS.
+    """
+
+    connection = None
+    cursor = None
+
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        consulta = """
+            SELECT
+                F.Id AS FilialId,
+                F.Nome AS Filial,
+
+                COUNT(*) AS TotalRespostas,
+
+                SUM(
+                    CASE
+                        WHEN TRY_CONVERT(INT, A.Nota) BETWEEN 9 AND 10
+                        THEN 1
+                        ELSE 0
+                    END
+                ) AS TotalPromotores,
+
+                SUM(
+                    CASE
+                        WHEN TRY_CONVERT(INT, A.Nota) BETWEEN 7 AND 8
+                        THEN 1
+                        ELSE 0
+                    END
+                ) AS TotalNeutros,
+
+                SUM(
+                    CASE
+                        WHEN TRY_CONVERT(INT, A.Nota) BETWEEN 0 AND 6
+                        THEN 1
+                        ELSE 0
+                    END
+                ) AS TotalDetratores
+
+            FROM dbo.Avaliacoes AS A
+
+            INNER JOIN dbo.Filiais AS F
+                ON A.FilialId = F.Id
+
+            WHERE
+                TRY_CONVERT(INT, A.Nota) BETWEEN 0 AND 10
+                AND F.Nome = ?
+                AND A.DataHora >= ?
+                AND A.DataHora < DATEADD(DAY, 1, ?)
+
+            GROUP BY
+                F.Id,
+                F.Nome
+        """
+
+        cursor.execute(
+            consulta,
+            filial,
+            data_inicial,
+            data_final,
+        )
+
+        registro = cursor.fetchone()
+
+        if registro is None:
+            return {
+                "filial": filial,
+                "data_inicial": data_inicial,
+                "data_final": data_final,
+                "total_respostas": 0,
+                "total_promotores": 0,
+                "total_neutros": 0,
+                "total_detratores": 0,
+                "percentual_promotores": 0,
+                "percentual_neutros": 0,
+                "percentual_detratores": 0,
+                "nps": None,
+            }
+
+        filial_id = registro[0]
+        nome_filial = registro[1]
+        total_respostas = registro[2] or 0
+        total_promotores = registro[3] or 0
+        total_neutros = registro[4] or 0
+        total_detratores = registro[5] or 0
+
+        if total_respostas == 0:
+            return {
+                "filial_id": filial_id,
+                "filial": nome_filial,
+                "data_inicial": data_inicial,
+                "data_final": data_final,
+                "total_respostas": 0,
+                "total_promotores": 0,
+                "total_neutros": 0,
+                "total_detratores": 0,
+                "percentual_promotores": 0,
+                "percentual_neutros": 0,
+                "percentual_detratores": 0,
+                "nps": None,
+            }
+
+        percentual_promotores = (
+            total_promotores / total_respostas
+        ) * 100
+
+        percentual_neutros = (
+            total_neutros / total_respostas
+        ) * 100
+
+        percentual_detratores = (
+            total_detratores / total_respostas
+        ) * 100
+
+        nps = (
+            percentual_promotores
+            - percentual_detratores
+        )
+
+        return {
+            "filial_id": filial_id,
+            "filial": nome_filial,
+            "data_inicial": data_inicial,
+            "data_final": data_final,
+            "total_respostas": total_respostas,
+            "total_promotores": total_promotores,
+            "total_neutros": total_neutros,
+            "total_detratores": total_detratores,
+            "percentual_promotores": round(
+                percentual_promotores,
+                2,
+            ),
+            "percentual_neutros": round(
+                percentual_neutros,
+                2,
+            ),
+            "percentual_detratores": round(
+                percentual_detratores,
+                2,
+            ),
+            "nps": round(nps, 2),
+        }
+
+    finally:
+        if cursor is not None:
+            cursor.close()
+
+        if connection is not None:
+            connection.close()
 
 #### CALCULAR NPS POR PERIODO###
 def obter_nps_por_periodo(data_inicial, data_final):

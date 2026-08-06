@@ -2,7 +2,6 @@ import streamlit as st
 
 from src.chatbot import processar_pergunta
 
-
 st.set_page_config(
     page_title="Chatbot Comercial Ferronorte",
     page_icon="🤖",

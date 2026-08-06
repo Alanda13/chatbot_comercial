@@ -8,6 +8,7 @@ import difflib
 
 from src.queries import (
     comparar_nps_entre_periodos,
+    obter_nps_filial_periodo,
     obter_nps_por_filial,
     obter_nps_por_periodo,
     obter_resumo_nps,
@@ -177,4 +178,101 @@ def executar_comparacao_nps(argumentos: dict) -> dict:
         data_final_atual,
         data_inicial_anterior,
         data_final_anterior,
+    )
+
+def executar_nps_filial_periodo(argumentos: dict) -> dict:
+    """
+    Consulta os indicadores de NPS de uma filial
+    dentro de um período informado.
+    """
+
+    filial_procurada = argumentos.get("filial")
+    data_inicial = argumentos.get("data_inicial")
+    data_final = argumentos.get("data_final")
+
+    argumentos_faltantes = []
+
+    if not filial_procurada:
+        argumentos_faltantes.append("filial")
+
+    if not data_inicial:
+        argumentos_faltantes.append("data_inicial")
+
+    if not data_final:
+        argumentos_faltantes.append("data_final")
+
+    if argumentos_faltantes:
+        raise ValueError(
+            "Argumentos obrigatórios ausentes: "
+            + ", ".join(argumentos_faltantes)
+        )
+
+    filiais = obter_nps_por_filial()
+
+    nome_procurado = filial_procurada.strip().casefold()
+
+    nome_procurado_simplificado = (
+        nome_procurado
+        .replace("ferronorte", "")
+        .replace("ferroleste", "")
+        .replace("filial", "")
+        .replace("loja", "")
+        .strip()
+    )
+
+    correspondencias = []
+
+    for dados_filial in filiais:
+        nome_filial = dados_filial["filial"].strip()
+        nome_filial_normalizado = nome_filial.casefold()
+
+        nome_filial_simplificado = (
+            nome_filial_normalizado
+            .replace("ferronorte", "")
+            .replace("ferroleste", "")
+            .replace("filial", "")
+            .replace("loja", "")
+            .strip()
+        )
+
+        if (
+            nome_procurado in nome_filial_normalizado
+            or nome_procurado_simplificado
+            in nome_filial_simplificado
+        ):
+            return obter_nps_filial_periodo(
+                nome_filial,
+                data_inicial,
+                data_final,
+            )
+
+        similaridade = difflib.SequenceMatcher(
+            None,
+            nome_procurado_simplificado,
+            nome_filial_simplificado,
+        ).ratio()
+
+        correspondencias.append(
+            (
+                similaridade,
+                nome_filial,
+            )
+        )
+
+    correspondencias.sort(
+        key=lambda item: item[0],
+        reverse=True,
+    )
+
+    melhor_similaridade, melhor_nome_filial = correspondencias[0]
+
+    if melhor_similaridade >= 0.75:
+        return obter_nps_filial_periodo(
+            melhor_nome_filial,
+            data_inicial,
+            data_final,
+        )
+
+    raise ValueError(
+        f"A filial '{filial_procurada}' não foi encontrada."
     )
