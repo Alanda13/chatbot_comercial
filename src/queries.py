@@ -476,17 +476,25 @@ def obter_nps_por_periodo(data_inicial, data_final):
 
                 SUM(
                     CASE
-                        WHEN TRY_CONVERT(INT, Nota) BETWEEN 9 AND 10
-                        THEN 1
-                        ELSE 0
+                       WHEN TRY_CONVERT(INT, Nota) BETWEEN 9 AND 10
+                       THEN 1
+                       ELSE 0
                     END
                 ) AS TotalPromotores,
 
                 SUM(
                     CASE
-                        WHEN TRY_CONVERT(INT, Nota) BETWEEN 0 AND 6
-                        THEN 1
-                        ELSE 0
+                       WHEN TRY_CONVERT(INT, Nota) BETWEEN 7 AND 8
+                       THEN 1
+                       ELSE 0
+                    END
+                ) AS TotalNeutros,
+
+                SUM(
+                    CASE
+                       WHEN TRY_CONVERT(INT, Nota) BETWEEN 0 AND 6
+                       THEN 1
+                       ELSE 0
                     END
                 ) AS TotalDetratores
 
@@ -496,7 +504,7 @@ def obter_nps_por_periodo(data_inicial, data_final):
                 TRY_CONVERT(INT, Nota) BETWEEN 0 AND 10
                 AND DataHora >= ?
                 AND DataHora < DATEADD(DAY, 1, ?)
-        """
+"""
         cursor.execute(
             consulta,
             data_inicial,
@@ -506,17 +514,29 @@ def obter_nps_por_periodo(data_inicial, data_final):
 
         total_respostas = registro[0] or 0
         total_promotores = registro[1] or 0
-        total_detratores = registro[2] or 0
+        total_neutros = registro[2] or 0
+        total_detratores = registro[3] or 0
 
         if total_respostas == 0:
             return {
                 "data_inicial": data_inicial,
                 "data_final": data_final,
                 "total_respostas": 0,
+                "total_promotores": 0,
+                "total_neutros": 0,
+                "total_detratores": 0,
+                "percentual_promotores": 0,
+                "percentual_neutros": 0,
+                "percentual_detratores": 0,
                 "nps": None,
             }
+
         percentual_promotores = (
             total_promotores / total_respostas
+        ) * 100
+
+        percentual_neutros = (
+            total_neutros / total_respostas
         ) * 100
 
         percentual_detratores = (
@@ -527,10 +547,26 @@ def obter_nps_por_periodo(data_inicial, data_final):
             percentual_promotores
             - percentual_detratores
         )
+
         return {
             "data_inicial": data_inicial,
             "data_final": data_final,
             "total_respostas": total_respostas,
+            "total_promotores": total_promotores,
+            "total_neutros": total_neutros,
+            "total_detratores": total_detratores,
+            "percentual_promotores": round(
+                percentual_promotores,
+                2,
+            ),
+            "percentual_neutros": round(
+                percentual_neutros,
+                2,
+            ),
+            "percentual_detratores": round(
+                percentual_detratores,
+                2,
+            ),
             "nps": round(nps, 2),
         }
     finally:

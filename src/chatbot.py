@@ -68,6 +68,7 @@ def formatar_resultado(
                 f"**{resultado['data_inicial']}** e "
                 f"**{resultado['data_final']}**."
             )
+        
 
         return (
             f"O NPS da filial **{resultado['filial']}** entre "

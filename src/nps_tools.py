@@ -108,13 +108,19 @@ def executar_nps_por_filial(argumentos: dict) -> dict:
         f"A filial '{filial_procurada}' não foi encontrada."
     )
 
+## mudanças na função de executar nps por periodo
 def executar_nps_por_periodo(argumentos: dict) -> dict:
     """
-    Consulta o NPS dentro de um intervalo de datas.
+    Consulta os indicadores de NPS dentro de um intervalo de datas.
     """
 
     data_inicial = argumentos.get("data_inicial")
     data_final = argumentos.get("data_final")
+
+    indicador = argumentos.get(
+        "indicador",
+        "resumo",
+    )
 
     if not data_inicial or not data_final:
         raise ValueError(
@@ -122,11 +128,16 @@ def executar_nps_por_periodo(argumentos: dict) -> dict:
             "são obrigatórios."
         )
 
-    return obter_nps_por_periodo(
+    resultado = obter_nps_por_periodo(
         data_inicial,
         data_final,
     )
 
+    resultado["indicador"] = indicador
+
+    return resultado
+
+## função que vai fazer a compração entre os nps
 def executar_comparacao_nps(argumentos: dict) -> dict:
     """
     Compara o NPS entre dois períodos.
@@ -190,6 +201,11 @@ def executar_nps_filial_periodo(argumentos: dict) -> dict:
     data_inicial = argumentos.get("data_inicial")
     data_final = argumentos.get("data_final")
 
+    indicador = argumentos.get(
+        "indicador",
+        "resumo",
+    )
+
     argumentos_faltantes = []
 
     if not filial_procurada:
@@ -240,11 +256,15 @@ def executar_nps_filial_periodo(argumentos: dict) -> dict:
             or nome_procurado_simplificado
             in nome_filial_simplificado
         ):
-            return obter_nps_filial_periodo(
+            resultado = obter_nps_filial_periodo(
                 nome_filial,
                 data_inicial,
                 data_final,
             )
+
+            resultado["indicador"] = indicador
+
+            return resultado
 
         similaridade = difflib.SequenceMatcher(
             None,
@@ -267,12 +287,17 @@ def executar_nps_filial_periodo(argumentos: dict) -> dict:
     melhor_similaridade, melhor_nome_filial = correspondencias[0]
 
     if melhor_similaridade >= 0.75:
-        return obter_nps_filial_periodo(
+        resultado = obter_nps_filial_periodo(
             melhor_nome_filial,
             data_inicial,
             data_final,
         )
 
+        resultado["indicador"] = indicador
+
+        return resultado
+
     raise ValueError(
         f"A filial '{filial_procurada}' não foi encontrada."
     )
+

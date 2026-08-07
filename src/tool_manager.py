@@ -36,16 +36,24 @@ FERRAMENTAS_DISPONIVEIS = {
     },
 
     "consultar_nps_por_periodo": {
-        "descricao": (
-            "Consulta o NPS da empresa dentro de um "
-            "intervalo de datas."
-        ),
-        "argumentos_obrigatorios": [
-            "data_inicial",
-            "data_final",
-        ],
-        "funcao": executar_nps_por_periodo,
-    },
+    "descricao": (
+        "Consulta indicadores gerais de NPS da empresa dentro "
+        "de um intervalo de datas, sem filtro de filial. "
+        "O argumento opcional 'indicador' pode ser: 'nps', "
+        "'total_respostas', 'percentual_promotores', "
+        "'percentual_neutros', 'percentual_detratores' ou 'resumo'. "
+        "Quando nenhum indicador específico for solicitado, "
+        "use 'resumo'."
+    ),
+    "argumentos_obrigatorios": [
+        "data_inicial",
+        "data_final",
+    ],
+    "argumentos_opcionais": [
+        "indicador",
+    ],
+    "funcao": executar_nps_por_periodo,
+},
 
     "comparar_nps_periodos": {
         "descricao": (
@@ -63,15 +71,22 @@ FERRAMENTAS_DISPONIVEIS = {
 
     "consultar_nps_filial_periodo": {
     "descricao": (
-        "Consulta os indicadores de NPS de uma filial específica "
-        "dentro de um intervalo de datas. Pode retornar NPS, "
-        "quantidade de respostas e percentuais de promotores, "
-        "neutros e detratores."
+        "Consulta indicadores de NPS de uma filial específica "
+        "dentro de um intervalo de datas. "
+        "O argumento opcional 'indicador' informa qual dado o usuário "
+        "deseja consultar e pode ser: 'nps', 'total_respostas', "
+        "'percentual_promotores', 'percentual_neutros', "
+        "'percentual_detratores' ou 'resumo'. "
+        "Quando nenhum indicador específico for solicitado, "
+        "use 'resumo'."
     ),
     "argumentos_obrigatorios": [
         "filial",
         "data_inicial",
         "data_final",
+    ],
+    "argumentos_opcionais": [
+        "indicador",
     ],
     "funcao": executar_nps_filial_periodo,
 },
@@ -89,16 +104,25 @@ def gerar_catalogo_ferramentas() -> str:
     for nome, dados in FERRAMENTAS_DISPONIVEIS.items():
         descricao = dados["descricao"]
         argumentos = dados["argumentos_obrigatorios"]
+        ## alteração aqui
+        argumentos_opcionais = dados.get("argumentos_opcionais", [])   
 
         if argumentos:
             texto_argumentos = ", ".join(argumentos)
         else:
             texto_argumentos = "nenhum"
 
+        if argumentos_opcionais:
+            texto_opcionais = ", ".join(argumentos_opcionais)
+        else:
+            texto_opcionais = "nenhum"
+   
         linhas.append(
             f"- {nome}\n"
             f"  Descrição: {descricao}\n"
             f"  Argumentos obrigatórios: {texto_argumentos}"
+            ## alteração aqui
+            f"  Argumentos_opcionais: {texto_opcionais}"
         )
 
     return "\n\n".join(linhas)
@@ -167,3 +191,8 @@ def executar_ferramenta(
     funcao = ferramenta["funcao"]
 
     return funcao(argumentos)
+
+
+
+
+
