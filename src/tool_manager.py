@@ -7,88 +7,24 @@ seus argumentos obrigatórios e as funções Python
 que devem ser executadas.
 """
 
-from src.nps_tools import (
-    executar_comparacao_nps,
-    executar_nps_filial_periodo,
-    executar_nps_geral,
-    executar_nps_por_filial,
-    executar_nps_por_periodo,
-)
+from src.nps_tools import executar_consulta_indicadores_nps
+
 FERRAMENTAS_DISPONIVEIS = {
-    "consultar_nps_geral": {
-        "descricao": (
-            "Consulta o NPS geral da empresa, incluindo "
-            "quantidade de respostas e percentuais de "
-            "promotores, neutros e detratores."
-        ),
-        "argumentos_obrigatorios": [],
-        "funcao": executar_nps_geral,
-    },
-
-    "consultar_nps_por_filial": {
-        "descricao": (
-            "Consulta o NPS de uma loja ou filial específica."
-        ),
-        "argumentos_obrigatorios": [
-            "filial",
-        ],
-        "funcao": executar_nps_por_filial,
-    },
-
-    "consultar_nps_por_periodo": {
+    "consultar_indicadores_nps": {
     "descricao": (
-        "Consulta indicadores gerais de NPS da empresa dentro "
-        "de um intervalo de datas, sem filtro de filial. "
-        "O argumento opcional 'indicador' pode ser: 'nps', "
-        "'total_respostas', 'percentual_promotores', "
-        "'percentual_neutros', 'percentual_detratores' ou 'resumo'. "
-        "Quando nenhum indicador específico for solicitado, "
-        "use 'resumo'."
+        "Ferramenta genérica para consultar indicadores de NPS. "
+        "Pode consultar a empresa inteira ou uma filial específica, "
+        "com nenhum, um ou vários períodos. "
+        "Use esta ferramenta preferencialmente para consultas de NPS, "
+        "quantidade de respostas, promotores, neutros, detratores "
+        "e comparações entre períodos."
     ),
-    "argumentos_obrigatorios": [
-        "data_inicial",
-        "data_final",
-    ],
+    "argumentos_obrigatorios": [],
     "argumentos_opcionais": [
-        "indicador",
-    ],
-    "funcao": executar_nps_por_periodo,
-},
-
-    "comparar_nps_periodos": {
-        "descricao": (
-            "Compara o NPS de dois períodos e informa "
-            "a variação entre os resultados."
-        ),
-        "argumentos_obrigatorios": [
-            "data_inicial_atual",
-            "data_final_atual",
-            "data_inicial_anterior",
-            "data_final_anterior",
-        ],
-        "funcao": executar_comparacao_nps,
-    },
-
-    "consultar_nps_filial_periodo": {
-    "descricao": (
-        "Consulta indicadores de NPS de uma filial específica "
-        "dentro de um intervalo de datas. "
-        "O argumento opcional 'indicador' informa qual dado o usuário "
-        "deseja consultar e pode ser: 'nps', 'total_respostas', "
-        "'percentual_promotores', 'percentual_neutros', "
-        "'percentual_detratores' ou 'resumo'. "
-        "Quando nenhum indicador específico for solicitado, "
-        "use 'resumo'."
-    ),
-    "argumentos_obrigatorios": [
         "filial",
-        "data_inicial",
-        "data_final",
+        "periodos",
     ],
-    "argumentos_opcionais": [
-        "indicador",
-    ],
-    "funcao": executar_nps_filial_periodo,
+    "funcao": executar_consulta_indicadores_nps,
 },
 }
 def gerar_catalogo_ferramentas() -> str:
@@ -104,7 +40,6 @@ def gerar_catalogo_ferramentas() -> str:
     for nome, dados in FERRAMENTAS_DISPONIVEIS.items():
         descricao = dados["descricao"]
         argumentos = dados["argumentos_obrigatorios"]
-        ## alteração aqui
         argumentos_opcionais = dados.get("argumentos_opcionais", [])   
 
         if argumentos:
@@ -113,15 +48,16 @@ def gerar_catalogo_ferramentas() -> str:
             texto_argumentos = "nenhum"
 
         if argumentos_opcionais:
-            texto_opcionais = ", ".join(argumentos_opcionais)
+            texto_opcionais = ", ".join(
+                argumentos_opcionais
+                )
         else:
             texto_opcionais = "nenhum"
    
         linhas.append(
             f"- {nome}\n"
             f"  Descrição: {descricao}\n"
-            f"  Argumentos obrigatórios: {texto_argumentos}"
-            ## alteração aqui
+            f"  Argumentos obrigatórios: {texto_argumentos}\n"
             f"  Argumentos_opcionais: {texto_opcionais}"
         )
 

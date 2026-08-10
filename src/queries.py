@@ -448,6 +448,7 @@ def obter_nps_filial_periodo(
         if connection is not None:
             connection.close()
 
+
 #### CALCULAR NPS POR PERIODO###
 def obter_nps_por_periodo(data_inicial, data_final):
     """
@@ -576,55 +577,64 @@ def obter_nps_por_periodo(data_inicial, data_final):
         if connection is not None:
             connection.close()
 
-### =========== COMPARAÇÃO ENTRE PERÍODOS =============
-def comparar_nps_entre_periodos(
-        data_inicial_atual,
-        data_final_atual,
-        data_inicial_anterior,
-        data_final_anterior,
+## PARA CONSULTAR INDICADORES DE NPS DE FORMA GENÉRICA
+def consultar_indicadores_nps(
+    filial: str | None = None,
+    periodos: list[dict] | None = None,
 ):
     """
-    Comparar o NPS entre dois períodos distintos.
-    Retorna:
-    - NPS do período atual;
-    - NPS do período anterior;
-    - variação em pontos;
-    - situação da variação.
+    Consulta indicadores de NPS de forma genérica.
+
+    Pode consultar:
+    - empresa inteira ou uma filial;
+    - um período ou vários períodos.
     """
-    periodo_atual = obter_nps_por_periodo(
-        data_inicial_atual,
-        data_final_atual,
-    )
-    periodo_anterior = obter_nps_por_periodo(
-        data_inicial_anterior,
-        data_final_anterior,
-    )
-    nps_atual = periodo_atual["nps"]
-    nps_anterior = periodo_anterior["nps"]
 
-    if nps_atual is None or nps_anterior is None:
+    resultados = []
+
+    # Se nenhum período for informado,
+    # consulta todo o histórico disponível.
+    if not periodos:
+        if filial:
+            filiais = obter_nps_por_filial()
+
+            for dados_filial in filiais:
+                if dados_filial["filial"] == filial:
+                    return {
+                        "filial": filial,
+                        "periodos": [dados_filial],
+                    }
+
+            return {
+                "filial": filial,
+                "periodos": [],
+            }
+
         return {
-            "periodo_atual": periodo_atual,
-            "periodo_anterior": periodo_anterior,
-            "variacao": None,
-            "situacao": "Não foi possível comparar os períodos",
+            "filial": None,
+            "periodos": [obter_resumo_nps()],
         }
-    variacao = nps_atual - nps_anterior 
 
-    if variacao > 0:
-        situacao = "O NPS aumentou"
+    # Se existem períodos, consulta cada um separadamente.
+    for periodo in periodos:
+        data_inicial = periodo["data_inicial"]
+        data_final = periodo["data_final"]
 
-    elif variacao < 0:
-        situacao = "O NPS diminuiu"
+        if filial:
+            resultado = obter_nps_filial_periodo(
+                filial,
+                data_inicial,
+                data_final,
+            )
+        else:
+            resultado = obter_nps_por_periodo(
+                data_inicial,
+                data_final,
+            )
 
-    else:
-        situacao = "O NPS permaneceu igual"
+        resultados.append(resultado)
 
     return {
-        "periodo_atual": periodo_atual,
-        "periodo_anterior": periodo_anterior,
-        "variacao": round(variacao, 2),
-        "situacao": situacao,
+        "filial": filial,
+        "periodos": resultados,
     }
-
-

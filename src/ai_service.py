@@ -169,3 +169,99 @@ Pergunta atual do usuário:
             "O JSON retornado pelo Gemini não segue "
             "o contrato esperado."
         ) from error
+
+def gerar_resposta_final(
+    pergunta: str,
+    nome_ferramenta: str,
+    resultado: dict,
+) -> str:
+    """
+    Gera a resposta final em linguagem natural usando
+    exclusivamente os dados retornados pela ferramenta.
+    """
+
+    cliente = criar_cliente_gemini()
+
+    modelo_principal = os.getenv(
+        "GEMINI_MODEL",
+        "gemini-3.5-flash-lite",
+    )
+
+    modelo_reserva = os.getenv(
+        "GEMINI_MODEL_FALLBACK",
+        "gemini-3.6-flash",
+    )
+
+    modelos = [
+        modelo_principal,
+        modelo_reserva,
+    ]
+
+    dados_formatados = json.dumps(
+        resultado,
+        ensure_ascii=False,
+        indent=2,
+        default=str,
+    )
+
+    prompt_resposta = f"""
+Você é o assistente comercial da Ferronorte.
+
+Sua tarefa agora é responder à pergunta do usuário utilizando
+EXCLUSIVAMENTE os dados retornados pelo sistema.
+
+REGRAS:
+- Não invente dados.
+- Não altere valores.
+- Não crie informações que não estejam no resultado.
+- Não faça novos cálculos sobre os dados.
+- Responda em português do Brasil.
+- Seja claro, objetivo e natural.
+- Mostre principalmente a informação que o usuário pediu.
+- Não precisa apresentar todos os campos disponíveis se eles
+  não forem relevantes para a pergunta.
+- Quando houver números decimais, apresente-os de forma adequada
+  para leitura em português.
+- Quando houver quantidade de registros/respostas, apresente-a
+  de forma clara.
+- Não mencione nomes de funções Python, ferramentas internas,
+  JSON, banco de dados ou detalhes técnicos do sistema.
+
+Pergunta original do usuário:
+{pergunta}
+
+Ferramenta utilizada:
+{nome_ferramenta}
+
+Dados reais retornados pelo sistema:
+{dados_formatados}
+
+Responda diretamente ao usuário.
+"""
+
+    resposta = None
+    ultimo_erro = None
+
+    for modelo in modelos:
+        try:
+            resposta = cliente.models.generate_content(
+                model=modelo,
+                contents=prompt_resposta,
+            )
+
+            break
+
+        except Exception as error:
+            ultimo_erro = error
+
+    if resposta is None:
+        raise RuntimeError(
+            "Não foi possível gerar a resposta final neste momento."
+        ) from ultimo_erro
+
+    if not resposta.text:
+        raise RuntimeError(
+            "O Gemini não retornou uma resposta final."
+        )
+
+    return resposta.text.strip()

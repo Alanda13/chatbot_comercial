@@ -5,7 +5,6 @@ from src.queries import (
     listar_filiais,
     obter_nps_por_filial,
     obter_nps_por_periodo,
-    comparar_nps_entre_periodos,
     obter_nps_filial_periodo
 )
 def testar_resumo_nps():
@@ -31,17 +30,6 @@ def testar_nps_por_periodo():
     print("\n=== NPS POR PERÍODO ===\n")
     pprint(resultado)
 
-def testar_comparacao_nps():
-    print("\n=== COMPARAÇÃO DE NPS ===\n")
-
-    resultado = comparar_nps_entre_periodos(
-        "2026-07-01",
-        "2026-07-31",
-        "2026-06-01",
-        "2026-06-30",
-    )
-    pprint(resultado)
-
 def testar_nps_filial_periodo():
     resultado = obter_nps_filial_periodo(
         filial="FERRONORTE TIMON",
@@ -58,7 +46,6 @@ if __name__ == "__main__":
         testar_filiais()
         testar_nps_por_filial()
         testar_nps_por_periodo()
-        testar_comparacao_nps()
         testar_nps_filial_periodo()
     except Exception as error:
         print("Ocorreu um erro durante o teste:")
