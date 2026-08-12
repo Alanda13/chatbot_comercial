@@ -23,13 +23,11 @@ def normalizar_nome_filial(nome: str) -> str:
         "NFKD",
         nome,
     )
-
     nome = "".join(
         caractere
         for caractere in nome
         if not unicodedata.combining(caractere)
     )
-
     palavras_remover = [
         "ferronorte",
         "ferroleste",
@@ -48,7 +46,6 @@ def normalizar_nome_filial(nome: str) -> str:
 
     return nome
 
-
 def executar_consulta_indicadores_nps(argumentos: dict) -> dict:
     """
     Executa consultas genéricas de indicadores de NPS.
@@ -56,87 +53,93 @@ def executar_consulta_indicadores_nps(argumentos: dict) -> dict:
     Pode consultar:
     - empresa inteira;
     - uma filial;
+    - várias filiais;
     - um período;
     - vários períodos.
     """
 
-    filial = argumentos.get("filial")
+    filiais_solicitadas = argumentos.get("filiais")
     periodos = argumentos.get("periodos")
 
-    # Se o usuário não informou uma filial,
-    # consulta os indicadores da empresa inteira.
-    if not filial:
+    # Se nenhuma filial foi informada,
+    # consulta a empresa inteira.
+    if not filiais_solicitadas:
         return consultar_indicadores_nps(
-            filial=None,
+            filiais=None,
             periodos=periodos,
         )
 
-    # Busca as filiais existentes no banco.
-    filiais = obter_nps_por_filial()
+    # Garante que sempre trabalharemos com uma lista.
+    if isinstance(filiais_solicitadas, str):
+        filiais_solicitadas = [filiais_solicitadas]
 
-    # Normaliza o nome informado pelo usuário.
-    # Exemplo: "Filial de Santa Inês" -> "santa ines"
-    nome_procurado = normalizar_nome_filial(
-        filial
-    )
+    filiais_banco = obter_nps_por_filial()
+    filiais_encontradas = []
 
-    correspondencias = []
-
-    for dados_filial in filiais:
-        nome_filial = dados_filial["filial"].strip()
-
-        # Normaliza também o nome que veio do banco.
-        # Exemplo: "FERRONORTE TIMON" -> "timon"
-        nome_filial_normalizado = normalizar_nome_filial(
-            nome_filial
+    for filial_solicitada in filiais_solicitadas:
+        nome_procurado = normalizar_nome_filial(
+            filial_solicitada
         )
 
-        # Primeiro tenta encontrar diretamente.
-        if (
-            nome_procurado in nome_filial_normalizado
-            or nome_filial_normalizado in nome_procurado
-        ):
-            return consultar_indicadores_nps(
-                filial=nome_filial,
-                periodos=periodos,
+        correspondencias = []
+        filial_encontrada = None
+
+        for dados_filial in filiais_banco:
+            nome_filial = dados_filial["filial"].strip()
+
+            nome_filial_normalizado = normalizar_nome_filial(
+                nome_filial
             )
 
-        # Se não encontrou diretamente, calcula
-        # o quanto os dois nomes são parecidos.
-        similaridade = difflib.SequenceMatcher(
-            None,
-            nome_procurado,
-            nome_filial_normalizado,
-        ).ratio()
+            if (
+                nome_procurado in nome_filial_normalizado
+                or nome_filial_normalizado in nome_procurado
+            ):
+                filial_encontrada = nome_filial
+                break
 
-        correspondencias.append(
-            (
-                similaridade,
-                nome_filial,
+            similaridade = difflib.SequenceMatcher(
+                None,
+                nome_procurado,
+                nome_filial_normalizado,
+            ).ratio()
+
+            correspondencias.append(
+                (
+                    similaridade,
+                    nome_filial,
+                )
             )
+
+        if filial_encontrada is None:
+            correspondencias.sort(
+                key=lambda item: item[0],
+                reverse=True,
+            )
+
+            if not correspondencias:
+                raise ValueError(
+                    "Nenhuma filial foi encontrada no banco."
+                )
+
+            melhor_similaridade, melhor_nome_filial = (
+                correspondencias[0]
+            )
+
+            if melhor_similaridade >= 0.75:
+                filial_encontrada = melhor_nome_filial
+
+        if filial_encontrada is None:
+            raise ValueError(
+                f"A filial '{filial_solicitada}' "
+                "não foi encontrada."
+            )
+
+        filiais_encontradas.append(
+            filial_encontrada
         )
 
-    # Coloca a filial mais parecida em primeiro lugar.
-    correspondencias.sort(
-        key=lambda item: item[0],
-        reverse=True,
-    )
-    if not correspondencias:
-        raise ValueError(
-            "Nenhuma filial foi encontrada no banco."
-        )
-
-    melhor_similaridade, melhor_nome_filial = (
-        correspondencias[0]
-    )
-    # Se o nome for suficientemente parecido,
-    # aceita a filial encontrada.
-    if melhor_similaridade >= 0.75:
-        return consultar_indicadores_nps(
-            filial=melhor_nome_filial,
-            periodos=periodos,
-        )
-
-    raise ValueError(
-        f"A filial '{filial}' não foi encontrada."
+    return consultar_indicadores_nps(
+        filiais=filiais_encontradas,
+        periodos=periodos,
     )

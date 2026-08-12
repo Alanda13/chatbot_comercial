@@ -1,7 +1,6 @@
 """
 Serviço responsável pela comunicação com a API do Gemini.
 """
-
 import json
 import os
 
@@ -14,16 +13,13 @@ from src.prompts import PROMPT_SISTEMA
 from src.schemas import SolicitacaoFerramenta
 from src.tool_manager import gerar_catalogo_ferramentas
 
-
 # Carrega as variáveis armazenadas no arquivo .env.
 load_dotenv()
-
 
 def criar_cliente_gemini() -> genai.Client:
     """
     Cria o cliente do Gemini usando a chave armazenada no arquivo .env.
     """
-
     api_key = os.getenv("GEMINI_API_KEY")
 
     if not api_key:
@@ -50,7 +46,6 @@ def criar_cliente_gemini() -> genai.Client:
             ),
         ),
     )
-
 
 def interpretar_pergunta(
     pergunta: str,
@@ -89,7 +84,6 @@ Pergunta atual do usuário:
 
 {pergunta}
 """
-
     cliente = criar_cliente_gemini()
 
     # Os nomes dos modelos ficam no .env.
@@ -161,7 +155,6 @@ Pergunta atual do usuário:
                 ensure_ascii=False,
             )
         )
-
         print("\n=== ERRO DE VALIDAÇÃO ===")
         print(error)
 
@@ -179,7 +172,6 @@ def gerar_resposta_final(
     Gera a resposta final em linguagem natural usando
     exclusivamente os dados retornados pela ferramenta.
     """
-
     cliente = criar_cliente_gemini()
 
     modelo_principal = os.getenv(
@@ -238,7 +230,6 @@ Dados reais retornados pelo sistema:
 
 Responda diretamente ao usuário.
 """
-
     resposta = None
     ultimo_erro = None
 

@@ -138,7 +138,7 @@ def obter_resumo_nps():
         if connection is not None:
             connection.close()
 
-###      PARA DESCOBRIR OS NOMES DAS FILIAISSSSSSS
+### PARA DESCOBRIR OS NOMES DAS FILIAISSSSSSS
 def listar_filiais():
     connection = None
     cursor = None
@@ -298,7 +298,6 @@ def obter_nps_filial_periodo(
     - percentual de detratores;
     - NPS.
     """
-
     connection = None
     cursor = None
 
@@ -352,7 +351,6 @@ def obter_nps_filial_periodo(
                 F.Id,
                 F.Nome
         """
-
         cursor.execute(
             consulta,
             filial,
@@ -447,7 +445,6 @@ def obter_nps_filial_periodo(
 
         if connection is not None:
             connection.close()
-
 
 #### CALCULAR NPS POR PERIODO###
 def obter_nps_por_periodo(data_inicial, data_final):
@@ -579,62 +576,75 @@ def obter_nps_por_periodo(data_inicial, data_final):
 
 ## PARA CONSULTAR INDICADORES DE NPS DE FORMA GENÉRICA
 def consultar_indicadores_nps(
-    filial: str | None = None,
+    filiais: list[str] | None = None,
     periodos: list[dict] | None = None,
 ):
     """
     Consulta indicadores de NPS de forma genérica.
 
     Pode consultar:
-    - empresa inteira ou uma filial;
-    - um período ou vários períodos.
+    - empresa inteira;
+    - uma filial;
+    - várias filiais;
+    - um período;
+    - vários períodos.
     """
 
     resultados = []
 
-    # Se nenhum período for informado,
-    # consulta todo o histórico disponível.
-    if not periodos:
-        if filial:
-            filiais = obter_nps_por_filial()
-
-            for dados_filial in filiais:
-                if dados_filial["filial"] == filial:
-                    return {
-                        "filial": filial,
-                        "periodos": [dados_filial],
-                    }
-
-            return {
-                "filial": filial,
-                "periodos": [],
-            }
-
+    # Empresa inteira, sem período.
+    if not filiais and not periodos:
         return {
-            "filial": None,
-            "periodos": [obter_resumo_nps()],
+            "filiais": None,
+            "periodos": [
+                obter_resumo_nps()
+            ],
         }
 
-    # Se existem períodos, consulta cada um separadamente.
-    for periodo in periodos:
-        data_inicial = periodo["data_inicial"]
-        data_final = periodo["data_final"]
-
-        if filial:
-            resultado = obter_nps_filial_periodo(
-                filial,
-                data_inicial,
-                data_final,
-            )
-        else:
+    # Empresa inteira, com um ou vários períodos.
+    if not filiais and periodos:
+        for periodo in periodos:
             resultado = obter_nps_por_periodo(
-                data_inicial,
-                data_final,
+                periodo["data_inicial"],
+                periodo["data_final"],
             )
 
-        resultados.append(resultado)
+            resultados.append(resultado)
+
+        return {
+            "filiais": None,
+            "periodos": resultados,
+        }
+
+    # Uma ou várias filiais, sem período.
+    if filiais and not periodos:
+        dados_filiais = obter_nps_por_filial()
+
+        for nome_filial in filiais:
+            for dados_filial in dados_filiais:
+                if dados_filial["filial"] == nome_filial:
+                    resultados.append(
+                        dados_filial
+                    )
+                    break
+
+        return {
+            "filiais": filiais,
+            "resultados": resultados,
+        }
+
+    # Uma ou várias filiais + um ou vários períodos.
+    for nome_filial in filiais:
+        for periodo in periodos:
+            resultado = obter_nps_filial_periodo(
+                nome_filial,
+                periodo["data_inicial"],
+                periodo["data_final"],
+            )
+
+            resultados.append(resultado)
 
     return {
-        "filial": filial,
-        "periodos": resultados,
+        "filiais": filiais,
+        "resultados": resultados,
     }

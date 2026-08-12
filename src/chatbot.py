@@ -61,7 +61,6 @@ def processar_pergunta(
         nome_ferramenta=solicitacao.ferramenta,
         resultado=resultado,
     )
-
     return resposta_final
     
 

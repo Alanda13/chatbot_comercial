@@ -13,11 +13,11 @@ FERRAMENTAS_DISPONIVEIS = {
     "consultar_indicadores_nps": {
     "descricao": (
         "Ferramenta genérica para consultar indicadores de NPS. "
-        "Pode consultar a empresa inteira ou uma filial específica, "
+        "Pode consultar a empresa inteira, uma filial específica ou várias filiais, "
         "com nenhum, um ou vários períodos. "
-        "Use esta ferramenta preferencialmente para consultas de NPS, "
-        "quantidade de respostas, promotores, neutros, detratores "
-        "e comparações entre períodos."
+        "Use esta ferramenta para consultas de NPS, quantidade de respostas,"
+        "promotores, neutros, detratores e comparações entre filiais "
+        "Quando a consulta for da empresa inteira, não envie filiais."
     ),
     "argumentos_obrigatorios": [],
     "argumentos_opcionais": [
