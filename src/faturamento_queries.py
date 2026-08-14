@@ -196,4 +196,3 @@ def listar_filiais_faturamento() -> list[str]:
     filiais.sort()
 
     return filiais
-        
