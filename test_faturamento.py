@@ -19,7 +19,6 @@ faturamento_julho = dados_julho["VENDA_LIQ"].sum()
 print("\n=== FATURAMENTO JULHO/2025 ===")
 print(faturamento_julho)
 
-
 from src.faturamento_queries import (
     consultar_indicadores_faturamento,
 )
@@ -67,8 +66,6 @@ print(
 from src.faturamento_tools import (
     executar_consulta_indicadores_faturamento,
 )
-
-
 print("\n=== TESTE DA FERRAMENTA GENÉRICA ===")
 
 resultado_ferramenta = (
@@ -82,3 +79,16 @@ resultado_ferramenta = (
 )
 
 print(resultado_ferramenta)
+
+## teste para ver os anos disponíveis na base de dados
+print("\n=== ANOS DISPONÍVEIS ===")
+print(sorted(dados["ANO"].unique()))
+
+resultado_comparacao = consultar_indicadores_faturamento(
+    filiais=["FERRONORTE TIMON"],
+    anos=[2022, 2023, 2024, 2025],
+    agrupar_por=["ano"],
+)
+
+print("\n=== COMPARAÇÃO TIMON POR ANO ===")
+print(resultado_comparacao)

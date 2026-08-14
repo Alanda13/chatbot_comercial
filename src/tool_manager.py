@@ -8,24 +8,47 @@ que devem ser executadas.
 """
 
 from src.nps_tools import executar_consulta_indicadores_nps
+from src.faturamento_tools import (
+    executar_consulta_indicadores_faturamento,
+)
 
 FERRAMENTAS_DISPONIVEIS = {
     "consultar_indicadores_nps": {
-    "descricao": (
-        "Ferramenta genérica para consultar indicadores de NPS. "
-        "Pode consultar a empresa inteira, uma filial específica ou várias filiais, "
-        "com nenhum, um ou vários períodos. "
-        "Use esta ferramenta para consultas de NPS, quantidade de respostas,"
-        "promotores, neutros, detratores e comparações entre filiais "
-        "Quando a consulta for da empresa inteira, não envie filiais."
-    ),
-    "argumentos_obrigatorios": [],
-    "argumentos_opcionais": [
-        "filial",
-        "periodos",
-    ],
-    "funcao": executar_consulta_indicadores_nps,
-},
+        "descricao": (
+            "Ferramenta genérica para consultar indicadores de NPS. "
+            "Pode consultar a empresa inteira, uma filial específica ou várias filiais, "
+            "com nenhum, um ou vários períodos. "
+            "Use esta ferramenta para consultas de NPS, quantidade de respostas, "
+            "promotores, neutros, detratores e comparações entre filiais. "
+            "Quando a consulta for da empresa inteira, não envie filiais."
+        ),
+        "argumentos_obrigatorios": [],
+        "argumentos_opcionais": [
+            "filiais",
+            "periodos",
+        ],
+        "funcao": executar_consulta_indicadores_nps,
+    },
+
+    "consultar_indicadores_faturamento": {
+        "descricao": (
+            "Ferramenta genérica para consultar indicadores de faturamento. "
+            "Pode consultar a empresa inteira, uma ou várias filiais, "
+            "um ou vários RCAs, meses e anos. "
+            "Use esta ferramenta para consultas de faturamento, venda bruta, "
+            "valor de desconto, peso líquido e quantidade de notas. "
+            "O faturamento é baseado na coluna VENDA_LIQ da rotina 8280."
+        ),
+        "argumentos_obrigatorios": [],
+        "argumentos_opcionais": [
+            "filiais",
+            "rcas",
+            "meses",
+            "anos",
+            "agrupar_por",
+        ],
+        "funcao": executar_consulta_indicadores_faturamento,
+    },
 }
 def gerar_catalogo_ferramentas() -> str:
     """

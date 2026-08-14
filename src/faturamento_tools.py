@@ -138,6 +138,7 @@ def executar_consulta_indicadores_faturamento(
     rcas = argumentos.get("rcas")
     meses = argumentos.get("meses")
     anos = argumentos.get("anos")
+    agrupar_por = argumentos.get("agrupar_por")
 
     filiais_resolvidas = None
 
@@ -162,4 +163,5 @@ def executar_consulta_indicadores_faturamento(
         rcas=rcas,
         meses=meses,
         anos=anos,
+        agrupar_por=agrupar_por,
     )
