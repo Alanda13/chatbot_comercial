@@ -1,9 +1,8 @@
 import os
-
 import mssql_python
 from dotenv import load_dotenv
 
-load_dotenv()   ## CARREGA AS VARIÁVEIS ARMAZENADAS NO ARQUIVO .env 
+load_dotenv() 
 
 def get_connection():
     """
@@ -14,7 +13,7 @@ def get_connection():
     username = os.getenv("DB_USERNAME")
     password = os.getenv("DB_PASSWORD")
 
-    if not all([server, database, username, password]):   # VERIFICA SE TODAS AS CONFIGURAÇÕES FORAM INFORMADAS 
+    if not all([server, database, username, password]): 
         raise ValueError(
             "As variáveis DB_SERVER, DB_DATABASE, "
             "DB_USERNAME e DB_PASSWORD devem estar preenchidas no arquivo .env."
