@@ -153,6 +153,14 @@ REGRAS ESPECÍFICAS PARA FATURAMENTO:
 - O faturamento corresponde ao indicador VENDA_LIQ.
 - Para consultas de faturamento, o período é obrigatório.
 
+- A base de faturamento disponível possui granularidade mensal.
+- Não existem dados diários disponíveis para faturamento.
+- Quando o usuário solicitar um dia específico, não execute a ferramenta
+de faturamento utilizando apenas o mês e o ano.
+- Nesse caso, escolha "pedir_esclarecimento".
+- Informe que os dados disponíveis permitem consultas por mês e ano,
+ mas não por dia.
+
 - Se o usuário não informar mês, ano ou outro período,
   NÃO execute a ferramenta.
 

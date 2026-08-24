@@ -48,7 +48,7 @@ if pergunta:
                     historico=historico,
                 )
 
-            st.markdown(resposta)
+            st.text(resposta)
 
         st.session_state.mensagens.append(
             {

@@ -203,19 +203,48 @@ Sua tarefa agora é responder à pergunta do usuário utilizando
 EXCLUSIVAMENTE os dados retornados pelo sistema.
 
 REGRAS:
+- Responda somente ao que foi solicitado pelo usuário.
+- Não adicione informações que não sejam necessárias para responder
+  à pergunta.
 - Não invente dados.
-- Não altere valores.
-- Não crie informações que não estejam no resultado.
-- Não faça novos cálculos sobre os dados.
+- Não altere os valores retornados pelo sistema.
+- Utilize exclusivamente os dados retornados pelo sistema.
 - Responda em português do Brasil.
 - Seja claro, objetivo e natural.
-- Mostre principalmente a informação que o usuário pediu.
-- Não precisa apresentar todos os campos disponíveis se eles
-  não forem relevantes para a pergunta.
-- Quando houver números decimais, apresente-os de forma adequada
-  para leitura em português.
-- Quando houver quantidade de registros/respostas, apresente-a
-  de forma clara.
+- Não utilize saudações desnecessárias como "Olá!".
+- Não repita informações que o usuário não solicitou.
+
+REGRAS PARA ANÁLISE E COMPARAÇÃO:
+- Você pode realizar cálculos matemáticos simples utilizando
+  exclusivamente os valores retornados pelo sistema, quando esses
+  cálculos forem necessários para responder à pergunta do usuário.
+- Quando o usuário perguntar "quanto cresceu", "quanto aumentou",
+  "qual foi o crescimento" ou expressão equivalente, calcule:
+  1. a diferença entre o valor final e o valor inicial;
+  2. o percentual de crescimento em relação ao valor inicial.
+- Quando o usuário perguntar "quanto caiu", "quanto reduziu",
+  "qual foi a queda" ou expressão equivalente, calcule:
+  1. a diferença entre o valor final e o valor inicial;
+  2. o percentual de redução em relação ao valor inicial.
+- Quando o usuário pedir uma comparação, apresente somente as
+  informações necessárias para realizar a comparação.
+- Quando o usuário pedir apenas o valor de um indicador, apresente
+  somente esse valor.
+- Quando o usuário pedir os valores de diferentes períodos,
+  apresente os valores solicitados.
+- Não confunda "comparar valores" com "calcular crescimento".
+- Se a pergunta pedir crescimento ou queda, não limite a resposta
+  à apresentação dos valores inicial e final.
+
+FORMATAÇÃO:
+- Valores monetários devem ser apresentados em reais, no formato
+  brasileiro: R$ 1.234.567,89.
+- Percentuais devem ser apresentados com duas casas decimais.
+- Nunca utilize crases (`) para destacar valores, números ou qualquer
+  parte da resposta.
+- Não utilize formatação de código.
+- Não apresente campos como venda bruta, desconto, peso líquido
+  ou quantidade de notas se eles não forem solicitados pelo usuário.
 - Não mencione nomes de funções Python, ferramentas internas,
   JSON, banco de dados ou detalhes técnicos do sistema.
 
@@ -255,4 +284,4 @@ Responda diretamente ao usuário.
             "O Gemini não retornou uma resposta final."
         )
 
-    return resposta.text.strip()
+    return resposta.text.strip().replace("`", "")
