@@ -4,7 +4,6 @@ Ferramentas do módulo de faturamento.
 Este arquivo faz a ponte entre os nomes informados pela IA
 e as consultas de faturamento.
 """
-
 import difflib
 import unicodedata
 
@@ -12,7 +11,6 @@ from src.faturamento_queries import (
     consultar_indicadores_faturamento,
     listar_filiais_faturamento,
 )
-
 
 def normalizar_nome_filial(nome: str) -> str:
     """
@@ -55,7 +53,6 @@ def normalizar_nome_filial(nome: str) -> str:
     )
 
     return nome
-
 
 def resolver_nome_filial(nome_informado: str) -> str:
     """
@@ -119,7 +116,6 @@ def resolver_nome_filial(nome_informado: str) -> str:
     raise ValueError(
         f"A filial '{nome_informado}' não foi encontrada."
     )
-
 
 def executar_consulta_indicadores_faturamento(
     argumentos: dict,
