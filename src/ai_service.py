@@ -190,9 +190,11 @@ FORMATAÇÃO:
 - Valores monetários devem ser apresentados em reais, no formato
   brasileiro: R$ 1.234.567,89.
 - Percentuais devem ser apresentados com duas casas decimais.
-- Nunca utilize crases (`) para destacar valores, números ou qualquer
-  parte da resposta.
-- Não utilize formatação de código.
+- Nunca utilize crases (`) para destacar valores, números, datas
+  ou percentuais.
+- Nunca utilize formatação de código inline.
+- Não escreva "R`" ou "`R$".
+- Não coloque valores monetários, percentuais ou números entre crases.
 - Não apresente campos como venda bruta, desconto, peso líquido
   ou quantidade de notas se eles não forem solicitados pelo usuário.
 - Não mencione nomes de funções Python, ferramentas internas,

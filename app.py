@@ -10,7 +10,7 @@ st.set_page_config(
 st.title("🤖 Chatbot Comercial Ferronorte")
 
 st.caption(
-    "Consulte Indicadores de NPS em Linguagem Natural."
+    "Consulte Informações sobre Indicadores Comerciais."
 )
 
 if "mensagens" not in st.session_state:
@@ -18,10 +18,10 @@ if "mensagens" not in st.session_state:
 
 for mensagem in st.session_state.mensagens:
     with st.chat_message(mensagem["papel"]):
-        st.markdown(mensagem["conteudo"])
+        st.text(mensagem["conteudo"])
 
 pergunta = st.chat_input(
-    "Digite sua pergunta sobre NPS..."
+    "Digite sua pergunta sobre algum indicador comercial..."
 )
 
 if pergunta:
