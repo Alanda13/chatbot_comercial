@@ -13,9 +13,7 @@ from src.prompts import PROMPT_SISTEMA
 from src.schemas import SolicitacaoFerramenta
 from src.tool_manager import gerar_catalogo_ferramentas
 
-# Carrega as variáveis armazenadas no arquivo .env.
 load_dotenv()
-
 
 def criar_cliente_gemini() -> genai.Client:
     """
@@ -41,7 +39,6 @@ def criar_cliente_gemini() -> genai.Client:
             ),
         ),
     )
-
 
 def interpretar_pergunta(
     pergunta: str,
