@@ -16,6 +16,7 @@ from src.tool_manager import gerar_catalogo_ferramentas
 # Carrega as variáveis armazenadas no arquivo .env.
 load_dotenv()
 
+
 def criar_cliente_gemini() -> genai.Client:
     """
     Cria o cliente do Gemini usando a chave armazenada no arquivo .env.
@@ -30,22 +31,17 @@ def criar_cliente_gemini() -> genai.Client:
     return genai.Client(
         api_key=api_key,
         http_options=types.HttpOptions(
-            timeout=10_000,
+            timeout=30_000,
             retry_options=types.HttpRetryOptions(
-                attempts=1,
+                attempts=3,
                 initial_delay=1,
-                max_delay=2,
+                max_delay=5,
                 exp_base=2,
-                http_status_codes=[
-                    429,
-                    500,
-                    502,
-                    503,
-                    504,
-                ],
+                http_status_codes=[429, 500, 502, 503, 504],
             ),
         ),
     )
+
 
 def interpretar_pergunta(
     pergunta: str,
@@ -53,11 +49,7 @@ def interpretar_pergunta(
 ) -> SolicitacaoFerramenta:
     """
     Envia a pergunta ao Gemini e retorna uma solicitação validada.
-
-    O Gemini apenas interpreta a intenção do usuário.
-    Ele não acessa o banco e não executa ferramentas.
     """
-
     if not pergunta.strip():
         raise ValueError("A pergunta não pode estar vazia.")
 
@@ -86,28 +78,15 @@ Pergunta atual do usuário:
 """
     cliente = criar_cliente_gemini()
 
-    # Os nomes dos modelos ficam no .env.
-    # Caso não estejam preenchidos, estes valores serão usados.
-    modelo_principal = os.getenv(
-        "GEMINI_MODEL",
-        "gemini-3.5-flash-lite",
-    )
+    # Modelos válidos da API
+    modelo_principal = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    modelo_reserva = os.getenv("GEMINI_MODEL_FALLBACK", "gemini-1.5-flash")
 
-    modelo_reserva = os.getenv(
-        "GEMINI_MODEL_FALLBACK",
-        "gemini-3.6-flash",
-    )
-
-    modelos = [
-        modelo_principal,
-        modelo_reserva,
-    ]
+    modelos = [modelo_principal, modelo_reserva]
 
     resposta = None
     ultimo_erro = None
 
-    # Tenta primeiro o modelo principal.
-    # Se falhar, tenta automaticamente o modelo reserva.
     for modelo in modelos:
         try:
             resposta = cliente.models.generate_content(
@@ -117,27 +96,20 @@ Pergunta atual do usuário:
                     response_mime_type="application/json",
                 ),
             )
-
-            break
-
+            if resposta and resposta.text:
+                break
         except Exception as error:
             ultimo_erro = error
 
-    if resposta is None:
+    if resposta is None or not resposta.text:
         raise RuntimeError(
             "Não foi possível acessar o Gemini neste momento. "
             "Os modelos disponíveis podem estar temporariamente "
             "sobrecarregados. Tente novamente mais tarde."
         ) from ultimo_erro
 
-    if not resposta.text:
-        raise RuntimeError(
-            "O Gemini não retornou uma resposta."
-        )
-
     try:
         dados = json.loads(resposta.text)
-
     except json.JSONDecodeError as error:
         raise ValueError(
             "O Gemini não retornou um JSON válido."
@@ -145,23 +117,15 @@ Pergunta atual do usuário:
 
     try:
         return SolicitacaoFerramenta.model_validate(dados)
-
     except ValidationError as error:
         print("\n=== JSON RECEBIDO DO GEMINI ===")
-        print(
-            json.dumps(
-                dados,
-                indent=2,
-                ensure_ascii=False,
-            )
-        )
+        print(json.dumps(dados, indent=2, ensure_ascii=False))
         print("\n=== ERRO DE VALIDAÇÃO ===")
         print(error)
-
         raise ValueError(
-            "O JSON retornado pelo Gemini não segue "
-            "o contrato esperado."
+            "O JSON retornado pelo Gemini não segue o contrato esperado."
         ) from error
+
 
 def gerar_resposta_final(
     pergunta: str,
@@ -174,20 +138,10 @@ def gerar_resposta_final(
     """
     cliente = criar_cliente_gemini()
 
-    modelo_principal = os.getenv(
-        "GEMINI_MODEL",
-        "gemini-3.5-flash-lite",
-    )
+    modelo_principal = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    modelo_reserva = os.getenv("GEMINI_MODEL_FALLBACK", "gemini-1.5-flash")
 
-    modelo_reserva = os.getenv(
-        "GEMINI_MODEL_FALLBACK",
-        "gemini-3.6-flash",
-    )
-
-    modelos = [
-        modelo_principal,
-        modelo_reserva,
-    ]
+    modelos = [modelo_principal, modelo_reserva]
 
     dados_formatados = json.dumps(
         resultado,
@@ -204,8 +158,7 @@ EXCLUSIVAMENTE os dados retornados pelo sistema.
 
 REGRAS:
 - Responda somente ao que foi solicitado pelo usuário.
-- Não adicione informações que não sejam necessárias para responder
-  à pergunta.
+- Não adicione informações que não sejam necessárias para responder à pergunta.
 - Não invente dados.
 - Não altere os valores retornados pelo sistema.
 - Utilize exclusivamente os dados retornados pelo sistema.
@@ -268,20 +221,14 @@ Responda diretamente ao usuário.
                 model=modelo,
                 contents=prompt_resposta,
             )
-
-            break
-
+            if resposta and resposta.text:
+                break
         except Exception as error:
             ultimo_erro = error
 
-    if resposta is None:
+    if resposta is None or not resposta.text:
         raise RuntimeError(
             "Não foi possível gerar a resposta final neste momento."
         ) from ultimo_erro
-
-    if not resposta.text:
-        raise RuntimeError(
-            "O Gemini não retornou uma resposta final."
-        )
 
     return resposta.text.strip().replace("`", "")
