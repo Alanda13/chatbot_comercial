@@ -26,7 +26,7 @@ def carregar_faturamento_8280() -> pd.DataFrame:
         encoding="latin1",
         decimal=",",
     )
-    #remove as colunas vazias criadas durante a execução
+    #removendo as colunas vazias criadas durante a execução
     dados = dados.loc [
         :,
         ~dados.columns.str.startswith("Unnamed")

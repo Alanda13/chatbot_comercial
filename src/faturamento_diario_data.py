@@ -34,7 +34,7 @@ def carregar_faturamento_8302() -> pd.DataFrame:
 
     dados.columns = dados.columns.str.strip()
 
-    # remove as colunas vazias criadas durante a exportação
+    # removendo as colunas vazias criadas durante a exportação
     dados = dados.loc[
         :,
         ~dados.columns.str.startswith("Unnamed")
