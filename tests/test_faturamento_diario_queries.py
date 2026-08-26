@@ -80,9 +80,12 @@ def test_consulta_sem_dados_no_periodo(dados_faturamento_diario):
     resultado = fdq.consultar_indicadores_faturamento_diario(
         data_inicial="2026-01-01",
         data_final="2026-01-31",
+        filiais=["FERRONORTE TIMON"],
     )
 
     assert resultado["encontrado"] is False
+    assert resultado["filtros_aplicados"]["data_inicial"] == "2026-01-01"
+    assert resultado["filtros_aplicados"]["filiais"] == ["FERRONORTE TIMON"]
 
 
 def test_consulta_agrupada_por_dia(dados_faturamento_diario):

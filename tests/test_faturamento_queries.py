@@ -71,6 +71,7 @@ def test_consulta_sem_dados_retorna_nao_encontrado(dados_faturamento):
     )
 
     assert resultado["encontrado"] is False
+    assert resultado["filtros_aplicados"]["filiais"] == ["FILIAL INEXISTENTE"]
 
 
 def test_consulta_agrupada_por_filial(dados_faturamento):

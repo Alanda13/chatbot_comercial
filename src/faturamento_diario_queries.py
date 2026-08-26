@@ -46,20 +46,21 @@ def consultar_indicadores_faturamento_diario(
             dados["COD_RCA"].isin(rcas)
         ]
 
-    if dados.empty:
-        return {
-            "encontrado": False,
-            "mensagem": (
-                "Nenhum dado encontrado para os filtros informados."
-            ),
-        }
-
     filtros_aplicados = {
         "data_inicial": data_inicial,
         "data_final": data_final,
         "filiais": filiais,
         "rcas": rcas,
     }
+
+    if dados.empty:
+        return {
+            "encontrado": False,
+            "filtros_aplicados": filtros_aplicados,
+            "mensagem": (
+                "Nenhum dado encontrado para os filtros informados."
+            ),
+        }
 
     # Se não foi solicitado agrupamento,
     # retorna o total agregado normalmente.

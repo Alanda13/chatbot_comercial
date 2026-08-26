@@ -48,20 +48,21 @@ def consultar_indicadores_faturamento(
             dados["ANO"].isin(anos)
         ]
 
-    if dados.empty:
-        return {
-            "encontrado": False,
-            "mensagem": (
-                "Nenhum dado encontrado para os filtros informados."
-            ),
-        }
-
     filtros_aplicados = {
         "filiais": filiais,
         "rcas": rcas,
         "meses": meses,
         "anos": anos,
     }
+
+    if dados.empty:
+        return {
+            "encontrado": False,
+            "filtros_aplicados": filtros_aplicados,
+            "mensagem": (
+                "Nenhum dado encontrado para os filtros informados."
+            ),
+        }
 
     # Se não foi solicitado agrupamento,
     # retorna o total agregado normalmente.
