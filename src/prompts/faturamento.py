@@ -22,13 +22,14 @@ PROMPT_FATURAMENTO = """REGRAS ESPECÍFICAS PARA FATURAMENTO:
 - O faturamento corresponde ao indicador VENDA_LIQ.
 - Para consultas de faturamento, o período é obrigatório.
 
-- A base de faturamento disponível possui granularidade mensal.
-- Não existem dados diários disponíveis para faturamento.
-- Quando o usuário solicitar um dia específico, não execute a ferramenta
-de faturamento utilizando apenas o mês e o ano.
-- Nesse caso, escolha "pedir_esclarecimento".
-- Informe que os dados disponíveis permitem consultas por mês e ano,
- mas não por dia.
+- Esta ferramenta ("consultar_indicadores_faturamento") tem
+  granularidade mensal (mês e/ou ano).
+- Quando o usuário pedir o faturamento de um dia específico ou de um
+  período de dias (ex: hoje, ontem, esta semana, semana passada, ou
+  um intervalo de datas), NÃO utilize esta ferramenta.
+- Nesse caso, utilize a ferramenta
+  "consultar_indicadores_faturamento_diario" (veja as regras
+  específicas dela mais abaixo).
 
 - Se o usuário não informar mês, ano ou outro período,
   NÃO execute a ferramenta.
@@ -235,6 +236,118 @@ Resposta esperada:
         "agrupar_por": [
             "filial",
             "ano"
+        ]
+    },
+    "mensagem": null
+}
+
+REGRAS ESPECÍFICAS PARA FATURAMENTO DIÁRIO:
+
+- Para consultas de faturamento por dia ou por período de dias,
+  utilize a ferramenta "consultar_indicadores_faturamento_diario".
+
+- Essa ferramenta deve ser usada para:
+  - faturamento de hoje, ontem, de um dia específico;
+  - faturamento de um período de dias (ex: esta semana, semana
+    passada, de 01/07/2025 a 15/07/2025);
+  - faturamento agrupado por forma de pagamento;
+  - comparações entre períodos de dias.
+
+- NÃO utilize esta ferramenta para perguntas sobre mês(es) ou
+  ano(s) inteiros sem exigir detalhamento por dia — nesse caso,
+  utilize "consultar_indicadores_faturamento" (regras acima).
+
+- O argumento "periodos" é OBRIGATÓRIO e deve ser SEMPRE uma lista
+  de objetos com "data_inicial" e "data_final", no formato
+  YYYY-MM-DD.
+
+Exemplo com um único dia (data_inicial e data_final iguais):
+
+"periodos": [
+    {
+        "data_inicial": "2026-07-15",
+        "data_final": "2026-07-15"
+    }
+]
+
+Exemplo com um período de dias:
+
+"periodos": [
+    {
+        "data_inicial": "2026-07-01",
+        "data_final": "2026-07-15"
+    }
+]
+
+Exemplo de consulta de faturamento diário:
+
+Pergunta:
+"Qual foi o faturamento de Timon ontem?"
+
+Resposta esperada (supondo que hoje seja 2026-08-26, ou seja,
+ontem foi 2026-08-25):
+
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "consultar_indicadores_faturamento_diario",
+    "argumentos": {
+        "filiais": [
+            "Timon"
+        ],
+        "periodos": [
+            {
+                "data_inicial": "2026-08-25",
+                "data_final": "2026-08-25"
+            }
+        ]
+    },
+    "mensagem": null
+}
+
+- Se o usuário não informar nenhuma data, dia ou período,
+  NÃO execute a ferramenta.
+- Nesse caso, escolha a ação "pedir_esclarecimento" e peça ao
+  usuário para informar a data ou o período desejado.
+- Não assuma automaticamente o dia atual, a menos que o usuário
+  diga explicitamente "hoje", "ontem" ou outra referência relativa
+  de data — nesses casos, calcule a data real a partir da data
+  atual informada no contexto da conversa.
+
+- Quando o usuário informar uma ou mais filiais, envie o argumento
+  "filiais" (mesmo formato já usado nas outras ferramentas).
+
+- Quando o usuário informar um ou mais RCAs, envie o argumento
+  "rcas" (mesmo formato já usado em "consultar_indicadores_faturamento").
+
+- Quando o usuário pedir o faturamento separado por forma de
+  pagamento (dinheiro, cartão, boleto, etc.), utilize o argumento
+  "agrupar_por" com o valor "forma_pagamento".
+
+- Valores permitidos para "agrupar_por" nesta ferramenta:
+  - "filial"
+  - "rca"
+  - "dia"
+  - "forma_pagamento"
+
+Exemplo:
+
+Pergunta:
+"Qual o faturamento de hoje por forma de pagamento?"
+
+Resposta esperada (supondo que hoje seja 2026-08-26):
+
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "consultar_indicadores_faturamento_diario",
+    "argumentos": {
+        "periodos": [
+            {
+                "data_inicial": "2026-08-26",
+                "data_final": "2026-08-26"
+            }
+        ],
+        "agrupar_por": [
+            "forma_pagamento"
         ]
     },
     "mensagem": null

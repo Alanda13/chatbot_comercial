@@ -6,7 +6,24 @@ from src.exceptions import FerramentaError
 
 def test_ferramenta_existe():
     assert tool_manager.ferramenta_existe("consultar_indicadores_nps") is True
+    assert (
+        tool_manager.ferramenta_existe("consultar_indicadores_faturamento")
+        is True
+    )
+    assert (
+        tool_manager.ferramenta_existe(
+            "consultar_indicadores_faturamento_diario"
+        )
+        is True
+    )
     assert tool_manager.ferramenta_existe("nao_existe") is False
+
+
+def test_faturamento_diario_exige_periodo_como_obrigatorio():
+    argumentos = tool_manager.obter_argumentos_obrigatorios(
+        "consultar_indicadores_faturamento_diario"
+    )
+    assert argumentos == ["periodos"]
 
 
 def test_executar_ferramenta_inexistente_gera_erro():

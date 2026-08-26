@@ -11,6 +11,9 @@ from src.nps_tools import executar_consulta_indicadores_nps
 from src.faturamento_tools import (
     executar_consulta_indicadores_faturamento,
 )
+from src.faturamento_diario_tools import (
+    executar_consulta_indicadores_faturamento_diario,
+)
 from src.exceptions import FerramentaError
 
 FERRAMENTAS_DISPONIVEIS = {
@@ -33,11 +36,14 @@ FERRAMENTAS_DISPONIVEIS = {
 
     "consultar_indicadores_faturamento": {
         "descricao": (
-            "Ferramenta genérica para consultar indicadores de faturamento. "
+            "Ferramenta genérica para consultar indicadores de faturamento "
+            "por mês e/ou ano (rotina 8280). "
             "Pode consultar a empresa inteira, uma ou várias filiais, "
             "um ou vários RCAs, meses e anos. "
             "Use esta ferramenta para consultas de faturamento, venda bruta, "
-            "valor de desconto, peso líquido e quantidade de notas. "
+            "valor de desconto, peso líquido e quantidade de notas, "
+            "sempre que a pergunta for por mês(es) e/ou ano(s) — nunca por "
+            "um dia específico ou período de dias. "
             "O faturamento é baseado na coluna VENDA_LIQ da rotina 8280."
         ),
         "argumentos_obrigatorios": [],
@@ -49,6 +55,28 @@ FERRAMENTAS_DISPONIVEIS = {
             "agrupar_por",
         ],
         "funcao": executar_consulta_indicadores_faturamento,
+    },
+
+    "consultar_indicadores_faturamento_diario": {
+        "descricao": (
+            "Ferramenta para consultar indicadores de faturamento com "
+            "granularidade diária (rotina 8302). "
+            "Use esta ferramenta sempre que o usuário pedir o faturamento "
+            "de um dia específico ou de um período de dias — por exemplo: "
+            "hoje, ontem, esta semana, semana passada, ou um intervalo de "
+            "datas. Também é a ferramenta correta para faturamento "
+            "agrupado por forma de pagamento. "
+            "Para perguntas por mês(es) ou ano(s) inteiros, sem exigir "
+            "detalhamento por dia, use a ferramenta "
+            "'consultar_indicadores_faturamento' no lugar desta."
+        ),
+        "argumentos_obrigatorios": ["periodos"],
+        "argumentos_opcionais": [
+            "filiais",
+            "rcas",
+            "agrupar_por",
+        ],
+        "funcao": executar_consulta_indicadores_faturamento_diario,
     },
 }
 def gerar_catalogo_ferramentas() -> str:

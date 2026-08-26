@@ -3,6 +3,7 @@ Serviço responsável pela comunicação com a API do Gemini.
 """
 import json
 import os
+from datetime import date
 
 from dotenv import load_dotenv
 from google import genai
@@ -76,6 +77,7 @@ def interpretar_pergunta(
 
     instrucao_sistema = (
         f"{PROMPT_SISTEMA}\n\nFerramentas disponíveis:\n\n{catalogo}"
+        f"\n\nData atual: {date.today().isoformat()}"
     )
     conteudos_historico = _montar_historico_gemini(historico)
 
