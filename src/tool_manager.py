@@ -11,6 +11,7 @@ from src.nps_tools import executar_consulta_indicadores_nps
 from src.faturamento_tools import (
     executar_consulta_indicadores_faturamento,
 )
+from src.exceptions import FerramentaError
 
 FERRAMENTAS_DISPONIVEIS = {
     "consultar_indicadores_nps": {
@@ -127,7 +128,7 @@ def executar_ferramenta(
     )
 
     if ferramenta is None:
-        raise ValueError(
+        raise FerramentaError(
             f"A ferramenta '{nome_ferramenta}' não existe."
         )
 
@@ -142,7 +143,7 @@ def executar_ferramenta(
     ]
 
     if argumentos_faltantes:
-        raise ValueError(
+        raise FerramentaError(
             "Argumentos obrigatórios ausentes: "
             + ", ".join(argumentos_faltantes)
         )

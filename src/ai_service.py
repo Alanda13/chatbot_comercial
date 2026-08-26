@@ -12,8 +12,12 @@ from pydantic import ValidationError
 from src.prompts import PROMPT_SISTEMA
 from src.schemas import SolicitacaoFerramenta
 from src.tool_manager import gerar_catalogo_ferramentas
+from src.exceptions import IAIndisponivelError, RespostaInvalidaError
+from src.logger import obter_logger
 
 load_dotenv()
+
+logger = obter_logger(__name__)
 
 def criar_cliente_gemini() -> genai.Client:
     """
@@ -40,6 +44,23 @@ def criar_cliente_gemini() -> genai.Client:
         ),
     )
 
+def _montar_historico_gemini(
+    historico: list[dict[str, str]],
+) -> list[types.Content]:
+    """
+    Converte o histórico de mensagens da conversa (papel/conteudo)
+    para o formato de turnos estruturados esperado pela API do
+    Gemini, em vez de um texto simples concatenado no prompt.
+    """
+    return [
+        types.Content(
+            role="model" if mensagem["papel"] == "assistant" else "user",
+            parts=[types.Part(text=mensagem["conteudo"])],
+        )
+        for mensagem in historico
+    ]
+
+
 def interpretar_pergunta(
     pergunta: str,
     historico: list[dict[str, str]] | None = None,
@@ -53,26 +74,11 @@ def interpretar_pergunta(
     catalogo = gerar_catalogo_ferramentas()
     historico = historico or []
 
-    texto_historico = "\n".join(
-        f"{mensagem['papel']}: {mensagem['conteudo']}"
-        for mensagem in historico
+    instrucao_sistema = (
+        f"{PROMPT_SISTEMA}\n\nFerramentas disponíveis:\n\n{catalogo}"
     )
+    conteudos_historico = _montar_historico_gemini(historico)
 
-    conteudo = f"""
-{PROMPT_SISTEMA}
-
-Ferramentas disponíveis:
-
-{catalogo}
-
-Histórico relevante da conversa:
-
-{texto_historico or "Nenhum histórico disponível."}
-
-Pergunta atual do usuário:
-
-{pergunta}
-"""
     cliente = criar_cliente_gemini()
 
     # Modelos válidos da API
@@ -86,20 +92,25 @@ Pergunta atual do usuário:
 
     for modelo in modelos:
         try:
-            resposta = cliente.models.generate_content(
+            chat = cliente.chats.create(
                 model=modelo,
-                contents=conteudo,
+                history=conteudos_historico,
                 config=types.GenerateContentConfig(
+                    system_instruction=instrucao_sistema,
                     response_mime_type="application/json",
                 ),
             )
+            resposta = chat.send_message(pergunta)
             if resposta and resposta.text:
                 break
         except Exception as error:
             ultimo_erro = error
+            logger.warning(
+                "Falha ao consultar o modelo %s: %s", modelo, error
+            )
 
     if resposta is None or not resposta.text:
-        raise RuntimeError(
+        raise IAIndisponivelError(
             "Não foi possível acessar o Gemini neste momento. "
             "Os modelos disponíveis podem estar temporariamente "
             "sobrecarregados. Tente novamente mais tarde."
@@ -108,18 +119,18 @@ Pergunta atual do usuário:
     try:
         dados = json.loads(resposta.text)
     except json.JSONDecodeError as error:
-        raise ValueError(
+        raise RespostaInvalidaError(
             "O Gemini não retornou um JSON válido."
         ) from error
 
     try:
         return SolicitacaoFerramenta.model_validate(dados)
     except ValidationError as error:
-        print("\n=== JSON RECEBIDO DO GEMINI ===")
-        print(json.dumps(dados, indent=2, ensure_ascii=False))
-        print("\n=== ERRO DE VALIDAÇÃO ===")
-        print(error)
-        raise ValueError(
+        logger.warning(
+            "JSON recebido do Gemini não segue o contrato esperado: %s",
+            json.dumps(dados, ensure_ascii=False),
+        )
+        raise RespostaInvalidaError(
             "O JSON retornado pelo Gemini não segue o contrato esperado."
         ) from error
 
@@ -224,9 +235,12 @@ Responda diretamente ao usuário.
                 break
         except Exception as error:
             ultimo_erro = error
+            logger.warning(
+                "Falha ao consultar o modelo %s: %s", modelo, error
+            )
 
     if resposta is None or not resposta.text:
-        raise RuntimeError(
+        raise IAIndisponivelError(
             "Não foi possível gerar a resposta final neste momento."
         ) from ultimo_erro
 

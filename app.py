@@ -1,6 +1,10 @@
 import streamlit as st
 
 from src.chatbot import processar_pergunta
+from src.exceptions import ChatbotError
+from src.logger import obter_logger
+
+logger = obter_logger(__name__)
 
 st.set_page_config(
     page_title="Chatbot Comercial Ferronorte",
@@ -57,6 +61,21 @@ if pergunta:
             }
         )
 
+    except ChatbotError as error:
+        mensagem_erro = str(error)
+
+        with st.chat_message("assistant"):
+            st.error(mensagem_erro)
+
+        st.session_state.mensagens.append(
+            {
+                "papel": "assistant",
+                "conteudo": mensagem_erro,
+            }
+        )
+
+        logger.warning("Erro ao processar pergunta: %s", error)
+
     except Exception as error:
         mensagem_erro = str(error)
 
@@ -70,5 +89,4 @@ if pergunta:
             }
         )
 
-        print("\n===== ERRO COMPLETO =====")
-        print(error)
+        logger.exception("Erro inesperado ao processar pergunta")

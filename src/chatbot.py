@@ -7,6 +7,7 @@ ao Gemini, executa ferramentas autorizadas e monta a resposta final.
 from src.ai_service import interpretar_pergunta
 from src.ai_service import gerar_resposta_final
 from src.tool_manager import executar_ferramenta
+from src.exceptions import RespostaInvalidaError
 
 ## função principal que será chamada pelo app.py futuramente! 
 def processar_pergunta(
@@ -43,12 +44,12 @@ def processar_pergunta(
         )
 
     if solicitacao.acao != "executar_ferramenta":
-        raise ValueError(
+        raise RespostaInvalidaError(
             f"Ação não reconhecida: {solicitacao.acao}"
         )
 
     if not solicitacao.ferramenta:
-        raise ValueError(
+        raise RespostaInvalidaError(
             "A IA solicitou uma execução, mas não informou a ferramenta."
         )
 
