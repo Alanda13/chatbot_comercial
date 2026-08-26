@@ -7,7 +7,7 @@ ao Gemini, executa ferramentas autorizadas e monta a resposta final.
 from src.ai_service import interpretar_pergunta
 from src.ai_service import gerar_resposta_final
 from src.tool_manager import executar_ferramenta
-from src.exceptions import RespostaInvalidaError
+from src.exceptions import FerramentaError, RespostaInvalidaError
 
 ## função principal que será chamada pelo app.py futuramente! 
 def processar_pergunta(
@@ -53,10 +53,22 @@ def processar_pergunta(
             "A IA solicitou uma execução, mas não informou a ferramenta."
         )
 
-    resultado = executar_ferramenta(
-        nome_ferramenta=solicitacao.ferramenta,
-        argumentos=solicitacao.argumentos,
-    )
+    try:
+        resultado = executar_ferramenta(
+            nome_ferramenta=solicitacao.ferramenta,
+            argumentos=solicitacao.argumentos,
+        )
+    except (FerramentaError, ValueError) as error:
+        # Erros esperados do domínio (filial não encontrada, período
+        # inválido, agrupamento inválido, etc.) não abortam a conversa:
+        # viram um resultado "não encontrado" e passam pela mesma etapa
+        # de formulação natural da resposta final, em vez de expor o
+        # texto cru da exceção ao usuário.
+        resultado = {
+            "encontrado": False,
+            "mensagem": str(error),
+        }
+
     resposta_final = gerar_resposta_final(
         pergunta=pergunta,
         nome_ferramenta=solicitacao.ferramenta,
