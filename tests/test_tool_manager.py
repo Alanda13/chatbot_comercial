@@ -5,6 +5,7 @@ from src.exceptions import FerramentaError
 
 
 def test_ferramenta_existe():
+    assert tool_manager.ferramenta_existe("listar_filiais") is True
     assert tool_manager.ferramenta_existe("consultar_indicadores_nps") is True
     assert (
         tool_manager.ferramenta_existe("consultar_indicadores_faturamento")

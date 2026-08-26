@@ -14,9 +14,24 @@ from src.faturamento_tools import (
 from src.faturamento_diario_tools import (
     executar_consulta_indicadores_faturamento_diario,
 )
+from src.filiais_tools import executar_listar_filiais
 from src.exceptions import FerramentaError
 
 FERRAMENTAS_DISPONIVEIS = {
+    "listar_filiais": {
+        "descricao": (
+            "Ferramenta para listar todas as filiais existentes na "
+            "base comercial, ou informar a quantidade total de "
+            "filiais. Use esta ferramenta sempre que o usuário "
+            "perguntar quais filiais existem, quantas filiais tem, "
+            "pedir a lista de filiais/lojas/unidades, ou perguntar se "
+            "uma filial específica existe na base."
+        ),
+        "argumentos_obrigatorios": [],
+        "argumentos_opcionais": [],
+        "funcao": executar_listar_filiais,
+    },
+
     "consultar_indicadores_nps": {
         "descricao": (
             "Ferramenta genérica para consultar indicadores de NPS. "
