@@ -93,13 +93,36 @@ if pergunta:
 
     try:
         with st.chat_message("assistant"):
-            with st.spinner("Consultando..."):
-                resposta = processar_pergunta(
-                    pergunta=pergunta,
-                    historico=historico,
-                )
+            placeholder = st.empty()
+            placeholder.markdown(
+                """
+                <div class="digitando">
+                    <span></span><span></span><span></span>
+                </div>
+                <style>
+                .digitando { display: flex; gap: 4px; padding: 6px 0; }
+                .digitando span {
+                    width: 8px; height: 8px; border-radius: 50%;
+                    background-color: currentColor; opacity: 0.4;
+                    animation: piscar 1.4s infinite ease-in-out both;
+                }
+                .digitando span:nth-child(1) { animation-delay: -0.32s; }
+                .digitando span:nth-child(2) { animation-delay: -0.16s; }
+                @keyframes piscar {
+                    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+                    40% { transform: scale(1); opacity: 1; }
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
 
-            st.text(resposta)
+            resposta = processar_pergunta(
+                pergunta=pergunta,
+                historico=historico,
+            )
+
+            placeholder.text(resposta)
 
         st.session_state.mensagens.append(
             {
