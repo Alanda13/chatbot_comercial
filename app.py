@@ -40,19 +40,26 @@ if "pergunta_sugerida" not in st.session_state:
 with st.sidebar:
     total_perguntas = contar_perguntas_registradas()
 
-    if total_perguntas >= QUANTIDADE_MINIMA_PARA_FREQUENTES:
-        st.subheader("Perguntas mais frequentes")
-        sugestoes = [
-            item["pergunta"]
-            for item in obter_perguntas_frequentes(limite=5)
-        ]
-    else:
-        st.subheader("Experimente perguntar")
-        sugestoes = PERGUNTAS_EXEMPLO
+    with st.container(border=True):
+        if total_perguntas >= QUANTIDADE_MINIMA_PARA_FREQUENTES:
+            st.markdown("#### 🔥 Perguntas mais frequentes")
+            sugestoes = [
+                item["pergunta"]
+                for item in obter_perguntas_frequentes(limite=5)
+            ]
+        else:
+            st.markdown("#### 💡 Experimente perguntar")
+            sugestoes = PERGUNTAS_EXEMPLO
 
-    for indice, sugestao in enumerate(sugestoes):
-        if st.button(sugestao, key=f"sugestao_{indice}"):
-            st.session_state.pergunta_sugerida = sugestao
+        st.caption("Clique numa pergunta para enviá-la ao chat.")
+
+        for indice, sugestao in enumerate(sugestoes):
+            if st.button(
+                sugestao,
+                key=f"sugestao_{indice}",
+                use_container_width=True,
+            ):
+                st.session_state.pergunta_sugerida = sugestao
 
 for mensagem in st.session_state.mensagens:
     with st.chat_message(mensagem["papel"]):
