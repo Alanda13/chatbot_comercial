@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from src.prompts import PROMPT_SISTEMA
 from src.schemas import SolicitacaoFerramenta
 from src.tool_manager import gerar_catalogo_ferramentas
-from src.exceptions import IAIndisponivelError, RespostaInvalidaError
+from src.exceptions import IAIndisponivelError
 from src.logger import obter_logger
 
 load_dotenv()
@@ -89,9 +89,11 @@ def interpretar_pergunta(
 
     modelos = [modelo_principal, modelo_reserva]
 
-    resposta = None
     ultimo_erro = None
 
+    # A validação do JSON acontece dentro do loop: se um modelo
+    # devolver uma resposta malformada ou fora do contrato, tentamos
+    # o próximo modelo antes de desistir, em vez de falhar de cara.
     for modelo in modelos:
         try:
             chat = cliente.chats.create(
@@ -103,38 +105,40 @@ def interpretar_pergunta(
                 ),
             )
             resposta = chat.send_message(pergunta)
-            if resposta and resposta.text:
-                break
+
+            if not resposta or not resposta.text:
+                continue
+
+            dados = json.loads(resposta.text)
+
+            return SolicitacaoFerramenta.model_validate(dados)
+
+        except json.JSONDecodeError as error:
+            ultimo_erro = error
+            logger.warning(
+                "Modelo %s não retornou um JSON válido: %r",
+                modelo,
+                resposta.text,
+            )
+        except ValidationError as error:
+            ultimo_erro = error
+            logger.warning(
+                "Modelo %s retornou JSON fora do contrato esperado: %s",
+                modelo,
+                json.dumps(dados, ensure_ascii=False),
+            )
         except Exception as error:
             ultimo_erro = error
             logger.warning(
                 "Falha ao consultar o modelo %s: %s", modelo, error
             )
 
-    if resposta is None or not resposta.text:
-        raise IAIndisponivelError(
-            "Não foi possível acessar o Gemini neste momento. "
-            "Os modelos disponíveis podem estar temporariamente "
-            "sobrecarregados. Tente novamente mais tarde."
-        ) from ultimo_erro
-
-    try:
-        dados = json.loads(resposta.text)
-    except json.JSONDecodeError as error:
-        raise RespostaInvalidaError(
-            "O Gemini não retornou um JSON válido."
-        ) from error
-
-    try:
-        return SolicitacaoFerramenta.model_validate(dados)
-    except ValidationError as error:
-        logger.warning(
-            "JSON recebido do Gemini não segue o contrato esperado: %s",
-            json.dumps(dados, ensure_ascii=False),
-        )
-        raise RespostaInvalidaError(
-            "O JSON retornado pelo Gemini não segue o contrato esperado."
-        ) from error
+    raise IAIndisponivelError(
+        "Não foi possível interpretar a pergunta neste momento. "
+        "Os modelos disponíveis podem estar temporariamente "
+        "sobrecarregados ou retornando respostas inválidas. "
+        "Tente novamente mais tarde."
+    ) from ultimo_erro
 
 
 def gerar_resposta_final(
