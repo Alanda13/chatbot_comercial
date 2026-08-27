@@ -104,18 +104,23 @@ def consultar_indicadores_faturamento_diario(
             mapa_agrupamentos[agrupamento]
         )
 
+    agregacoes = {
+        "faturamento": ("VENDA_LIQ", "sum"),
+        "venda_bruta": ("VENDA_BRUTA", "sum"),
+        "valor_desconto": ("VALORDESC", "sum"),
+        "quantidade_notas": ("QT_NOTAS", "sum"),
+    }
+
+    if "rca" in agrupar_por:
+        agregacoes["rca_nome"] = ("NOME_RCA", "first")
+
     agrupado = (
         dados
         .groupby(
             colunas_agrupamento,
             dropna=False,
         )
-        .agg(
-            faturamento=("VENDA_LIQ", "sum"),
-            venda_bruta=("VENDA_BRUTA", "sum"),
-            valor_desconto=("VALORDESC", "sum"),
-            quantidade_notas=("QT_NOTAS", "sum"),
-        )
+        .agg(**agregacoes)
         .reset_index()
     )
 
@@ -138,6 +143,9 @@ def consultar_indicadores_faturamento_diario(
                 valor = str(valor)
 
             item[agrupamento] = valor
+
+            if agrupamento == "rca":
+                item["rca_nome"] = linha["rca_nome"]
 
         item["faturamento"] = round(
             float(linha["faturamento"]),

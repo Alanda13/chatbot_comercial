@@ -94,6 +94,45 @@ def test_agrupamento_invalido_gera_erro(dados_faturamento):
         fq.consultar_indicadores_faturamento(agrupar_por=["invalido"])
 
 
+def test_consulta_agrupada_por_rca_inclui_nome(dados_faturamento, monkeypatch):
+    monkeypatch.setattr(
+        fq,
+        "construir_mapa_rca_nome",
+        lambda: {1901: "Jose Felipe Pires", 1902: "Maria Souza"},
+    )
+
+    resultado = fq.consultar_indicadores_faturamento(
+        anos=[2025],
+        agrupar_por=["rca"],
+    )
+
+    nomes = {
+        item["rca"]: item["rca_nome"]
+        for item in resultado["resultados"]
+    }
+
+    assert nomes[1901] == "Jose Felipe Pires"
+    assert nomes[1902] == "Maria Souza"
+
+
+def test_consulta_agrupada_por_rca_sem_arquivo_8302(
+    dados_faturamento, monkeypatch
+):
+    def _levanta_erro():
+        raise FileNotFoundError("arquivo não encontrado")
+
+    monkeypatch.setattr(fq, "construir_mapa_rca_nome", _levanta_erro)
+
+    resultado = fq.consultar_indicadores_faturamento(
+        anos=[2025],
+        agrupar_por=["rca"],
+    )
+
+    assert all(
+        item["rca_nome"] is None for item in resultado["resultados"]
+    )
+
+
 def test_listar_filiais_faturamento(dados_faturamento):
     filiais = fq.listar_filiais_faturamento()
 

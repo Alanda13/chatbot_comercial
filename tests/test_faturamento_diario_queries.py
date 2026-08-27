@@ -12,6 +12,7 @@ def dados_faturamento_diario(monkeypatch):
                 "FILIAL": "FERRONORTE TIMON",
                 "DATA": pd.Timestamp("2026-08-25"),
                 "COD_RCA": 1901,
+                "NOME_RCA": "Jose Felipe Pires",
                 "VENDA_LIQ": 1000.0,
                 "VENDA_BRUTA": 1200.0,
                 "VALORDESC": 200.0,
@@ -22,6 +23,7 @@ def dados_faturamento_diario(monkeypatch):
                 "FILIAL": "FERRONORTE TIMON",
                 "DATA": pd.Timestamp("2026-08-25"),
                 "COD_RCA": 1901,
+                "NOME_RCA": "Jose Felipe Pires",
                 "VENDA_LIQ": 500.0,
                 "VENDA_BRUTA": 600.0,
                 "VALORDESC": 100.0,
@@ -32,6 +34,7 @@ def dados_faturamento_diario(monkeypatch):
                 "FILIAL": "FERRONORTE TIMON",
                 "DATA": pd.Timestamp("2026-08-26"),
                 "COD_RCA": 1901,
+                "NOME_RCA": "Jose Felipe Pires",
                 "VENDA_LIQ": 300.0,
                 "VENDA_BRUTA": 350.0,
                 "VALORDESC": 50.0,
@@ -42,6 +45,7 @@ def dados_faturamento_diario(monkeypatch):
                 "FILIAL": "FERRONORTE PICOS",
                 "DATA": pd.Timestamp("2026-08-25"),
                 "COD_RCA": 1902,
+                "NOME_RCA": "Maria Souza",
                 "VENDA_LIQ": 700.0,
                 "VENDA_BRUTA": 800.0,
                 "VALORDESC": 100.0,
@@ -120,6 +124,22 @@ def test_consulta_agrupada_por_forma_pagamento(dados_faturamento_diario):
 
     assert valores["Dinheiro"] == 1000.0
     assert valores["CARTAO VISA DEBITO"] == 500.0
+
+
+def test_consulta_agrupada_por_rca_inclui_nome(dados_faturamento_diario):
+    resultado = fdq.consultar_indicadores_faturamento_diario(
+        data_inicial="2026-08-25",
+        data_final="2026-08-26",
+        agrupar_por=["rca"],
+    )
+
+    nomes = {
+        item["rca"]: item["rca_nome"]
+        for item in resultado["resultados"]
+    }
+
+    assert nomes[1901] == "Jose Felipe Pires"
+    assert nomes[1902] == "Maria Souza"
 
 
 def test_agrupamento_invalido_gera_erro(dados_faturamento_diario):

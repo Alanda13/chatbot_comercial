@@ -46,3 +46,29 @@ def carregar_faturamento_8302() -> pd.DataFrame:
     )
 
     return dados
+
+
+def construir_mapa_rca_nome() -> dict[int, str]:
+    """
+    Constrói um mapa de código do RCA para o nome do vendedor.
+
+    A rotina 8302 é a única fonte que traz o nome do RCA (coluna
+    NOME_RCA) — a 8280 só tem o código. Quando o mesmo código
+    aparece com nomes diferentes ao longo do tempo, fica o primeiro
+    nome encontrado.
+    """
+    dados = carregar_faturamento_8302()
+
+    pares = (
+        dados[["COD_RCA", "NOME_RCA"]]
+        .dropna()
+        .drop_duplicates(subset="COD_RCA")
+    )
+
+    return {
+        int(codigo): str(nome).strip()
+        for codigo, nome in zip(
+            pares["COD_RCA"],
+            pares["NOME_RCA"],
+        )
+    }

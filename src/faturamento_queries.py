@@ -3,6 +3,7 @@ Consultas de indicadores de faturamento
 As consultas utilizam os dados exportados da rotina 8280 do winthor
 """
 from src.faturamento_data import carregar_faturamento_8280
+from src.faturamento_diario_data import construir_mapa_rca_nome
 
 def consultar_indicadores_faturamento(
     filiais: list[str] | None = None,
@@ -110,6 +111,14 @@ def consultar_indicadores_faturamento(
             mapa_agrupamentos[agrupamento]
         )
 
+    mapa_rca_nome = {}
+
+    if "rca" in agrupar_por:
+        try:
+            mapa_rca_nome = construir_mapa_rca_nome()
+        except FileNotFoundError:
+            mapa_rca_nome = {}
+
     agrupado = (
         dados
         .groupby(
@@ -143,6 +152,9 @@ def consultar_indicadores_faturamento(
                 valor = str(valor)
 
             item[agrupamento] = valor
+
+            if agrupamento == "rca":
+                item["rca_nome"] = mapa_rca_nome.get(valor)
 
         item["faturamento"] = round(
             float(linha["faturamento"]),
