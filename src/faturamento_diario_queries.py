@@ -139,6 +139,8 @@ def consultar_indicadores_faturamento_diario(
                 valor = valor.strftime("%Y-%m-%d")
             elif agrupamento == "rca":
                 valor = int(valor)
+            elif pd.isna(valor):
+                valor = "Não informado"
             else:
                 valor = str(valor)
 

@@ -142,6 +142,33 @@ def test_consulta_agrupada_por_rca_inclui_nome(dados_faturamento_diario):
     assert nomes[1902] == "Maria Souza"
 
 
+def test_forma_pagamento_ausente_vira_nao_informado(monkeypatch):
+    df = pd.DataFrame(
+        [
+            {
+                "FILIAL": "FERRONORTE TIMON",
+                "DATA": pd.Timestamp("2025-07-01"),
+                "COD_RCA": 1901,
+                "NOME_RCA": "Jose Felipe Pires",
+                "VENDA_LIQ": 1000.0,
+                "VENDA_BRUTA": 1200.0,
+                "VALORDESC": 200.0,
+                "QT_NOTAS": 3,
+                "COBRANCA": None,
+            },
+        ]
+    )
+    monkeypatch.setattr(fdq, "carregar_faturamento_8302", lambda: df)
+
+    resultado = fdq.consultar_indicadores_faturamento_diario(
+        data_inicial="2025-07-01",
+        data_final="2025-07-31",
+        agrupar_por=["forma_pagamento"],
+    )
+
+    assert resultado["resultados"][0]["forma_pagamento"] == "Não informado"
+
+
 def test_agrupamento_invalido_gera_erro(dados_faturamento_diario):
     with pytest.raises(ValueError):
         fdq.consultar_indicadores_faturamento_diario(

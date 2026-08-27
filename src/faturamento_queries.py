@@ -2,6 +2,8 @@
 Consultas de indicadores de faturamento
 As consultas utilizam os dados exportados da rotina 8280 do winthor
 """
+import pandas as pd
+
 from src.faturamento_data import carregar_faturamento_8280
 from src.faturamento_diario_data import construir_mapa_rca_nome
 
@@ -148,6 +150,8 @@ def consultar_indicadores_faturamento(
 
             if agrupamento in ["ano", "mes", "rca"] :
                 valor = int(valor)
+            elif pd.isna(valor):
+                valor = "Não informado"
             else:
                 valor = str(valor)
 
