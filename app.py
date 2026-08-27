@@ -20,30 +20,6 @@ PERGUNTAS_EXEMPLO = [
 
 QUANTIDADE_MINIMA_PARA_FREQUENTES = 5
 
-MESES = [
-    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
-    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
-]
-
-
-def _escolher_icone(pergunta: str) -> str:
-    """
-    Escolhe um ícone para a pergunta com base em palavras-chave,
-    só para dar uma pista visual do assunto no botão.
-    """
-    texto = pergunta.lower()
-
-    if "compar" in texto:
-        return "📊"
-    if "nps" in texto:
-        return "⭐"
-    if "hoje" in texto or "ontem" in texto or "semana" in texto:
-        return "💰"
-    if any(mes in texto for mes in MESES):
-        return "📅"
-
-    return "💬"
-
 st.set_page_config(
     page_title="Chatbot Comercial Ferronorte",
     page_icon="🤖",
@@ -98,7 +74,7 @@ with st.sidebar:
         )
 
         for indice, sugestao in enumerate(sugestoes):
-            rotulo = f"{_escolher_icone(sugestao)}  {sugestao}  ›"
+            rotulo = f"{sugestao}  ›"
 
             if st.button(
                 rotulo,
