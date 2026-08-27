@@ -19,6 +19,24 @@ PERGUNTAS_EXEMPLO = [
 ]
 
 QUANTIDADE_MINIMA_PARA_FREQUENTES = 5
+LIMITE_CARACTERES_ROTULO = 42
+
+
+def _formatar_rotulo(pergunta: str, limite: int = LIMITE_CARACTERES_ROTULO) -> str:
+    """
+    Formata a pergunta para exibição no botão: primeira letra
+    maiúscula e truncada em uma linha, sem alterar o texto original
+    que é de fato enviado ao chat.
+    """
+    texto = pergunta.strip()
+
+    if texto and not texto[0].isupper():
+        texto = texto[0].upper() + texto[1:]
+
+    if len(texto) > limite:
+        texto = texto[:limite].rstrip() + "…"
+
+    return texto
 
 st.set_page_config(
     page_title="Chatbot Comercial Ferronorte",
@@ -55,9 +73,10 @@ with st.sidebar:
 
         for indice, sugestao in enumerate(sugestoes):
             if st.button(
-                sugestao,
+                _formatar_rotulo(sugestao),
                 key=f"sugestao_{indice}",
                 use_container_width=True,
+                help=sugestao,
             ):
                 st.session_state.pergunta_sugerida = sugestao
 
