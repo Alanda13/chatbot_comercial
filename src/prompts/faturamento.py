@@ -257,9 +257,44 @@ REGRAS ESPECÍFICAS PARA FATURAMENTO DIÁRIO:
   ano(s) inteiros sem exigir detalhamento por dia — nesse caso,
   utilize "consultar_indicadores_faturamento" (regras acima).
 
+- EXCEÇÃO IMPORTANTE: se o usuário pedir o faturamento agrupado por
+  forma de pagamento, utilize SEMPRE esta ferramenta
+  ("consultar_indicadores_faturamento_diario"), mesmo que o período
+  pedido seja um mês ou ano inteiro — a ferramenta mensal
+  ("consultar_indicadores_faturamento") NÃO tem essa informação.
+  Nesse caso, converta o mês/ano pedido em "data_inicial" (primeiro
+  dia) e "data_final" (último dia) do período. NUNCA responda que
+  "forma de pagamento só está disponível para períodos de dias" —
+  qualquer período (um dia, uma semana, um mês, um ano) funciona
+  nesta ferramenta, desde que convertido para data_inicial/data_final.
+
 - O argumento "periodos" é OBRIGATÓRIO e deve ser SEMPRE uma lista
   de objetos com "data_inicial" e "data_final", no formato
   YYYY-MM-DD.
+
+Exemplo de mês inteiro agrupado por forma de pagamento:
+
+Pergunta:
+"Qual o faturamento de julho de 2025 por forma de pagamento?"
+
+Resposta esperada:
+
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "consultar_indicadores_faturamento_diario",
+    "argumentos": {
+        "periodos": [
+            {
+                "data_inicial": "2025-07-01",
+                "data_final": "2025-07-31"
+            }
+        ],
+        "agrupar_por": [
+            "forma_pagamento"
+        ]
+    },
+    "mensagem": null
+}
 
 Exemplo com um único dia (data_inicial e data_final iguais):
 
