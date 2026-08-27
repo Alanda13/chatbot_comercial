@@ -8,6 +8,9 @@ from src.ai_service import interpretar_pergunta
 from src.ai_service import gerar_resposta_final
 from src.tool_manager import executar_ferramenta
 from src.exceptions import FerramentaError, RespostaInvalidaError
+from src.logger import obter_logger
+
+logger = obter_logger(__name__)
 
 ## função principal que será chamada pelo app.py futuramente! 
 def processar_pergunta(
@@ -53,11 +56,18 @@ def processar_pergunta(
             "A IA solicitou uma execução, mas não informou a ferramenta."
         )
 
+    logger.info(
+        "Ferramenta escolhida: %s | argumentos: %s",
+        solicitacao.ferramenta,
+        solicitacao.argumentos,
+    )
+
     try:
         resultado = executar_ferramenta(
             nome_ferramenta=solicitacao.ferramenta,
             argumentos=solicitacao.argumentos,
         )
+        logger.info("Resultado da ferramenta: %s", resultado)
     except (FerramentaError, ValueError) as error:
         # Erros esperados do domínio (filial não encontrada, período
         # inválido, agrupamento inválido, etc.) não abortam a conversa:
