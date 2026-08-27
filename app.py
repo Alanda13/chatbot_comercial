@@ -20,6 +20,30 @@ PERGUNTAS_EXEMPLO = [
 
 QUANTIDADE_MINIMA_PARA_FREQUENTES = 5
 
+MESES = [
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+]
+
+
+def _escolher_icone(pergunta: str) -> str:
+    """
+    Escolhe um ícone para a pergunta com base em palavras-chave,
+    só para dar uma pista visual do assunto no botão.
+    """
+    texto = pergunta.lower()
+
+    if "compar" in texto:
+        return "📊"
+    if "nps" in texto:
+        return "⭐"
+    if "hoje" in texto or "ontem" in texto or "semana" in texto:
+        return "💰"
+    if any(mes in texto for mes in MESES):
+        return "📅"
+
+    return "💬"
+
 st.set_page_config(
     page_title="Chatbot Comercial Ferronorte",
     page_icon="🤖",
@@ -40,7 +64,7 @@ if "pergunta_sugerida" not in st.session_state:
 with st.sidebar:
     total_perguntas = contar_perguntas_registradas()
 
-    with st.container(border=True):
+    with st.container(border=True, key="painel_perguntas"):
         if total_perguntas >= QUANTIDADE_MINIMA_PARA_FREQUENTES:
             st.markdown("#### 🔥 Perguntas mais frequentes")
             sugestoes = [
@@ -53,9 +77,31 @@ with st.sidebar:
 
         st.caption("Clique numa pergunta para enviá-la ao chat.")
 
+        st.markdown(
+            """
+            <style>
+            .st-key-painel_perguntas button[kind="secondary"] {
+                text-align: left;
+                border-radius: 14px;
+                padding: 0.75rem 1rem;
+                background-color: rgba(255, 255, 255, 0.04);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                transition: background-color 0.15s ease;
+            }
+            .st-key-painel_perguntas button[kind="secondary"]:hover {
+                background-color: rgba(255, 255, 255, 0.09);
+                border-color: rgba(255, 255, 255, 0.18);
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
         for indice, sugestao in enumerate(sugestoes):
+            rotulo = f"{_escolher_icone(sugestao)}  {sugestao}  ›"
+
             if st.button(
-                sugestao,
+                rotulo,
                 key=f"sugestao_{indice}",
                 use_container_width=True,
             ):
