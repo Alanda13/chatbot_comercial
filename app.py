@@ -113,72 +113,69 @@ if pergunta:
         for mensagem in st.session_state.mensagens[:-1]
     ]
 
-    try:
-        with st.chat_message("assistant"):
-            placeholder = st.empty()
-            placeholder.markdown(
-                """
-                <div class="digitando">
-                    <span></span><span></span><span></span>
-                </div>
-                <style>
-                .digitando { display: flex; gap: 4px; padding: 6px 0; }
-                .digitando span {
-                    width: 8px; height: 8px; border-radius: 50%;
-                    background-color: currentColor; opacity: 0.4;
-                    animation: piscar 1.4s infinite ease-in-out both;
-                }
-                .digitando span:nth-child(1) { animation-delay: -0.32s; }
-                .digitando span:nth-child(2) { animation-delay: -0.16s; }
-                @keyframes piscar {
-                    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-                    40% { transform: scale(1); opacity: 1; }
-                }
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
+    with st.chat_message("assistant"):
+        placeholder = st.empty()
+        placeholder.markdown(
+            """
+            <div class="digitando">
+                <span></span><span></span><span></span>
+            </div>
+            <style>
+            .digitando { display: flex; gap: 4px; padding: 6px 0; }
+            .digitando span {
+                width: 8px; height: 8px; border-radius: 50%;
+                background-color: currentColor; opacity: 0.4;
+                animation: piscar 1.4s infinite ease-in-out both;
+            }
+            .digitando span:nth-child(1) { animation-delay: -0.32s; }
+            .digitando span:nth-child(2) { animation-delay: -0.16s; }
+            @keyframes piscar {
+                0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+                40% { transform: scale(1); opacity: 1; }
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
 
+        # A bolha de "digitando" é sempre substituída pelo conteúdo
+        # final, seja a resposta ou o erro — nunca fica travada na tela.
+        try:
             resposta = processar_pergunta(
                 pergunta=pergunta,
                 historico=historico,
             )
-
             placeholder.text(resposta)
 
-        st.session_state.mensagens.append(
-            {
-                "papel": "assistant",
-                "conteudo": resposta,
-            }
-        )
+            st.session_state.mensagens.append(
+                {
+                    "papel": "assistant",
+                    "conteudo": resposta,
+                }
+            )
 
-    except ChatbotError as error:
-        mensagem_erro = str(error)
+        except ChatbotError as error:
+            mensagem_erro = str(error)
+            placeholder.error(mensagem_erro)
 
-        with st.chat_message("assistant"):
-            st.error(mensagem_erro)
+            st.session_state.mensagens.append(
+                {
+                    "papel": "assistant",
+                    "conteudo": mensagem_erro,
+                }
+            )
 
-        st.session_state.mensagens.append(
-            {
-                "papel": "assistant",
-                "conteudo": mensagem_erro,
-            }
-        )
+            logger.warning("Erro ao processar pergunta: %s", error)
 
-        logger.warning("Erro ao processar pergunta: %s", error)
+        except Exception as error:
+            mensagem_erro = str(error)
+            placeholder.error(mensagem_erro)
 
-    except Exception as error:
-        mensagem_erro = str(error)
+            st.session_state.mensagens.append(
+                {
+                    "papel": "assistant",
+                    "conteudo": mensagem_erro,
+                }
+            )
 
-        with st.chat_message("assistant"):
-            st.error(mensagem_erro)
-
-        st.session_state.mensagens.append(
-            {
-                "papel": "assistant",
-                "conteudo": mensagem_erro,
-            }
-        )
-
-        logger.exception("Erro inesperado ao processar pergunta")
+            logger.exception("Erro inesperado ao processar pergunta")
