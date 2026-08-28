@@ -10,7 +10,7 @@ RAIZ_PROJETO = Path(__file__).resolve().parent.parent
 ARQUIVO_8280 = (
     RAIZ_PROJETO
     /"dados"
-    /"faturamento_8280_2022_2025.csv"
+    /"faturamento_8280_2020_2025.csv"
 )
 def carregar_faturamento_8280() -> pd.DataFrame:
     """

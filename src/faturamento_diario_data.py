@@ -10,7 +10,7 @@ RAIZ_PROJETO = Path(__file__).resolve().parent.parent
 ARQUIVO_8302 = (
     RAIZ_PROJETO
     / "dados"
-    / "faturamento_por_rca_filial_dia_2022_a_2025.csv"
+    / "faturamento_por_rca_filial_dia_2020_a_2025.csv"
 )
 
 
