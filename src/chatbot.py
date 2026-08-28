@@ -12,6 +12,33 @@ from src.logger import obter_logger
 
 logger = obter_logger(__name__)
 
+LIMITE_RESULTADOS_RESPOSTA = 60
+
+
+def _limitar_resultados(resultado: dict) -> dict:
+    """
+    Evita mandar uma quantidade enorme de linhas de uma vez pra IA
+    formular a resposta final (ex: todos os RCAs vezes todos os dias
+    de um mês) — isso estoura o limite do modelo e falha. Trunca e
+    avisa, em vez de tentar processar tudo de uma vez.
+    """
+    resultados = resultado.get("resultados")
+
+    if (
+        isinstance(resultados, list)
+        and len(resultados) > LIMITE_RESULTADOS_RESPOSTA
+    ):
+        resultado = dict(resultado)
+        resultado["resultados"] = resultados[:LIMITE_RESULTADOS_RESPOSTA]
+        resultado["aviso"] = (
+            f"Mostrando {LIMITE_RESULTADOS_RESPOSTA} de "
+            f"{len(resultados)} resultados. Peça um filtro mais "
+            "específico (uma filial, um RCA, ou um período menor) "
+            "para ver o restante."
+        )
+
+    return resultado
+
 ## função principal que será chamada pelo app.py futuramente! 
 def processar_pergunta(
     pergunta: str,
@@ -82,7 +109,7 @@ def processar_pergunta(
     resposta_final = gerar_resposta_final(
         pergunta=pergunta,
         nome_ferramenta=solicitacao.ferramenta,
-        resultado=resultado,
+        resultado=_limitar_resultados(resultado),
     )
     return resposta_final
     

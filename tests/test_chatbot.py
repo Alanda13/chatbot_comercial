@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.chatbot import processar_pergunta
+from src.chatbot import _limitar_resultados, processar_pergunta
 from src.exceptions import FerramentaError, RespostaInvalidaError
 from src.schemas import SolicitacaoFerramenta
 
@@ -113,3 +113,49 @@ def test_processar_pergunta_erro_de_argumento_obrigatorio_nao_aborta(
     assert resultado == "resposta final"
     resultado_passado = mock_gerar.call_args.kwargs["resultado"]
     assert resultado_passado["encontrado"] is False
+
+
+def test_limitar_resultados_nao_mexe_em_lista_pequena():
+    resultado = {"resultados": [{"rca": 1}, {"rca": 2}]}
+
+    assert _limitar_resultados(resultado) == resultado
+
+
+def test_limitar_resultados_trunca_lista_grande():
+    resultados_originais = [{"rca": indice} for indice in range(200)]
+    resultado = {"resultados": resultados_originais}
+
+    resultado_limitado = _limitar_resultados(resultado)
+
+    assert len(resultado_limitado["resultados"]) == 60
+    assert "aviso" in resultado_limitado
+    assert "200" in resultado_limitado["aviso"]
+
+
+@patch("src.chatbot.gerar_resposta_final", return_value="resposta final")
+@patch("src.chatbot.executar_ferramenta")
+@patch("src.chatbot.interpretar_pergunta")
+def test_processar_pergunta_limita_resultado_grande_antes_de_gerar_resposta(
+    mock_interpretar,
+    mock_executar,
+    mock_gerar,
+):
+    mock_interpretar.return_value = SolicitacaoFerramenta(
+        acao="executar_ferramenta",
+        ferramenta="consultar_indicadores_faturamento_diario",
+        argumentos={
+            "periodos": [
+                {"data_inicial": "2025-09-01", "data_final": "2025-09-30"}
+            ],
+            "agrupar_por": ["rca", "dia"],
+        },
+    )
+    mock_executar.return_value = {
+        "encontrado": True,
+        "resultados": [{"rca": indice} for indice in range(500)],
+    }
+
+    processar_pergunta("Liste os RCAs e seus faturamentos todos os dias.")
+
+    resultado_passado = mock_gerar.call_args.kwargs["resultado"]
+    assert len(resultado_passado["resultados"]) == 60
