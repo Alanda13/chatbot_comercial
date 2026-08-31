@@ -7,6 +7,7 @@ PROMPT_RODAPE = """AÇÕES PERMITIDAS:
 - "executar_ferramenta"
 - "pedir_esclarecimento"
 - "fora_do_escopo"
+- "responder_com_historico"
 
 Responda APENAS em JSON.
 
