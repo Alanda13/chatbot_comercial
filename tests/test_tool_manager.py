@@ -17,6 +17,7 @@ def test_ferramenta_existe():
         )
         is True
     )
+    assert tool_manager.ferramenta_existe("verificar_rca") is True
     assert tool_manager.ferramenta_existe("nao_existe") is False
 
 
@@ -25,6 +26,13 @@ def test_faturamento_diario_exige_periodo_como_obrigatorio():
         "consultar_indicadores_faturamento_diario"
     )
     assert argumentos == ["periodos"]
+
+
+def test_verificar_rca_exige_rca_como_obrigatorio_e_nao_exige_periodo():
+    argumentos = tool_manager.obter_argumentos_obrigatorios(
+        "verificar_rca"
+    )
+    assert argumentos == ["rca"]
 
 
 def test_executar_ferramenta_inexistente_gera_erro():

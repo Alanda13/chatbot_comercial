@@ -170,3 +170,48 @@ def test_resolver_codigos_rca_ainda_ambiguo_mesmo_com_filial(monkeypatch):
     mensagem = str(excecao.value)
     assert "8952" in mensagem
     assert "4521" in mensagem
+
+
+def test_verificar_rca_encontrado(monkeypatch):
+    monkeypatch.setattr(
+        fdd,
+        "construir_lista_rca",
+        lambda: [
+            {
+                "codigo": 1901,
+                "nome": "Alfredo Sousa-F09",
+                "filial": "FERRONORTE TIMON",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        fdd,
+        "construir_mapa_rca_nome",
+        lambda: {1901: "Alfredo Sousa-F09"},
+    )
+
+    resultado = fdd.verificar_rca("Alfredo Sousa")
+
+    assert resultado["encontrado"] is True
+    assert resultado["rcas_identificados"] == [
+        "Alfredo Sousa-F09 (código 1901)"
+    ]
+
+
+def test_verificar_rca_nao_encontrado(monkeypatch):
+    monkeypatch.setattr(
+        fdd,
+        "construir_lista_rca",
+        lambda: [
+            {
+                "codigo": 1901,
+                "nome": "Alfredo Sousa-F09",
+                "filial": "FERRONORTE TIMON",
+            }
+        ],
+    )
+
+    resultado = fdd.verificar_rca("4567")
+
+    assert resultado["encontrado"] is False
+    assert "4567" in resultado["mensagem"]

@@ -11,6 +11,7 @@ from src.faturamento_queries import (
 from src.faturamento_diario_data import (
     construir_mapa_rca_nome,
     resolver_codigos_rca,
+    verificar_rca,
 )
 from src.filial_utils import (
     encontrar_filial_mais_proxima,
@@ -119,3 +120,33 @@ def executar_consulta_indicadores_faturamento(
         ]
 
     return resultado
+
+
+def executar_verificar_rca(argumentos: dict) -> dict:
+    """
+    Verifica se um RCA (por nome ou código) existe, sem exigir
+    período — usada para confirmar o RCA antes de pedir o período ao
+    usuário.
+    """
+
+    rca = argumentos.get("rca")
+
+    if not rca:
+        raise ValueError(
+            "Informe o nome ou o código do RCA que deseja verificar."
+        )
+
+    filiais = argumentos.get("filiais")
+
+    filiais_resolvidas = None
+
+    if filiais:
+        filiais_resolvidas = []
+
+        for filial in filiais:
+            nome_resolvido = resolver_nome_filial(filial)
+
+            if nome_resolvido not in filiais_resolvidas:
+                filiais_resolvidas.append(nome_resolvido)
+
+    return verificar_rca(rca, filiais=filiais_resolvidas)

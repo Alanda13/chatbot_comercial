@@ -41,6 +41,33 @@ PROMPT_FATURAMENTO = """REGRAS ESPECÍFICAS PARA FATURAMENTO:
 - Nesse caso, escolha a ação "pedir_esclarecimento"
   e peça ao usuário para informar o período desejado.
 
+- EXCEÇÃO: se o usuário mencionar um RCA (nome ou código) mas ainda
+  não tiver informado o período, NÃO escolha "pedir_esclarecimento"
+  diretamente. Em vez disso, escolha "executar_ferramenta" com a
+  ferramenta "verificar_rca" (argumento "rca" com o nome ou código
+  informado, e "filiais" se o usuário também tiver informado uma
+  filial). Essa ferramenta não precisa de período — ela só confirma
+  se o RCA existe. O resultado dela vai orientar a resposta: se o
+  RCA existir, a resposta final pede o período; se não existir,
+  informa isso direto, sem pedir período. Isso evita perguntar o
+  período de um RCA que nem existe.
+
+Exemplo:
+
+Pergunta:
+"Qual o faturamento do RCA 4567?"
+
+Resposta esperada:
+
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "verificar_rca",
+    "argumentos": {
+        "rca": "4567"
+    },
+    "mensagem": null
+}
+
 - Exemplos de períodos válidos:
   - julho de 2025;
   - ano de 2025;

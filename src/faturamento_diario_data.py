@@ -207,3 +207,33 @@ def resolver_codigos_rca(
     raise ValueError(
         f"O RCA '{nome_ou_codigo}' não foi encontrado."
     )
+
+
+def verificar_rca(
+    nome_ou_codigo: str | int,
+    filiais: list[str] | None = None,
+) -> dict:
+    """
+    Verifica se um RCA (por nome ou código) existe, sem precisar de
+    período — usada pra confirmar o RCA antes de pedir o período ao
+    usuário, evitando pedir uma informação desnecessária quando o
+    RCA nem existe na base.
+    """
+    try:
+        codigos = resolver_codigos_rca(nome_ou_codigo, filiais=filiais)
+    except ValueError as error:
+        return {
+            "encontrado": False,
+            "mensagem": str(error),
+        }
+
+    mapa_rca_nome = construir_mapa_rca_nome()
+
+    return {
+        "encontrado": True,
+        "rcas_identificados": [
+            f"{mapa_rca_nome.get(codigo, 'nome não identificado')} "
+            f"(código {codigo})"
+            for codigo in codigos
+        ],
+    }

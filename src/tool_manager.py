@@ -10,6 +10,7 @@ que devem ser executadas.
 from src.nps_tools import executar_consulta_indicadores_nps
 from src.faturamento_tools import (
     executar_consulta_indicadores_faturamento,
+    executar_verificar_rca,
 )
 from src.faturamento_diario_tools import (
     executar_consulta_indicadores_faturamento_diario,
@@ -70,6 +71,21 @@ FERRAMENTAS_DISPONIVEIS = {
             "agrupar_por",
         ],
         "funcao": executar_consulta_indicadores_faturamento,
+    },
+
+    "verificar_rca": {
+        "descricao": (
+            "Ferramenta para confirmar se um RCA (vendedor) existe, "
+            "por nome ou código, SEM precisar de período. Use esta "
+            "ferramenta quando o usuário mencionar um RCA (nome ou "
+            "código) em uma pergunta de faturamento mas ainda não "
+            "tiver informado o período — assim é possível confirmar "
+            "que o RCA existe e avisar direto caso não exista, antes "
+            "de pedir o período ao usuário."
+        ),
+        "argumentos_obrigatorios": ["rca"],
+        "argumentos_opcionais": ["filiais"],
+        "funcao": executar_verificar_rca,
     },
 
     "consultar_indicadores_faturamento_diario": {
