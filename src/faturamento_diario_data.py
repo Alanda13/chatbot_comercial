@@ -128,16 +128,30 @@ def resolver_codigos_rca(
       some o faturamento total desse RCA em todas as filiais em que
       ele aparece — é o comportamento esperado quando o usuário não
       restringe a busca a uma loja específica.
+
+    Quando o código já vem numérico (informado direto pelo usuário,
+    ou já resolvido antes), ele é validado contra a base — um código
+    inexistente levanta erro imediatamente, em vez de seguir adiante
+    e só descobrir lá na frente, quando a consulta não retornar
+    nenhum dado, o que faria parecer um problema de período.
     """
-    if isinstance(nome_ou_codigo, int):
-        return [nome_ou_codigo]
+    rcas = construir_lista_rca()
 
     texto = str(nome_ou_codigo).strip()
 
-    if texto.isdigit():
-        return [int(texto)]
+    if isinstance(nome_ou_codigo, int) or texto.isdigit():
+        codigo = (
+            nome_ou_codigo
+            if isinstance(nome_ou_codigo, int)
+            else int(texto)
+        )
 
-    rcas = construir_lista_rca()
+        if not any(rca["codigo"] == codigo for rca in rcas):
+            raise ValueError(
+                f"O RCA de código {codigo} não foi encontrado."
+            )
+
+        return [codigo]
 
     nome_procurado = normalizar_nome_filial(texto)
 

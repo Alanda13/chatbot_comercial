@@ -23,9 +23,40 @@ def test_construir_mapa_rca_nome(monkeypatch):
     }
 
 
-def test_resolver_codigos_rca_com_codigo_numerico():
+def test_resolver_codigos_rca_com_codigo_numerico(monkeypatch):
+    monkeypatch.setattr(
+        fdd,
+        "construir_lista_rca",
+        lambda: [
+            {
+                "codigo": 1901,
+                "nome": "Jose Felipe Pires",
+                "filial": "FERRONORTE TIMON",
+            }
+        ],
+    )
+
     assert fdd.resolver_codigos_rca(1901) == [1901]
     assert fdd.resolver_codigos_rca("1901") == [1901]
+
+
+def test_resolver_codigos_rca_com_codigo_numerico_inexistente(monkeypatch):
+    monkeypatch.setattr(
+        fdd,
+        "construir_lista_rca",
+        lambda: [
+            {
+                "codigo": 1901,
+                "nome": "Jose Felipe Pires",
+                "filial": "FERRONORTE TIMON",
+            }
+        ],
+    )
+
+    with pytest.raises(ValueError) as excecao:
+        fdd.resolver_codigos_rca("896869")
+
+    assert "896869" in str(excecao.value)
 
 
 def test_resolver_codigos_rca_com_nome(monkeypatch):
