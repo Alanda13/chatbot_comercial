@@ -31,63 +31,6 @@ st.caption(
     "Consulte Informações sobre Indicadores Comerciais."
 )
 
-st.markdown(
-    """
-    <style>
-    div[data-testid="stChatMessage"] {
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        padding: 0.35rem 0 !important;
-    }
-
-    /* Mensagens do usuário: vira uma bolha alinhada à direita,
-       como numa conversa de rede social. */
-    div[data-testid="stChatMessage"]:has(
-        [data-testid="stChatMessageAvatarUser"]
-    ) {
-        justify-content: flex-end;
-    }
-    div[data-testid="stChatMessage"]:has(
-        [data-testid="stChatMessageAvatarUser"]
-    ) [data-testid="stChatMessageAvatarUser"] {
-        display: none;
-    }
-    div[data-testid="stChatMessage"]:has(
-        [data-testid="stChatMessageAvatarUser"]
-    ) [data-testid="stChatMessageContent"] {
-        flex-grow: 0 !important;
-        flex-basis: auto !important;
-        width: fit-content;
-        max-width: 70%;
-        box-sizing: border-box;
-        background-color: #1d4ed8;
-        border-radius: 18px;
-        padding: 10px 16px;
-        overflow-wrap: break-word;
-    }
-    div[data-testid="stChatMessage"]:has(
-        [data-testid="stChatMessageAvatarUser"]
-    ) [data-testid="stChatMessageContent"] p {
-        color: #ffffff !important;
-        margin: 0;
-        overflow-wrap: break-word;
-    }
-
-    /* Mensagens do assistente: texto solto, sem bolha, igual
-       resposta do ChatGPT. */
-    div[data-testid="stChatMessage"]:has(
-        [data-testid="stChatMessageAvatarAssistant"]
-    ) [data-testid="stChatMessageContent"] {
-        background: transparent;
-        padding: 4px 0;
-        max-width: 100%;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
 if "mensagens" not in st.session_state:
     st.session_state.mensagens = []
 
