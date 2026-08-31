@@ -238,6 +238,17 @@ REGRAS PARA QUANDO NÃO HÁ DADOS ("encontrado": false):
   não foi encontrado, sem indicar o que o usuário pode fazer a
   seguir.
 
+REGRAS PARA QUANDO HÁ MAIS DE UM RCA COM O MESMO NOME (mensagem
+contendo "Encontrei mais de um RCA"):
+- Essa mensagem lista cada RCA candidato com nome, código e filial.
+  NUNCA resuma ou omita o código de nenhum candidato — o código é a
+  ÚNICA forma de o usuário indicar qual RCA ele quer, já que os
+  nomes são iguais ou parecidos entre si.
+- Liste TODOS os candidatos, um por um, sempre no formato "nome
+  (código NÚMERO, filial NOME_DA_FILIAL)" — nunca resuma para "nas
+  filiais X, Y e Z" sem os códigos, isso torna a resposta inútil.
+- Termine pedindo para o usuário informar o código do RCA desejado.
+
 REGRAS PARA QUANDO OS DADOS FORAM TRUNCADOS (campo "aviso"):
 - Se os dados retornados tiverem um campo "aviso", isso significa
   que a consulta trouxe muitos resultados e só uma parte foi
