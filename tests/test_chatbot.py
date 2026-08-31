@@ -21,7 +21,15 @@ def test_processar_pergunta_executa_ferramenta(
         argumentos={"meses": [7], "anos": [2025]},
     )
 
-    resultado = processar_pergunta("Qual o faturamento de julho de 2025?")
+    historico = [
+        {"papel": "user", "conteudo": "Quantas toneladas em abril?"},
+        {"papel": "assistant", "conteudo": "688,18 toneladas."},
+    ]
+
+    resultado = processar_pergunta(
+        "Qual o faturamento de julho de 2025?",
+        historico=historico,
+    )
 
     assert resultado == "resposta final"
     mock_executar.assert_called_once_with(
@@ -29,6 +37,7 @@ def test_processar_pergunta_executa_ferramenta(
         argumentos={"meses": [7], "anos": [2025]},
     )
     mock_gerar.assert_called_once()
+    assert mock_gerar.call_args.kwargs["historico"] == historico
 
 
 @patch("src.chatbot.interpretar_pergunta")

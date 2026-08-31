@@ -116,6 +116,7 @@ def processar_pergunta(
         pergunta=pergunta,
         nome_ferramenta=solicitacao.ferramenta,
         resultado=_limitar_resultados(resultado),
+        historico=historico,
     )
     return resposta_final
     

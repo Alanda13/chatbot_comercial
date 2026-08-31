@@ -106,3 +106,81 @@ def test_montar_historico_mapeia_papel_assistant_para_model():
 
 def test_montar_historico_vazio():
     assert _montar_historico_gemini([]) == []
+
+
+def test_formatar_historico_para_resposta_vazio():
+    assert ai_service._formatar_historico_para_resposta(None) == (
+        "Nenhuma mensagem anterior nesta conversa."
+    )
+
+
+def test_formatar_historico_para_resposta_formata_papeis():
+    historico = [
+        {"papel": "user", "conteudo": "Quantas toneladas em abril?"},
+        {"papel": "assistant", "conteudo": "688,18 toneladas."},
+    ]
+
+    texto = ai_service._formatar_historico_para_resposta(historico)
+
+    assert "Usuário: Quantas toneladas em abril?" in texto
+    assert "Assistente: 688,18 toneladas." in texto
+
+
+class _ModelsFalso:
+    def __init__(self, texto_resposta):
+        self._texto_resposta = texto_resposta
+        self.chamadas = []
+
+    def generate_content(self, model, contents):
+        self.chamadas.append(contents)
+        return SimpleNamespace(text=self._texto_resposta)
+
+
+class _ClienteRespostaFalso:
+    def __init__(self, texto_resposta):
+        self.models = _ModelsFalso(texto_resposta)
+
+
+def test_gerar_resposta_final_inclui_historico_no_prompt(monkeypatch):
+    monkeypatch.setenv("GEMINI_MODEL", "modelo-principal")
+    monkeypatch.setenv("GEMINI_MODEL_FALLBACK", "modelo-reserva")
+
+    cliente_falso = _ClienteRespostaFalso("resposta gerada")
+    monkeypatch.setattr(
+        ai_service, "criar_cliente_gemini", lambda: cliente_falso
+    )
+
+    historico = [
+        {"papel": "user", "conteudo": "Quantas toneladas em abril?"},
+        {"papel": "assistant", "conteudo": "688,18 toneladas."},
+    ]
+
+    resposta = ai_service.gerar_resposta_final(
+        pergunta="e em julho?",
+        nome_ferramenta="consultar_indicadores_faturamento",
+        resultado={"encontrado": True, "toneladas": 700.0},
+        historico=historico,
+    )
+
+    assert resposta == "resposta gerada"
+    prompt_enviado = cliente_falso.models.chamadas[0]
+    assert "Quantas toneladas em abril?" in prompt_enviado
+    assert "688,18 toneladas." in prompt_enviado
+
+
+def test_gerar_resposta_final_sem_historico_nao_quebra(monkeypatch):
+    monkeypatch.setenv("GEMINI_MODEL", "modelo-principal")
+    monkeypatch.setenv("GEMINI_MODEL_FALLBACK", "modelo-reserva")
+
+    cliente_falso = _ClienteRespostaFalso("resposta gerada")
+    monkeypatch.setattr(
+        ai_service, "criar_cliente_gemini", lambda: cliente_falso
+    )
+
+    resposta = ai_service.gerar_resposta_final(
+        pergunta="Qual o faturamento de Timon em julho de 2025?",
+        nome_ferramenta="consultar_indicadores_faturamento",
+        resultado={"encontrado": True, "faturamento": 100.0},
+    )
+
+    assert resposta == "resposta gerada"

@@ -141,10 +141,38 @@ def interpretar_pergunta(
     ) from ultimo_erro
 
 
+def _formatar_historico_para_resposta(
+    historico: list[dict[str, str]] | None,
+    limite: int = 6,
+) -> str:
+    """
+    Formata as últimas mensagens da conversa em texto simples, para
+    dar contexto à etapa de formulação da resposta final.
+
+    Sem isso, um follow-up curto (ex: "e em julho?") que não repete
+    o indicador perguntado antes (toneladas, venda bruta, etc.) fica
+    sem contexto nessa etapa — que é uma chamada separada da que
+    interpreta a pergunta, sem acesso ao histórico da conversa.
+    """
+    if not historico:
+        return "Nenhuma mensagem anterior nesta conversa."
+
+    mensagens_recentes = historico[-limite:]
+
+    linhas = [
+        f"{'Usuário' if mensagem['papel'] == 'user' else 'Assistente'}: "
+        f"{mensagem['conteudo']}"
+        for mensagem in mensagens_recentes
+    ]
+
+    return "\n".join(linhas)
+
+
 def gerar_resposta_final(
     pergunta: str,
     nome_ferramenta: str,
     resultado: dict,
+    historico: list[dict[str, str]] | None = None,
 ) -> str:
     """
     Gera a resposta final em linguagem natural usando
@@ -163,6 +191,8 @@ def gerar_resposta_final(
         indent=2,
         default=str,
     )
+
+    historico_formatado = _formatar_historico_para_resposta(historico)
 
     prompt_resposta = f"""
 Você é o assistente comercial da Ferronorte.
@@ -188,6 +218,13 @@ REGRAS:
   em vez de responder apenas "R$ 254.017,32", responda algo como
   "O faturamento do RCA José Felipe Pires em julho de 2025 foi de
   R$ 254.017,32."
+- Se a pergunta atual for curta ou incompleta (ex: "e em julho?", "e
+  a filial Tibiri?", "e em 2024?") e não repetir qual indicador o
+  usuário quer (toneladas, venda bruta, desconto, quantidade de
+  notas, etc.), use o "Histórico recente da conversa" abaixo para
+  identificar qual indicador foi perguntado antes, e responda com o
+  MESMO indicador — nunca troque para o faturamento (venda líquida)
+  por padrão quando o assunto da conversa era outro indicador.
 
 REGRAS PARA ANÁLISE E COMPARAÇÃO:
 - Você pode realizar cálculos matemáticos simples utilizando
@@ -317,6 +354,9 @@ FORMATAÇÃO:
   ou quantidade de notas se eles não forem solicitados pelo usuário.
 - Não mencione nomes de funções Python, ferramentas internas,
   JSON, banco de dados ou detalhes técnicos do sistema.
+
+Histórico recente da conversa:
+{historico_formatado}
 
 Pergunta original do usuário:
 {pergunta}
