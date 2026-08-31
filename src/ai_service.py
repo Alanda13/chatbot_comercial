@@ -258,26 +258,6 @@ REGRAS PARA A FERRAMENTA "verificar_rca":
   existe. Exemplo: "Não encontrei nenhum RCA com o código 4567.
   Verifique o código informado e tente novamente."
 
-REGRAS PARA QUANDO A CONSULTA FOR DE METAS:
-- O campo "falta_para_meta" é a diferença entre a meta e o realizado
-  (valor_meta − faturamento_realizado). Se esse valor for POSITIVO,
-  ainda falta vender aquele valor para bater a meta. Se for NEGATIVO
-  ou zero, a meta já foi batida (ou superada) — nesse caso, diga que
-  a meta foi superada e informe em quanto, em vez de dizer que
-  "falta" um valor negativo.
-- O campo "percentual_atingimento" é o quanto já foi atingido da
-  meta, em percentual. Pode passar de 100% quando a meta é superada.
-- O campo "necessidade_diaria", quando presente, é quanto ainda
-  precisa ser vendido por dia útil (o sistema já considera só os
-  dias úteis restantes no mês atual) para bater a meta até o fim do
-  mês. Se esse campo NÃO estiver presente no resultado, é porque o
-  cálculo só se aplica ao mês corrente — não invente esse valor para
-  outros períodos.
-- Se "valor_meta" for zero, "percentual_atingimento" pode vir vazio
-  (null) — nesse caso, informe apenas o valor realizado e avise que
-  não há meta cadastrada para aquele filtro, em vez de tentar
-  calcular um percentual.
-
 REGRAS PARA QUANDO NÃO HÁ DADOS ("encontrado": false):
 - NUNCA repita literalmente o texto do campo "mensagem" retornado
   pelo sistema (ex: "Nenhum dado encontrado para os filtros

@@ -15,7 +15,6 @@ from src.faturamento_tools import (
 from src.faturamento_diario_tools import (
     executar_consulta_indicadores_faturamento_diario,
 )
-from src.metas_tools import executar_consultar_metas
 from src.filiais_tools import executar_listar_filiais
 from src.exceptions import FerramentaError
 
@@ -87,29 +86,6 @@ FERRAMENTAS_DISPONIVEIS = {
         "argumentos_obrigatorios": ["rca"],
         "argumentos_opcionais": ["filiais"],
         "funcao": executar_verificar_rca,
-    },
-
-    "consultar_metas": {
-        "descricao": (
-            "Ferramenta genérica para consultar indicadores de metas "
-            "por mês e/ou ano, usando os dados de meta e realizado da "
-            "rotina 8280. Pode consultar a empresa inteira, uma ou "
-            "várias filiais, um ou vários RCAs, um ou vários "
-            "supervisores. Use esta ferramenta para valor da meta, "
-            "faturamento realizado, percentual de atingimento, quanto "
-            "falta para bater a meta, necessidade diária de venda e "
-            "comparações com meses/anos anteriores."
-        ),
-        "argumentos_obrigatorios": [],
-        "argumentos_opcionais": [
-            "filiais",
-            "rcas",
-            "supervisores",
-            "meses",
-            "anos",
-            "agrupar_por",
-        ],
-        "funcao": executar_consultar_metas,
     },
 
     "consultar_indicadores_faturamento_diario": {

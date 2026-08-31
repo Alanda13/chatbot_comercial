@@ -18,7 +18,6 @@ def test_ferramenta_existe():
         is True
     )
     assert tool_manager.ferramenta_existe("verificar_rca") is True
-    assert tool_manager.ferramenta_existe("consultar_metas") is True
     assert tool_manager.ferramenta_existe("nao_existe") is False
 
 
