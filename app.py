@@ -46,7 +46,7 @@ st.markdown(
     div[data-testid="stChatMessage"]:has(
         [data-testid="stChatMessageAvatarUser"]
     ) {
-        flex-direction: row-reverse;
+        justify-content: flex-end;
     }
     div[data-testid="stChatMessage"]:has(
         [data-testid="stChatMessageAvatarUser"]
@@ -56,18 +56,22 @@ st.markdown(
     div[data-testid="stChatMessage"]:has(
         [data-testid="stChatMessageAvatarUser"]
     ) [data-testid="stChatMessageContent"] {
-        background-color: #2f6fed;
+        flex-grow: 0 !important;
+        flex-basis: auto !important;
+        width: fit-content;
+        max-width: 70%;
+        box-sizing: border-box;
+        background-color: #1d4ed8;
         border-radius: 18px;
         padding: 10px 16px;
-        width: fit-content;
-        max-width: 75%;
-        margin-left: auto;
+        overflow-wrap: break-word;
     }
     div[data-testid="stChatMessage"]:has(
         [data-testid="stChatMessageAvatarUser"]
     ) [data-testid="stChatMessageContent"] p {
         color: #ffffff !important;
         margin: 0;
+        overflow-wrap: break-word;
     }
 
     /* Mensagens do assistente: texto solto, sem bolha, igual
