@@ -31,8 +31,14 @@ def test_resolver_codigo_rca_com_codigo_numerico():
 def test_resolver_codigo_rca_com_nome(monkeypatch):
     monkeypatch.setattr(
         fdd,
-        "construir_mapa_rca_nome",
-        lambda: {1901: "Alfredo Sousa-F09"},
+        "construir_lista_rca",
+        lambda: [
+            {
+                "codigo": 1901,
+                "nome": "Alfredo Sousa-F09",
+                "filial": "FERRONORTE TIMON",
+            }
+        ],
     )
 
     assert fdd.resolver_codigo_rca("Alfredo Sousa") == 1901
@@ -41,23 +47,45 @@ def test_resolver_codigo_rca_com_nome(monkeypatch):
 def test_resolver_codigo_rca_nao_encontrado(monkeypatch):
     monkeypatch.setattr(
         fdd,
-        "construir_mapa_rca_nome",
-        lambda: {1901: "Alfredo Sousa-F09"},
+        "construir_lista_rca",
+        lambda: [
+            {
+                "codigo": 1901,
+                "nome": "Alfredo Sousa-F09",
+                "filial": "FERRONORTE TIMON",
+            }
+        ],
     )
 
     with pytest.raises(ValueError):
         fdd.resolver_codigo_rca("Vendedor Inexistente")
 
 
-def test_resolver_codigo_rca_ambiguo_gera_erro(monkeypatch):
+def test_resolver_codigo_rca_ambiguo_gera_erro_com_codigo_e_filial(
+    monkeypatch,
+):
     monkeypatch.setattr(
         fdd,
-        "construir_mapa_rca_nome",
-        lambda: {
-            8952: "ANDRE ALVES-F09",
-            8998: "ANDREA ALVES - F09",
-        },
+        "construir_lista_rca",
+        lambda: [
+            {
+                "codigo": 8952,
+                "nome": "ANDRE ALVES-F09",
+                "filial": "FERRONORTE TIMON",
+            },
+            {
+                "codigo": 4521,
+                "nome": "ANDRE ALVES-F18",
+                "filial": "FERRONORTE IMPERATRIZ",
+            },
+        ],
     )
 
-    with pytest.raises(ValueError):
-        fdd.resolver_codigo_rca("Andre")
+    with pytest.raises(ValueError) as excecao:
+        fdd.resolver_codigo_rca("Andre Alves")
+
+    mensagem = str(excecao.value)
+    assert "8952" in mensagem
+    assert "4521" in mensagem
+    assert "FERRONORTE TIMON" in mensagem
+    assert "FERRONORTE IMPERATRIZ" in mensagem

@@ -79,6 +79,31 @@ def construir_mapa_rca_nome() -> dict[int, str]:
     }
 
 
+def construir_lista_rca() -> list[dict]:
+    """
+    Constrói uma lista de RCAs com código, nome e filial — usada
+    para mostrar candidatos de forma legível quando um nome de RCA
+    for ambíguo (o mesmo vendedor pode ter um código diferente em
+    cada filial).
+    """
+    dados = carregar_faturamento_8302()
+
+    pares = (
+        dados[["COD_RCA", "NOME_RCA", "FILIAL"]]
+        .dropna(subset=["COD_RCA", "NOME_RCA"])
+        .drop_duplicates(subset="COD_RCA")
+    )
+
+    return [
+        {
+            "codigo": int(linha["COD_RCA"]),
+            "nome": str(linha["NOME_RCA"]).strip(),
+            "filial": str(linha["FILIAL"]).strip(),
+        }
+        for _, linha in pares.iterrows()
+    ]
+
+
 def resolver_codigo_rca(nome_ou_codigo: str | int) -> int:
     """
     Resolve o código numérico de um RCA a partir do que o usuário
@@ -88,8 +113,9 @@ def resolver_codigo_rca(nome_ou_codigo: str | int) -> int:
     Como existem muitos vendedores, um nome curto ou parecido com
     mais de um RCA (ex: "André" bate com "ANDRE ALVES" e "ANDREA
     ALVES") não é resolvido "no chute": se houver mais de um RCA
-    correspondente, uma exceção clara é levantada, listando os
-    candidatos, em vez de escolher um deles silenciosamente.
+    correspondente, uma exceção clara é levantada, listando código
+    e filial de cada candidato, em vez de escolher um deles
+    silenciosamente.
     """
     if isinstance(nome_ou_codigo, int):
         return nome_ou_codigo
@@ -99,39 +125,42 @@ def resolver_codigo_rca(nome_ou_codigo: str | int) -> int:
     if texto.isdigit():
         return int(texto)
 
-    mapa_rca_nome = construir_mapa_rca_nome()
+    rcas = construir_lista_rca()
 
     nome_procurado = normalizar_nome_filial(texto)
 
     candidatos = [
-        (codigo, nome)
-        for codigo, nome in mapa_rca_nome.items()
-        if nome_procurado in normalizar_nome_filial(nome)
-        or normalizar_nome_filial(nome) in nome_procurado
+        rca
+        for rca in rcas
+        if nome_procurado in normalizar_nome_filial(rca["nome"])
+        or normalizar_nome_filial(rca["nome"]) in nome_procurado
     ]
 
     if len(candidatos) == 1:
-        return candidatos[0][0]
+        return candidatos[0]["codigo"]
 
     if len(candidatos) > 1:
-        nomes_candidatos = ", ".join(nome for _, nome in candidatos)
+        descricoes = ", ".join(
+            f"{candidato['nome']} (código {candidato['codigo']}, "
+            f"filial {candidato['filial']})"
+            for candidato in candidatos
+        )
         raise ValueError(
             f"Encontrei mais de um RCA parecido com '{nome_ou_codigo}': "
-            f"{nomes_candidatos}. Informe o nome completo do vendedor "
-            "ou o código do RCA."
+            f"{descricoes}. Informe o código do RCA que deseja consultar."
         )
 
     # Nenhuma correspondência direta por substring: tenta por
     # similaridade textual, para tolerar pequenos erros de digitação.
     nome_encontrado = encontrar_filial_mais_proxima(
         nome_procurado,
-        list(mapa_rca_nome.values()),
+        [rca["nome"] for rca in rcas],
     )
 
     if nome_encontrado is not None:
-        for codigo, nome in mapa_rca_nome.items():
-            if nome == nome_encontrado:
-                return codigo
+        for rca in rcas:
+            if rca["nome"] == nome_encontrado:
+                return rca["codigo"]
 
     raise ValueError(
         f"O RCA '{nome_ou_codigo}' não foi encontrado."
