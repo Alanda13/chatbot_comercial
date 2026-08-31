@@ -8,6 +8,7 @@ from src.faturamento_queries import (
     consultar_indicadores_faturamento,
     listar_filiais_faturamento,
 )
+from src.faturamento_diario_data import resolver_codigo_rca
 from src.filial_utils import (
     encontrar_filial_mais_proxima,
     normalizar_nome_filial,
@@ -79,9 +80,24 @@ def executar_consulta_indicadores_faturamento(
                     nome_resolvido
                 )
 
+    rcas_resolvidos = None
+
+    # Os RCAs podem vir como código numérico ou como nome do
+    # vendedor — resolve cada um para o código real.
+    if rcas:
+        rcas_resolvidos = []
+
+        for rca in rcas:
+            codigo_resolvido = resolver_codigo_rca(rca)
+
+            if codigo_resolvido not in rcas_resolvidos:
+                rcas_resolvidos.append(
+                    codigo_resolvido
+                )
+
     return consultar_indicadores_faturamento(
         filiais=filiais_resolvidas,
-        rcas=rcas,
+        rcas=rcas_resolvidos,
         meses=meses,
         anos=anos,
         agrupar_por=agrupar_por,

@@ -40,6 +40,36 @@ def test_executar_consulta_resolve_filial_e_repassa_periodo(monkeypatch):
     assert chamadas[0]["data_inicial"] == "2026-08-25"
 
 
+def test_executar_consulta_resolve_rca_por_nome(monkeypatch):
+    chamadas = []
+
+    def fake_consulta(**kwargs):
+        chamadas.append(kwargs)
+        return {"encontrado": True, "faturamento": 100.0}
+
+    monkeypatch.setattr(
+        fdt,
+        "resolver_codigo_rca",
+        lambda nome: 1901,
+    )
+    monkeypatch.setattr(
+        fdt,
+        "consultar_indicadores_faturamento_diario",
+        fake_consulta,
+    )
+
+    fdt.executar_consulta_indicadores_faturamento_diario(
+        {
+            "rcas": ["Alfredo Sousa"],
+            "periodos": [
+                {"data_inicial": "2026-08-25", "data_final": "2026-08-25"}
+            ],
+        }
+    )
+
+    assert chamadas[0]["rcas"] == [1901]
+
+
 def test_executar_consulta_com_varios_periodos_retorna_lista(monkeypatch):
     resultados_falsos = iter(
         [

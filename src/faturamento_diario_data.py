@@ -5,6 +5,11 @@ exportados da rotina 8302 (Faturamento por RCA/Filial/Dia) do Winthor.
 from pathlib import Path
 import pandas as pd
 
+from src.filial_utils import (
+    encontrar_filial_mais_proxima,
+    normalizar_nome_filial,
+)
+
 RAIZ_PROJETO = Path(__file__).resolve().parent.parent
 
 ARQUIVO_8302 = (
@@ -72,3 +77,36 @@ def construir_mapa_rca_nome() -> dict[int, str]:
             pares["NOME_RCA"],
         )
     }
+
+
+def resolver_codigo_rca(nome_ou_codigo: str | int) -> int:
+    """
+    Resolve o código numérico de um RCA a partir do que o usuário
+    informou — o próprio código, ou o nome do vendedor (a IA nem
+    sempre sabe o código, então precisa poder buscar por nome).
+    """
+    if isinstance(nome_ou_codigo, int):
+        return nome_ou_codigo
+
+    texto = str(nome_ou_codigo).strip()
+
+    if texto.isdigit():
+        return int(texto)
+
+    mapa_rca_nome = construir_mapa_rca_nome()
+
+    nome_procurado = normalizar_nome_filial(texto)
+
+    nome_encontrado = encontrar_filial_mais_proxima(
+        nome_procurado,
+        list(mapa_rca_nome.values()),
+    )
+
+    if nome_encontrado is not None:
+        for codigo, nome in mapa_rca_nome.items():
+            if nome == nome_encontrado:
+                return codigo
+
+    raise ValueError(
+        f"O RCA '{nome_ou_codigo}' não foi encontrado."
+    )

@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from src import faturamento_diario_data as fdd
 
@@ -20,3 +21,29 @@ def test_construir_mapa_rca_nome(monkeypatch):
         1901: "Jose Felipe Pires",
         1902: "Maria Souza",
     }
+
+
+def test_resolver_codigo_rca_com_codigo_numerico():
+    assert fdd.resolver_codigo_rca(1901) == 1901
+    assert fdd.resolver_codigo_rca("1901") == 1901
+
+
+def test_resolver_codigo_rca_com_nome(monkeypatch):
+    monkeypatch.setattr(
+        fdd,
+        "construir_mapa_rca_nome",
+        lambda: {1901: "Alfredo Sousa-F09"},
+    )
+
+    assert fdd.resolver_codigo_rca("Alfredo Sousa") == 1901
+
+
+def test_resolver_codigo_rca_nao_encontrado(monkeypatch):
+    monkeypatch.setattr(
+        fdd,
+        "construir_mapa_rca_nome",
+        lambda: {1901: "Alfredo Sousa-F09"},
+    )
+
+    with pytest.raises(ValueError):
+        fdd.resolver_codigo_rca("Vendedor Inexistente")

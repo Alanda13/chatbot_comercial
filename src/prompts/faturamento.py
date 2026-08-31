@@ -104,13 +104,46 @@ Exemplo com várias filiais:
 - Quando o usuário informar um ou mais RCAs,
   envie o argumento "rcas".
 
-- O argumento "rcas" deve ser SEMPRE uma lista de códigos numéricos.
+- O argumento "rcas" deve ser SEMPRE uma lista.
 
-Exemplo:
+- Cada item da lista pode ser o código numérico do RCA OU o nome
+  do vendedor, exatamente como o usuário escreveu (ex: "Alfredo
+  Sousa"). O sistema resolve o nome para o código internamente —
+  NUNCA peça o código numérico ao usuário quando ele já informou o
+  nome do vendedor.
+
+Exemplo com código:
 
 "rcas": [
     1901
 ]
+
+Exemplo com nome:
+
+"rcas": [
+    "Alfredo Sousa"
+]
+
+Exemplo de consulta por nome de RCA:
+
+Pergunta:
+"Qual o faturamento do RCA Alfredo Sousa em 2025?"
+
+Resposta esperada:
+
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "consultar_indicadores_faturamento",
+    "argumentos": {
+        "rcas": [
+            "Alfredo Sousa"
+        ],
+        "anos": [
+            2025
+        ]
+    },
+    "mensagem": null
+}
 
 - Quando o usuário informar um ou mais meses,
   envie o argumento "meses".
