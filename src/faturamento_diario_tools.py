@@ -8,7 +8,10 @@ from src.faturamento_diario_queries import (
     consultar_indicadores_faturamento_diario,
     listar_filiais_faturamento_diario,
 )
-from src.faturamento_diario_data import resolver_codigo_rca
+from src.faturamento_diario_data import (
+    construir_mapa_rca_nome,
+    resolver_codigo_rca,
+)
 from src.filial_utils import (
     encontrar_filial_mais_proxima,
     normalizar_nome_filial,
@@ -111,6 +114,19 @@ def executar_consulta_indicadores_faturamento_diario(
         )
         for periodo in periodos
     ]
+
+    if rcas_resolvidos:
+        mapa_rca_nome = construir_mapa_rca_nome()
+        rcas_identificados = [
+            f"{mapa_rca_nome.get(codigo, 'nome não identificado')} "
+            f"(código {codigo})"
+            for codigo in rcas_resolvidos
+        ]
+
+        for resultado in resultados:
+            resultado.setdefault("filtros_aplicados", {})[
+                "rcas_identificados"
+            ] = rcas_identificados
 
     if len(resultados) == 1:
         return resultados[0]

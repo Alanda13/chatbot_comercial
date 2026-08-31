@@ -54,11 +54,16 @@ def test_executar_consulta_resolve_rca_por_nome(monkeypatch):
     )
     monkeypatch.setattr(
         fdt,
+        "construir_mapa_rca_nome",
+        lambda: {1901: "Alfredo Sousa-F09"},
+    )
+    monkeypatch.setattr(
+        fdt,
         "consultar_indicadores_faturamento_diario",
         fake_consulta,
     )
 
-    fdt.executar_consulta_indicadores_faturamento_diario(
+    resultado = fdt.executar_consulta_indicadores_faturamento_diario(
         {
             "rcas": ["Alfredo Sousa"],
             "periodos": [
@@ -68,6 +73,9 @@ def test_executar_consulta_resolve_rca_por_nome(monkeypatch):
     )
 
     assert chamadas[0]["rcas"] == [1901]
+    assert resultado["filtros_aplicados"]["rcas_identificados"] == [
+        "Alfredo Sousa-F09 (código 1901)"
+    ]
 
 
 def test_executar_consulta_com_varios_periodos_retorna_lista(monkeypatch):

@@ -8,7 +8,10 @@ from src.faturamento_queries import (
     consultar_indicadores_faturamento,
     listar_filiais_faturamento,
 )
-from src.faturamento_diario_data import resolver_codigo_rca
+from src.faturamento_diario_data import (
+    construir_mapa_rca_nome,
+    resolver_codigo_rca,
+)
 from src.filial_utils import (
     encontrar_filial_mais_proxima,
     normalizar_nome_filial,
@@ -95,10 +98,22 @@ def executar_consulta_indicadores_faturamento(
                     codigo_resolvido
                 )
 
-    return consultar_indicadores_faturamento(
+    resultado = consultar_indicadores_faturamento(
         filiais=filiais_resolvidas,
         rcas=rcas_resolvidos,
         meses=meses,
         anos=anos,
         agrupar_por=agrupar_por,
     )
+
+    if rcas_resolvidos:
+        mapa_rca_nome = construir_mapa_rca_nome()
+        resultado.setdefault("filtros_aplicados", {})[
+            "rcas_identificados"
+        ] = [
+            f"{mapa_rca_nome.get(codigo, 'nome não identificado')} "
+            f"(código {codigo})"
+            for codigo in rcas_resolvidos
+        ]
+
+    return resultado

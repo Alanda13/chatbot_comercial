@@ -15,11 +15,16 @@ def test_executar_consulta_resolve_rca_por_nome(monkeypatch):
     )
     monkeypatch.setattr(
         ft,
+        "construir_mapa_rca_nome",
+        lambda: {1901: "Alfredo Sousa-F09"},
+    )
+    monkeypatch.setattr(
+        ft,
         "consultar_indicadores_faturamento",
         fake_consulta,
     )
 
-    ft.executar_consulta_indicadores_faturamento(
+    resultado = ft.executar_consulta_indicadores_faturamento(
         {
             "rcas": ["Alfredo Sousa"],
             "anos": [2025],
@@ -27,6 +32,9 @@ def test_executar_consulta_resolve_rca_por_nome(monkeypatch):
     )
 
     assert chamadas[0]["rcas"] == [1901]
+    assert resultado["filtros_aplicados"]["rcas_identificados"] == [
+        "Alfredo Sousa-F09 (código 1901)"
+    ]
 
 
 def test_executar_consulta_sem_rca_nao_resolve(monkeypatch):
