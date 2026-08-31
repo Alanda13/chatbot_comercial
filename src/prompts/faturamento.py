@@ -15,12 +15,16 @@ PROMPT_FATURAMENTO = """REGRAS ESPECÍFICAS PARA FATURAMENTO:
   - faturamento por ano;
   - venda bruta;
   - valor de desconto;
-  - peso líquido;
+  - peso líquido (em quilos) e toneladas;
   - quantidade de notas;
   - comparações entre filiais, RCAs, meses e anos.
 
 - O faturamento corresponde ao indicador VENDA_LIQ.
 - Para consultas de faturamento, o período é obrigatório.
+- Quando o usuário perguntar sobre peso, quantidade vendida em
+  toneladas, ou "quantas toneladas" foram vendidas/faturadas, use o
+  campo "toneladas" do resultado (não "peso_liquido", que está em
+  quilos) para responder.
 
 - Esta ferramenta ("consultar_indicadores_faturamento") tem
   granularidade mensal (mês e/ou ano).

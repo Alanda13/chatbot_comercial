@@ -56,8 +56,8 @@ FERRAMENTAS_DISPONIVEIS = {
             "Pode consultar a empresa inteira, uma ou várias filiais, "
             "um ou vários RCAs, meses e anos. "
             "Use esta ferramenta para consultas de faturamento, venda bruta, "
-            "valor de desconto, peso líquido e quantidade de notas, "
-            "sempre que a pergunta for por mês(es) e/ou ano(s) — nunca por "
+            "valor de desconto, peso líquido/toneladas e quantidade de "
+            "notas, sempre que a pergunta for por mês(es) e/ou ano(s) — nunca por "
             "um dia específico ou período de dias. "
             "O faturamento é baseado na coluna VENDA_LIQ da rotina 8280."
         ),

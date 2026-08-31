@@ -53,6 +53,8 @@ def test_consulta_sem_filtros_soma_tudo(dados_faturamento):
     assert resultado["encontrado"] is True
     assert resultado["faturamento"] == 1800.0
     assert resultado["quantidade_notas"] == 6
+    assert resultado["peso_liquido"] == 80.0
+    assert resultado["toneladas"] == 0.08
 
 
 def test_consulta_filtrada_por_filial_e_periodo(dados_faturamento):
@@ -84,9 +86,15 @@ def test_consulta_agrupada_por_filial(dados_faturamento):
         item["filial"]: item["faturamento"]
         for item in resultado["resultados"]
     }
+    toneladas = {
+        item["filial"]: item["toneladas"]
+        for item in resultado["resultados"]
+    }
 
     assert valores["FERRONORTE TIMON"] == 1500.0
     assert valores["FERRONORTE PICOS"] == 300.0
+    assert toneladas["FERRONORTE TIMON"] == 0.07
+    assert toneladas["FERRONORTE PICOS"] == 0.01
 
 
 def test_agrupamento_invalido_gera_erro(dados_faturamento):

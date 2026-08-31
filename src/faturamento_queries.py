@@ -89,6 +89,10 @@ def consultar_indicadores_faturamento(
                 float(dados["PESOLIQ"].sum()),
                 2,
             ),
+            "toneladas": round(
+                float(dados["PESOLIQ"].sum()) / 1000,
+                2,
+            ),
             "quantidade_notas": int(
                 dados["QT_NOTAS"].sum()
             ),
@@ -177,6 +181,11 @@ def consultar_indicadores_faturamento(
 
         item["peso_liquido"] = round(
             float(linha["peso_liquido"]),
+            2,
+        )
+
+        item["toneladas"] = round(
+            float(linha["peso_liquido"]) / 1000,
             2,
         )
 
