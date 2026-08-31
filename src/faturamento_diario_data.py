@@ -84,6 +84,12 @@ def resolver_codigo_rca(nome_ou_codigo: str | int) -> int:
     Resolve o código numérico de um RCA a partir do que o usuário
     informou — o próprio código, ou o nome do vendedor (a IA nem
     sempre sabe o código, então precisa poder buscar por nome).
+
+    Como existem muitos vendedores, um nome curto ou parecido com
+    mais de um RCA (ex: "André" bate com "ANDRE ALVES" e "ANDREA
+    ALVES") não é resolvido "no chute": se houver mais de um RCA
+    correspondente, uma exceção clara é levantada, listando os
+    candidatos, em vez de escolher um deles silenciosamente.
     """
     if isinstance(nome_ou_codigo, int):
         return nome_ou_codigo
@@ -97,6 +103,26 @@ def resolver_codigo_rca(nome_ou_codigo: str | int) -> int:
 
     nome_procurado = normalizar_nome_filial(texto)
 
+    candidatos = [
+        (codigo, nome)
+        for codigo, nome in mapa_rca_nome.items()
+        if nome_procurado in normalizar_nome_filial(nome)
+        or normalizar_nome_filial(nome) in nome_procurado
+    ]
+
+    if len(candidatos) == 1:
+        return candidatos[0][0]
+
+    if len(candidatos) > 1:
+        nomes_candidatos = ", ".join(nome for _, nome in candidatos)
+        raise ValueError(
+            f"Encontrei mais de um RCA parecido com '{nome_ou_codigo}': "
+            f"{nomes_candidatos}. Informe o nome completo do vendedor "
+            "ou o código do RCA."
+        )
+
+    # Nenhuma correspondência direta por substring: tenta por
+    # similaridade textual, para tolerar pequenos erros de digitação.
     nome_encontrado = encontrar_filial_mais_proxima(
         nome_procurado,
         list(mapa_rca_nome.values()),

@@ -47,3 +47,17 @@ def test_resolver_codigo_rca_nao_encontrado(monkeypatch):
 
     with pytest.raises(ValueError):
         fdd.resolver_codigo_rca("Vendedor Inexistente")
+
+
+def test_resolver_codigo_rca_ambiguo_gera_erro(monkeypatch):
+    monkeypatch.setattr(
+        fdd,
+        "construir_mapa_rca_nome",
+        lambda: {
+            8952: "ANDRE ALVES-F09",
+            8998: "ANDREA ALVES - F09",
+        },
+    )
+
+    with pytest.raises(ValueError):
+        fdd.resolver_codigo_rca("Andre")
