@@ -69,4 +69,41 @@ Resposta esperada:
     "argumentos": {},
     "mensagem": null
 }
+
+REGRAS PARA RESPONDER COM HISTÓRICO:
+
+- Use a ação "responder_com_historico" SOMENTE quando o usuário
+  pedir para reorganizar, ordenar, filtrar ou resumir dados que
+  VOCÊ MESMO já apresentou anteriormente nesta mesma conversa —
+  por exemplo: "organize do maior para o menor", "ordene em ordem
+  alfabética", "me mostre só os 3 primeiros", "quais desses tiveram
+  o menor valor".
+- Nesses casos, NÃO execute nenhuma ferramenta. Monte a resposta
+  usando exclusivamente os dados que já foram apresentados no
+  histórico da conversa, sem inventar, alterar ou completar valores.
+- NUNCA use "responder_com_historico" para buscar dado novo, um
+  novo período, uma nova filial, um novo RCA, ou qualquer informação
+  que não tenha sido apresentada antes na conversa — nesses casos,
+  utilize "executar_ferramenta" normalmente.
+- Se não houver, no histórico da conversa, dados suficientes para
+  atender ao pedido, escolha "pedir_esclarecimento" em vez de
+  "responder_com_historico".
+
+Exemplo:
+
+Histórico (mensagem anterior do assistente):
+"O faturamento por filial em 2025 foi: Timon: R$ 500.000,00;
+Tibiri: R$ 300.000,00; Maiobão: R$ 800.000,00."
+
+Pergunta:
+"Organize do maior para o menor."
+
+Resposta esperada:
+
+{
+    "acao": "responder_com_historico",
+    "ferramenta": null,
+    "argumentos": {},
+    "mensagem": "Do maior para o menor: Maiobão: R$ 800.000,00; Timon: R$ 500.000,00; Tibiri: R$ 300.000,00."
+}
 """

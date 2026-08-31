@@ -73,6 +73,12 @@ def processar_pergunta(
             )
         )
 
+    if solicitacao.acao == "responder_com_historico":
+        return (
+            solicitacao.mensagem
+            or "Não consegui reorganizar essa informação. Pode reformular?"
+        )
+
     if solicitacao.acao != "executar_ferramenta":
         raise RespostaInvalidaError(
             f"Ação não reconhecida: {solicitacao.acao}"

@@ -10,6 +10,7 @@ class SolicitacaoFerramenta(BaseModel):
         "executar_ferramenta",
         "pedir_esclarecimento",
         "fora_do_escopo",
+        "responder_com_historico",
     ]
     ferramenta: str | None = None
     argumentos: dict[str, Any] = Field(

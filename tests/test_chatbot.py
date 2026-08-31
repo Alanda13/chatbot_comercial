@@ -44,6 +44,18 @@ def test_processar_pergunta_pede_esclarecimento(mock_interpretar):
 
 
 @patch("src.chatbot.interpretar_pergunta")
+def test_processar_pergunta_responder_com_historico(mock_interpretar):
+    mock_interpretar.return_value = SolicitacaoFerramenta(
+        acao="responder_com_historico",
+        mensagem="Do maior para o menor: Maiobão, Timon, Tibiri.",
+    )
+
+    resultado = processar_pergunta("Organize do maior para o menor.")
+
+    assert resultado == "Do maior para o menor: Maiobão, Timon, Tibiri."
+
+
+@patch("src.chatbot.interpretar_pergunta")
 def test_processar_pergunta_fora_do_escopo(mock_interpretar):
     mock_interpretar.return_value = SolicitacaoFerramenta(
         acao="fora_do_escopo",
