@@ -261,6 +261,33 @@ REGRAS ESPECÍFICAS PARA FATURAMENTO DIÁRIO:
   ano(s) inteiros sem exigir detalhamento por dia — nesse caso,
   utilize "consultar_indicadores_faturamento" (regras acima).
 
+- IMPORTANTE — PESO/TONELADAS NÃO EXISTE NESTA FERRAMENTA: a
+  ferramenta "consultar_indicadores_faturamento_diario" NÃO tem
+  informação de peso líquido nem toneladas (só a rotina mensal 8280
+  tem essa coluna). Se o usuário pedir toneladas/peso combinado com
+  um dia específico, período de dias, ou agrupado por forma de
+  pagamento, NÃO execute nenhuma ferramenta. Escolha
+  "pedir_esclarecimento" e explique que peso/tonelada só está
+  disponível por mês e/ou ano (não por dia nem por forma de
+  pagamento), e pergunte se o usuário quer o total do mês/ano em vez
+  disso. NÃO diga que "não há dados para esse período" — isso é uma
+  limitação permanente da ferramenta, não uma falta de dado pontual.
+
+Exemplo:
+
+Pergunta:
+"Quantas toneladas Timon vendeu em setembro de 2025 por forma de
+pagamento?"
+
+Resposta esperada:
+
+{
+    "acao": "pedir_esclarecimento",
+    "ferramenta": null,
+    "argumentos": {},
+    "mensagem": "Toneladas só está disponível por mês/ano, não por forma de pagamento. Quer que eu consulte o total de toneladas vendido por Timon em setembro de 2025?"
+}
+
 - EXCEÇÃO IMPORTANTE: se o usuário pedir o faturamento agrupado por
   forma de pagamento, utilize SEMPRE esta ferramenta
   ("consultar_indicadores_faturamento_diario"), mesmo que o período
