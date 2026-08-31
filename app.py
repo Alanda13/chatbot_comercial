@@ -31,6 +31,59 @@ st.caption(
     "Consulte Informações sobre Indicadores Comerciais."
 )
 
+st.markdown(
+    """
+    <style>
+    div[data-testid="stChatMessage"] {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0.35rem 0 !important;
+    }
+
+    /* Mensagens do usuário: vira uma bolha alinhada à direita,
+       como numa conversa de rede social. */
+    div[data-testid="stChatMessage"]:has(
+        [data-testid="stChatMessageAvatarUser"]
+    ) {
+        flex-direction: row-reverse;
+    }
+    div[data-testid="stChatMessage"]:has(
+        [data-testid="stChatMessageAvatarUser"]
+    ) [data-testid="stChatMessageAvatarUser"] {
+        display: none;
+    }
+    div[data-testid="stChatMessage"]:has(
+        [data-testid="stChatMessageAvatarUser"]
+    ) [data-testid="stChatMessageContent"] {
+        background-color: #2f6fed;
+        border-radius: 18px;
+        padding: 10px 16px;
+        width: fit-content;
+        max-width: 75%;
+        margin-left: auto;
+    }
+    div[data-testid="stChatMessage"]:has(
+        [data-testid="stChatMessageAvatarUser"]
+    ) [data-testid="stChatMessageContent"] p {
+        color: #ffffff !important;
+        margin: 0;
+    }
+
+    /* Mensagens do assistente: texto solto, sem bolha, igual
+       resposta do ChatGPT. */
+    div[data-testid="stChatMessage"]:has(
+        [data-testid="stChatMessageAvatarAssistant"]
+    ) [data-testid="stChatMessageContent"] {
+        background: transparent;
+        padding: 4px 0;
+        max-width: 100%;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 if "mensagens" not in st.session_state:
     st.session_state.mensagens = []
 
