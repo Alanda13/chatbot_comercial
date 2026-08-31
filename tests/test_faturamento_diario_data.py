@@ -23,12 +23,12 @@ def test_construir_mapa_rca_nome(monkeypatch):
     }
 
 
-def test_resolver_codigo_rca_com_codigo_numerico():
-    assert fdd.resolver_codigo_rca(1901) == 1901
-    assert fdd.resolver_codigo_rca("1901") == 1901
+def test_resolver_codigos_rca_com_codigo_numerico():
+    assert fdd.resolver_codigos_rca(1901) == [1901]
+    assert fdd.resolver_codigos_rca("1901") == [1901]
 
 
-def test_resolver_codigo_rca_com_nome(monkeypatch):
+def test_resolver_codigos_rca_com_nome(monkeypatch):
     monkeypatch.setattr(
         fdd,
         "construir_lista_rca",
@@ -41,10 +41,10 @@ def test_resolver_codigo_rca_com_nome(monkeypatch):
         ],
     )
 
-    assert fdd.resolver_codigo_rca("Alfredo Sousa") == 1901
+    assert fdd.resolver_codigos_rca("Alfredo Sousa") == [1901]
 
 
-def test_resolver_codigo_rca_nao_encontrado(monkeypatch):
+def test_resolver_codigos_rca_nao_encontrado(monkeypatch):
     monkeypatch.setattr(
         fdd,
         "construir_lista_rca",
@@ -58,10 +58,10 @@ def test_resolver_codigo_rca_nao_encontrado(monkeypatch):
     )
 
     with pytest.raises(ValueError):
-        fdd.resolver_codigo_rca("Vendedor Inexistente")
+        fdd.resolver_codigos_rca("Vendedor Inexistente")
 
 
-def test_resolver_codigo_rca_ambiguo_gera_erro_com_codigo_e_filial(
+def test_resolver_codigos_rca_sem_filial_soma_todos_os_candidatos(
     monkeypatch,
 ):
     monkeypatch.setattr(
@@ -81,17 +81,12 @@ def test_resolver_codigo_rca_ambiguo_gera_erro_com_codigo_e_filial(
         ],
     )
 
-    with pytest.raises(ValueError) as excecao:
-        fdd.resolver_codigo_rca("Andre Alves")
+    codigos = fdd.resolver_codigos_rca("Andre Alves")
 
-    mensagem = str(excecao.value)
-    assert "8952" in mensagem
-    assert "4521" in mensagem
-    assert "FERRONORTE TIMON" in mensagem
-    assert "FERRONORTE IMPERATRIZ" in mensagem
+    assert sorted(codigos) == [4521, 8952]
 
 
-def test_resolver_codigo_rca_desambigua_pela_filial(monkeypatch):
+def test_resolver_codigos_rca_desambigua_pela_filial(monkeypatch):
     monkeypatch.setattr(
         fdd,
         "construir_lista_rca",
@@ -109,15 +104,15 @@ def test_resolver_codigo_rca_desambigua_pela_filial(monkeypatch):
         ],
     )
 
-    codigo = fdd.resolver_codigo_rca(
+    codigos = fdd.resolver_codigos_rca(
         "Andre Alves",
         filiais=["FERRONORTE TIMON"],
     )
 
-    assert codigo == 8952
+    assert codigos == [8952]
 
 
-def test_resolver_codigo_rca_ainda_ambiguo_mesmo_com_filial(monkeypatch):
+def test_resolver_codigos_rca_ainda_ambiguo_mesmo_com_filial(monkeypatch):
     monkeypatch.setattr(
         fdd,
         "construir_lista_rca",
@@ -135,8 +130,12 @@ def test_resolver_codigo_rca_ainda_ambiguo_mesmo_com_filial(monkeypatch):
         ],
     )
 
-    with pytest.raises(ValueError):
-        fdd.resolver_codigo_rca(
+    with pytest.raises(ValueError) as excecao:
+        fdd.resolver_codigos_rca(
             "Andre Alves",
             filiais=["FERRONORTE ARAGUAINA"],
         )
+
+    mensagem = str(excecao.value)
+    assert "8952" in mensagem
+    assert "4521" in mensagem

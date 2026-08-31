@@ -10,7 +10,7 @@ from src.faturamento_queries import (
 )
 from src.faturamento_diario_data import (
     construir_mapa_rca_nome,
-    resolver_codigo_rca,
+    resolver_codigos_rca,
 )
 from src.filial_utils import (
     encontrar_filial_mais_proxima,
@@ -91,15 +91,14 @@ def executar_consulta_indicadores_faturamento(
         rcas_resolvidos = []
 
         for rca in rcas:
-            codigo_resolvido = resolver_codigo_rca(
+            codigos_resolvidos = resolver_codigos_rca(
                 rca,
                 filiais=filiais_resolvidas,
             )
 
-            if codigo_resolvido not in rcas_resolvidos:
-                rcas_resolvidos.append(
-                    codigo_resolvido
-                )
+            for codigo in codigos_resolvidos:
+                if codigo not in rcas_resolvidos:
+                    rcas_resolvidos.append(codigo)
 
     resultado = consultar_indicadores_faturamento(
         filiais=filiais_resolvidas,

@@ -10,8 +10,8 @@ def test_executar_consulta_resolve_rca_por_nome(monkeypatch):
 
     monkeypatch.setattr(
         ft,
-        "resolver_codigo_rca",
-        lambda nome, filiais=None: 1901,
+        "resolver_codigos_rca",
+        lambda nome, filiais=None: [1901],
     )
     monkeypatch.setattr(
         ft,
@@ -50,9 +50,9 @@ def test_executar_consulta_passa_filial_resolvida_pro_resolver_rca(
 
     def fake_resolver(nome, filiais=None):
         chamadas_resolver.append(filiais)
-        return 1901
+        return [1901]
 
-    monkeypatch.setattr(ft, "resolver_codigo_rca", fake_resolver)
+    monkeypatch.setattr(ft, "resolver_codigos_rca", fake_resolver)
     monkeypatch.setattr(
         ft,
         "construir_mapa_rca_nome",
@@ -73,6 +73,42 @@ def test_executar_consulta_passa_filial_resolvida_pro_resolver_rca(
     )
 
     assert chamadas_resolver == [["FERRONORTE TIMON"]]
+
+
+def test_executar_consulta_sem_filial_soma_todos_os_codigos_do_rca(
+    monkeypatch,
+):
+    chamadas = []
+
+    def fake_consulta(**kwargs):
+        chamadas.append(kwargs)
+        return {"encontrado": True, "faturamento": 100.0}
+
+    monkeypatch.setattr(
+        ft,
+        "resolver_codigos_rca",
+        lambda nome, filiais=None: [8952, 4521],
+    )
+    monkeypatch.setattr(
+        ft,
+        "construir_mapa_rca_nome",
+        lambda: {8952: "Andre Alves-F09", 4521: "Andre Alves-F18"},
+    )
+    monkeypatch.setattr(
+        ft,
+        "consultar_indicadores_faturamento",
+        fake_consulta,
+    )
+
+    resultado = ft.executar_consulta_indicadores_faturamento(
+        {
+            "rcas": ["Andre Alves"],
+            "anos": [2025],
+        }
+    )
+
+    assert sorted(chamadas[0]["rcas"]) == [4521, 8952]
+    assert len(resultado["filtros_aplicados"]["rcas_identificados"]) == 2
 
 
 def test_executar_consulta_sem_rca_nao_resolve(monkeypatch):

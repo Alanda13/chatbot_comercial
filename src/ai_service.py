@@ -231,6 +231,16 @@ REGRAS PARA QUANDO A CONSULTA FOI FEITA POR RCA:
   e pergunta pelo RCA "da sua loja", mas pode querer o total depois.
   Exemplo de complemento: "Quer que eu consulte o faturamento total
   desse RCA em todas as filiais, ou de outra filial específica?"
+- Se "rcas_identificados" tiver MAIS DE UM item com o mesmo nome de
+  vendedor mas códigos diferentes, e NENHUMA filial específica tiver
+  sido informada em "filtros_aplicados", isso significa que o
+  sistema somou o faturamento de todos os RCAs com esse nome (um em
+  cada filial em que ele aparece), porque o usuário não restringiu a
+  uma loja. Deixe isso claro na resposta, citando quantas filiais
+  foram somadas, e ofereça consultar uma filial específica. Exemplo:
+  "O faturamento total do RCA André Alves, somando as 13 filiais em
+  que ele aparece, em 2025 foi de R$ ... . Quer que eu consulte só
+  uma filial específica?"
 
 REGRAS PARA QUANDO NÃO HÁ DADOS ("encontrado": false):
 - NUNCA repita literalmente o texto do campo "mensagem" retornado

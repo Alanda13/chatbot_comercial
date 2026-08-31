@@ -104,35 +104,38 @@ def construir_lista_rca() -> list[dict]:
     ]
 
 
-def resolver_codigo_rca(
+def resolver_codigos_rca(
     nome_ou_codigo: str | int,
     filiais: list[str] | None = None,
-) -> int:
+) -> list[int]:
     """
-    Resolve o código numérico de um RCA a partir do que o usuário
-    informou — o próprio código, ou o nome do vendedor (a IA nem
-    sempre sabe o código, então precisa poder buscar por nome).
+    Resolve o(s) código(s) numérico(s) de RCA a partir do que o
+    usuário informou — o próprio código, ou o nome do vendedor (a IA
+    nem sempre sabe o código, então precisa poder buscar por nome).
 
-    Como existem muitos vendedores, um nome curto ou parecido com
-    mais de um RCA (ex: "André" bate com "ANDRE ALVES" e "ANDREA
-    ALVES") não é resolvido "no chute": se houver mais de um RCA
-    correspondente, uma exceção clara é levantada, listando código
-    e filial de cada candidato, em vez de escolher um deles
-    silenciosamente.
-
-    Se a pergunta também informou uma ou mais filiais (ex: "o
-    faturamento do RCA André em Timon"), usa isso pra desambiguar
-    automaticamente antes de pedir o código — é o caso mais comum de
-    quem usa o chatbot (gerente perguntando pelo RCA da própria
-    loja).
+    Como existem muitos vendedores, o mesmo nome pode bater com mais
+    de um RCA (ex: "André Alves" existe com um código diferente em
+    cada filial em que atua):
+    - se uma filial foi informada na pergunta, ela é usada pra
+      restringir os candidatos automaticamente — é o caso mais
+      comum de quem usa o chatbot (gerente perguntando pelo RCA da
+      própria loja);
+    - se, mesmo assim, sobrar mais de um candidato, uma exceção
+      clara é levantada, listando código e filial de cada um, em vez
+      de escolher um deles silenciosamente;
+    - se NENHUMA filial foi informada, todos os códigos encontrados
+      para aquele nome são retornados juntos, para que a consulta
+      some o faturamento total desse RCA em todas as filiais em que
+      ele aparece — é o comportamento esperado quando o usuário não
+      restringe a busca a uma loja específica.
     """
     if isinstance(nome_ou_codigo, int):
-        return nome_ou_codigo
+        return [nome_ou_codigo]
 
     texto = str(nome_ou_codigo).strip()
 
     if texto.isdigit():
-        return int(texto)
+        return [int(texto)]
 
     rcas = construir_lista_rca()
 
@@ -156,18 +159,24 @@ def resolver_codigo_rca(
             candidatos = candidatos_na_filial
 
     if len(candidatos) == 1:
-        return candidatos[0]["codigo"]
+        return [candidatos[0]["codigo"]]
 
     if len(candidatos) > 1:
-        descricoes = ", ".join(
-            f"{candidato['nome']} (código {candidato['codigo']}, "
-            f"filial {candidato['filial']})"
-            for candidato in candidatos
-        )
-        raise ValueError(
-            f"Encontrei mais de um RCA parecido com '{nome_ou_codigo}': "
-            f"{descricoes}. Informe o código do RCA que deseja consultar."
-        )
+        if filiais:
+            descricoes = ", ".join(
+                f"{candidato['nome']} (código {candidato['codigo']}, "
+                f"filial {candidato['filial']})"
+                for candidato in candidatos
+            )
+            raise ValueError(
+                f"Encontrei mais de um RCA parecido com "
+                f"'{nome_ou_codigo}': {descricoes}. Informe o código "
+                "do RCA que deseja consultar."
+            )
+
+        # Nenhuma filial foi informada: soma o faturamento de todos
+        # os RCAs encontrados com esse nome.
+        return [candidato["codigo"] for candidato in candidatos]
 
     # Nenhuma correspondência direta por substring: tenta por
     # similaridade textual, para tolerar pequenos erros de digitação.
@@ -179,7 +188,7 @@ def resolver_codigo_rca(
     if nome_encontrado is not None:
         for rca in rcas:
             if rca["nome"] == nome_encontrado:
-                return rca["codigo"]
+                return [rca["codigo"]]
 
     raise ValueError(
         f"O RCA '{nome_ou_codigo}' não foi encontrado."
