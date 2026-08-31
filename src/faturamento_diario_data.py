@@ -104,7 +104,10 @@ def construir_lista_rca() -> list[dict]:
     ]
 
 
-def resolver_codigo_rca(nome_ou_codigo: str | int) -> int:
+def resolver_codigo_rca(
+    nome_ou_codigo: str | int,
+    filiais: list[str] | None = None,
+) -> int:
     """
     Resolve o código numérico de um RCA a partir do que o usuário
     informou — o próprio código, ou o nome do vendedor (a IA nem
@@ -116,6 +119,12 @@ def resolver_codigo_rca(nome_ou_codigo: str | int) -> int:
     correspondente, uma exceção clara é levantada, listando código
     e filial de cada candidato, em vez de escolher um deles
     silenciosamente.
+
+    Se a pergunta também informou uma ou mais filiais (ex: "o
+    faturamento do RCA André em Timon"), usa isso pra desambiguar
+    automaticamente antes de pedir o código — é o caso mais comum de
+    quem usa o chatbot (gerente perguntando pelo RCA da própria
+    loja).
     """
     if isinstance(nome_ou_codigo, int):
         return nome_ou_codigo
@@ -135,6 +144,16 @@ def resolver_codigo_rca(nome_ou_codigo: str | int) -> int:
         if nome_procurado in normalizar_nome_filial(rca["nome"])
         or normalizar_nome_filial(rca["nome"]) in nome_procurado
     ]
+
+    if len(candidatos) > 1 and filiais:
+        candidatos_na_filial = [
+            candidato
+            for candidato in candidatos
+            if candidato["filial"] in filiais
+        ]
+
+        if candidatos_na_filial:
+            candidatos = candidatos_na_filial
 
     if len(candidatos) == 1:
         return candidatos[0]["codigo"]

@@ -89,3 +89,54 @@ def test_resolver_codigo_rca_ambiguo_gera_erro_com_codigo_e_filial(
     assert "4521" in mensagem
     assert "FERRONORTE TIMON" in mensagem
     assert "FERRONORTE IMPERATRIZ" in mensagem
+
+
+def test_resolver_codigo_rca_desambigua_pela_filial(monkeypatch):
+    monkeypatch.setattr(
+        fdd,
+        "construir_lista_rca",
+        lambda: [
+            {
+                "codigo": 8952,
+                "nome": "ANDRE ALVES-F09",
+                "filial": "FERRONORTE TIMON",
+            },
+            {
+                "codigo": 4521,
+                "nome": "ANDRE ALVES-F18",
+                "filial": "FERRONORTE IMPERATRIZ",
+            },
+        ],
+    )
+
+    codigo = fdd.resolver_codigo_rca(
+        "Andre Alves",
+        filiais=["FERRONORTE TIMON"],
+    )
+
+    assert codigo == 8952
+
+
+def test_resolver_codigo_rca_ainda_ambiguo_mesmo_com_filial(monkeypatch):
+    monkeypatch.setattr(
+        fdd,
+        "construir_lista_rca",
+        lambda: [
+            {
+                "codigo": 8952,
+                "nome": "ANDRE ALVES-F09",
+                "filial": "FERRONORTE TIMON",
+            },
+            {
+                "codigo": 4521,
+                "nome": "ANDRE ALVES-F18",
+                "filial": "FERRONORTE IMPERATRIZ",
+            },
+        ],
+    )
+
+    with pytest.raises(ValueError):
+        fdd.resolver_codigo_rca(
+            "Andre Alves",
+            filiais=["FERRONORTE ARAGUAINA"],
+        )

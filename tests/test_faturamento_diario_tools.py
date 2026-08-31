@@ -50,7 +50,7 @@ def test_executar_consulta_resolve_rca_por_nome(monkeypatch):
     monkeypatch.setattr(
         fdt,
         "resolver_codigo_rca",
-        lambda nome: 1901,
+        lambda nome, filiais=None: 1901,
     )
     monkeypatch.setattr(
         fdt,

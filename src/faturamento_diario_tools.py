@@ -97,7 +97,10 @@ def executar_consulta_indicadores_faturamento_diario(
         rcas_resolvidos = []
 
         for rca in rcas:
-            codigo_resolvido = resolver_codigo_rca(rca)
+            codigo_resolvido = resolver_codigo_rca(
+                rca,
+                filiais=filiais_resolvidas,
+            )
 
             if codigo_resolvido not in rcas_resolvidos:
                 rcas_resolvidos.append(
