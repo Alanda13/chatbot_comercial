@@ -15,6 +15,8 @@ from src.faturamento_tools import (
 from src.faturamento_diario_tools import (
     executar_consulta_indicadores_faturamento_diario,
 )
+from src.metas_tools import executar_consultar_metas
+from src.meta_tonelada_tools import executar_consultar_meta_tonelada
 from src.filiais_tools import executar_listar_filiais
 from src.exceptions import FerramentaError
 
@@ -86,6 +88,52 @@ FERRAMENTAS_DISPONIVEIS = {
         "argumentos_obrigatorios": ["rca"],
         "argumentos_opcionais": ["filiais"],
         "funcao": executar_verificar_rca,
+    },
+
+    "consultar_metas": {
+        "descricao": (
+            "Ferramenta genérica para consultar indicadores de metas "
+            "de faturamento (R$) por mês e/ou ano, usando os dados de "
+            "meta e realizado da rotina 8280. Pode consultar a empresa "
+            "inteira, uma ou várias filiais, um ou vários RCAs, um ou "
+            "vários supervisores. Use esta ferramenta para valor da "
+            "meta de faturamento, faturamento realizado, percentual "
+            "de atingimento, quanto falta para bater a meta, "
+            "necessidade diária de venda e comparações com "
+            "meses/anos anteriores. NÃO use esta ferramenta para meta "
+            "de tonelada/peso — veja 'consultar_meta_tonelada'."
+        ),
+        "argumentos_obrigatorios": [],
+        "argumentos_opcionais": [
+            "filiais",
+            "rcas",
+            "supervisores",
+            "meses",
+            "anos",
+            "agrupar_por",
+        ],
+        "funcao": executar_consultar_metas,
+    },
+
+    "consultar_meta_tonelada": {
+        "descricao": (
+            "Ferramenta para consultar a META de tonelada/peso (o "
+            "alvo/objetivo definido, NÃO o volume vendido de "
+            "verdade), usando dados exportados do TARGIT. Pode "
+            "consultar por filial e/ou RCA (por nome) e período. "
+            "Essa ferramenta NÃO tem o volume REALIZADO em toneladas "
+            "— para o volume vendido de fato, use "
+            "'consultar_indicadores_faturamento' (campo 'toneladas')."
+        ),
+        "argumentos_obrigatorios": [],
+        "argumentos_opcionais": [
+            "filiais",
+            "rcas",
+            "meses",
+            "anos",
+            "agrupar_por",
+        ],
+        "funcao": executar_consultar_meta_tonelada,
     },
 
     "consultar_indicadores_faturamento_diario": {

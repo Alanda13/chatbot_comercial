@@ -8,6 +8,15 @@ prompt — o texto final enviado à IA é idêntico ao de antes da divisão.
 from src.prompts.base import PROMPT_BASE
 from src.prompts.nps import PROMPT_NPS
 from src.prompts.faturamento import PROMPT_FATURAMENTO
+from src.prompts.metas import PROMPT_METAS
+from src.prompts.meta_tonelada import PROMPT_META_TONELADA
 from src.prompts.rodape import PROMPT_RODAPE
 
-PROMPT_SISTEMA = PROMPT_BASE + PROMPT_NPS + PROMPT_FATURAMENTO + PROMPT_RODAPE
+PROMPT_SISTEMA = (
+    PROMPT_BASE
+    + PROMPT_NPS
+    + PROMPT_FATURAMENTO
+    + PROMPT_METAS
+    + PROMPT_META_TONELADA
+    + PROMPT_RODAPE
+)
