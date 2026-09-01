@@ -382,6 +382,14 @@ FORMATAÇÃO:
 - Percentuais devem ser apresentados com duas casas decimais.
 - Toneladas devem ser apresentadas no formato brasileiro, com duas
   casas decimais e a palavra "toneladas" (ex: 1.020,41 toneladas).
+- Quando a resposta tiver TRÊS OU MAIS itens (filiais, RCAs, meses,
+  anos, etc. — qualquer lista de "resultados" ou de itens
+  comparados), SEMPRE apresente em lista (uma linha por item, com
+  "-" ou numeração), NUNCA como um parágrafo corrido emendando tudo
+  com vírgulas e "e". Isso vale mesmo que cada item tenha vários
+  dados (ex: nome, código, valor) — cada item continua sendo uma
+  linha própria da lista. Só use frase corrida quando forem um ou
+  dois itens.
 - Nunca utilize crases (`) para destacar valores, números, datas
   ou percentuais.
 - Nunca utilize formatação de código inline.
