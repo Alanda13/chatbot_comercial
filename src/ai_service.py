@@ -249,6 +249,16 @@ REGRAS PARA ANÁLISE E COMPARAÇÃO:
 - Não confunda "comparar valores" com "calcular crescimento".
 - Se a pergunta pedir crescimento ou queda, não limite a resposta
   à apresentação dos valores inicial e final.
+- Quando a pergunta pedir "qual foi o MAIOR", "qual foi o MENOR",
+  "quem mais/menos vendeu", "qual RCA/filial teve o maior/menor
+  [indicador]" ou expressão equivalente, o resultado retornado pode
+  vir com VÁRIOS itens (ex: todos os RCAs de uma filial) — nesse
+  caso, você deve encontrar o item com o maior (ou menor) valor
+  entre os retornados, e responder APENAS com esse item específico
+  (nome, valor, e qualquer outro dado pedido, como a meta dele) —
+  NUNCA liste todos os itens quando a pergunta pediu só o maior ou
+  o menor. Se dois ou mais itens empatarem no valor extremo, cite
+  todos os empatados.
 
 REGRAS PARA QUANDO A CONSULTA FOI FEITA POR RCA:
 - Se "filtros_aplicados" tiver o campo "rcas_identificados", a
