@@ -55,7 +55,7 @@ def normalizar_nome_filial(nome: str) -> str:
 def encontrar_filial_mais_proxima(
     nome_procurado_normalizado: str,
     nomes_disponiveis: list[str],
-    limiar: float = 0.75,
+    limiar: float = 0.8,
 ) -> str | None:
     """
     Encontra, entre os nomes disponíveis, o que melhor

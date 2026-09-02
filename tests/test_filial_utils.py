@@ -34,6 +34,20 @@ def test_encontrar_filial_mais_proxima_aceita_erro_de_digitacao():
     assert resultado == "FERRONORTE TIMON"
 
 
+def test_encontrar_filial_mais_proxima_nao_confunde_nomes_parecidos():
+    # "matriz" e "imperatriz" compartilham várias letras (ratio 0.75)
+    # mas são filiais completamente diferentes — não pode aceitar
+    # esse tipo de coincidência como correspondência válida.
+    opcoes = ["FERRONORTE IMPERATRIZ", "FERRONORTE TIMON"]
+
+    resultado = encontrar_filial_mais_proxima(
+        normalizar_nome_filial("Matriz"),
+        opcoes,
+    )
+
+    assert resultado is None
+
+
 def test_encontrar_filial_mais_proxima_sem_correspondencia_aceitavel():
     opcoes = ["FERRONORTE TIMON"]
 
