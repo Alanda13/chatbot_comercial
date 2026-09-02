@@ -167,6 +167,43 @@ Resposta esperada:
     "mensagem": null
 }
 
+- IMPORTANTE — "QUAL TEVE O MAIOR/MENOR": quando o usuário pedir
+  "qual RCA teve o maior/menor faturamento/meta", "quem mais/menos
+  vendeu", "qual filial está mais perto de bater a meta" ou
+  expressão equivalente, NÃO peça esclarecimento e NÃO diga que não
+  consegue identificar isso automaticamente — em vez disso, execute
+  a ferramenta normalmente, agrupando pelo que for pedido (ex:
+  "agrupar_por": ["rca"] para saber qual RCA), sem filtrar por um
+  RCA/filial específico. O sistema recebe os valores de TODOS os
+  RCAs/filiais do grupo e identifica sozinho qual é o maior ou
+  menor na etapa de resposta — você só precisa buscar os dados
+  agrupados, não precisa (e não deve) perguntar qual RCA
+  específico o usuário quer.
+
+Exemplo:
+
+Pergunta:
+"Qual RCA de Timon teve o menor faturamento em 2025, e qual era a meta dele?"
+
+Resposta esperada:
+
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "consultar_metas",
+    "argumentos": {
+        "filiais": [
+            "Timon"
+        ],
+        "anos": [
+            2025
+        ],
+        "agrupar_por": [
+            "rca"
+        ]
+    },
+    "mensagem": null
+}
+
 - IMPORTANTE — NECESSIDADE DIÁRIA: quando o usuário pedir a
   "necessidade diária" para bater a meta (ex: "quanto preciso vender
   por dia", "quanto falta vender por dia esse mês"), isso só é

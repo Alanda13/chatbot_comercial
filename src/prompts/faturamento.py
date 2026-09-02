@@ -226,6 +226,42 @@ Resposta esperada:
   - "mes"
   - "ano"
 
+- IMPORTANTE — "QUAL TEVE O MAIOR/MENOR": quando o usuário pedir
+  "qual RCA/filial teve o maior/menor faturamento", "quem mais/menos
+  vendeu" ou expressão equivalente, NÃO peça esclarecimento e NÃO
+  diga que não consegue identificar isso automaticamente — em vez
+  disso, execute a ferramenta normalmente, agrupando pelo que for
+  pedido (ex: "agrupar_por": ["rca"] para saber qual RCA), sem
+  filtrar por um RCA/filial específico. O sistema recebe os valores
+  de TODOS os RCAs/filiais do grupo e identifica sozinho qual é o
+  maior ou menor na etapa de resposta — você só precisa buscar os
+  dados agrupados, não precisa (e não deve) perguntar qual
+  RCA/filial específico o usuário quer.
+
+Exemplo:
+
+Pergunta:
+"Qual RCA de Timon teve o maior faturamento em 2025?"
+
+Resposta esperada:
+
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "consultar_indicadores_faturamento",
+    "argumentos": {
+        "filiais": [
+            "Timon"
+        ],
+        "anos": [
+            2025
+        ],
+        "agrupar_por": [
+            "rca"
+        ]
+    },
+    "mensagem": null
+}
+
 Exemplo:
 
 Pergunta:
