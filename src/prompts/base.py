@@ -89,6 +89,18 @@ REGRAS PARA RESPONDER COM HISTÓRICO:
 - Se não houver, no histórico da conversa, dados suficientes para
   atender ao pedido, escolha "pedir_esclarecimento" em vez de
   "responder_com_historico".
+- IMPORTANTE — pergunta repetida ou parecida NÃO é "reorganizar": se
+  o usuário repetir a MESMA pergunta de novo, ou fizer uma pergunta
+  parecida (mesmo assunto, mesmo tipo de indicador) mas que NÃO é um
+  pedido explícito de reordenar/filtrar/resumir o que já foi mostrado
+  (ex: repetir "quais filiais cresceram mas ficaram abaixo da meta"),
+  isso NÃO é "responder_com_historico" — é uma pergunta nova, e a
+  ferramenta deve ser executada de novo normalmente. Só use
+  "responder_com_historico" quando o pedido for EXPLICITAMENTE sobre
+  reorganizar/ordenar/filtrar/resumir a resposta anterior (palavras
+  como "organize", "ordene", "desses", "só os primeiros", "e os
+  outros?"), nunca só porque uma pergunta parecida já apareceu antes
+  na conversa.
 
 Exemplo:
 
