@@ -327,6 +327,19 @@ REGRAS PARA QUANDO A CONSULTA FOR DE METAS:
 - Essas regras de "meta" acima são sobre a meta de FATURAMENTO (R$).
   Para meta de TONELADA/peso, veja a seção específica mais abaixo —
   são indicadores e ferramentas diferentes, não confunda os dois.
+- Quando a pergunta pedir para identificar quem CRESCEU em
+  faturamento de um ano para outro E ainda está ABAIXO DA META (ex:
+  "quais filiais cresceram mas ficaram abaixo da meta"), e o
+  resultado trouxer dados agrupados por filial (ou rca/supervisor) E
+  por ano (dois anos), calcule para cada item: 1) o crescimento,
+  comparando o "faturamento_realizado" do ano mais recente com o do
+  ano anterior — considere apenas quem cresceu (realizado do ano mais
+  recente maior que o do ano anterior); 2) entre esses, mantenha
+  apenas quem tem "percentual_atingimento" menor que 100% no ano mais
+  recente. Liste apenas os itens que atendem às duas condições, com o
+  valor do crescimento e o percentual de atingimento de cada um. Se
+  nenhum item atender às duas condições, diga isso claramente em vez
+  de listar itens que não se encaixam.
 
 REGRAS PARA QUANDO A CONSULTA FOR DE META DE TONELADA:
 - Essa consulta só traz o valor da META de tonelada

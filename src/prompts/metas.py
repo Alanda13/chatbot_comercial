@@ -204,6 +204,44 @@ Resposta esperada:
     "mensagem": null
 }
 
+- IMPORTANTE — "CRESCEU MAS FICOU ABAIXO DA META": quando o usuário
+  pedir para identificar filiais (ou RCAs/supervisores) que CRESCERAM
+  em faturamento de um ano para o outro E que AINDA ESTÃO ABAIXO DA
+  META (ex: "quais filiais cresceram mas não bateram a meta", "quem
+  melhorou mas ainda não atingiu a meta"), NÃO recuse e NÃO diga que
+  faltam dados do ano anterior — em vez disso, execute a ferramenta
+  pedindo OS DOIS ANOS de uma vez, agrupando por filial (ou rca/
+  supervisor) E por ano ao mesmo tempo (ex: "agrupar_por": ["filial",
+  "ano"], "anos": [ano_anterior, ano_atual]). Os dados retornados vão
+  trazer o faturamento realizado e o percentual de atingimento de
+  cada filial em cada um dos dois anos, o que é suficiente para
+  calcular o crescimento e verificar quem ainda ficou abaixo da meta
+  na etapa de resposta — você só precisa buscar os dados agrupados
+  pelos dois anos.
+
+Exemplo:
+
+Pergunta:
+"Quais filiais cresceram em faturamento de 2024 para 2025, mas ainda ficaram abaixo da meta?"
+
+Resposta esperada:
+
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "consultar_metas",
+    "argumentos": {
+        "anos": [
+            2024,
+            2025
+        ],
+        "agrupar_por": [
+            "filial",
+            "ano"
+        ]
+    },
+    "mensagem": null
+}
+
 - IMPORTANTE — NECESSIDADE DIÁRIA: quando o usuário pedir a
   "necessidade diária" para bater a meta (ex: "quanto preciso vender
   por dia", "quanto falta vender por dia esse mês"), isso só é
