@@ -336,10 +336,13 @@ REGRAS PARA QUANDO A CONSULTA FOR DE METAS:
   "crescimento_percentual", comparando "faturamento_realizado" com
   "faturamento_realizado_ano_anterior") e o "percentual_atingimento".
   Se "resultados" vier vazio, diga claramente que nenhum item cresceu
-  e continuou abaixo da meta nesse período — NÃO invente itens. Se o
-  campo "cresceram_sem_meta_cadastrada" vier com itens, cite-os à
-  parte (claramente identificados como "sem meta cadastrada"), nunca
-  misturados com a lista principal.
+  e continuou abaixo da meta nesse período — NÃO invente itens. NÃO
+  mencione o campo "cresceram_sem_meta_cadastrada" na resposta — ele
+  não responde à pergunta feita (filial sem meta cadastrada não pode
+  ser classificada como "abaixo da meta"), só cite essa lista se o
+  usuário pedir explicitamente para saber quais filiais cresceram mas
+  não têm meta cadastrada — nesse caso, cite-a claramente identificada
+  como "sem meta cadastrada", nunca misturada com a lista principal.
 
 REGRAS PARA QUANDO A CONSULTA FOR DE META DE TONELADA:
 - Essa consulta só traz o valor da META de tonelada
