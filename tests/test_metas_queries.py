@@ -197,6 +197,149 @@ def test_consultar_metas_inclui_necessidade_diaria_no_mes_atual(
     assert resultado["necessidade_diaria"] == round(20000.0 / 4, 2)
 
 
+def _dados_crescimento_abaixo_meta():
+    return pd.DataFrame(
+        [
+            # FILIAL A: cresceu (100k -> 120k) e ficou abaixo da
+            # meta em 2025 (120k / 150k = 80%) -> deve aparecer.
+            {
+                "FILIAL": "FILIAL A",
+                "COD_RCA": 1,
+                "COD_SUPERVISOR": 1,
+                "MES": 1,
+                "ANO": 2024,
+                "VENDA_LIQ": 100000.0,
+                "VALOR_META": 100000.0,
+            },
+            {
+                "FILIAL": "FILIAL A",
+                "COD_RCA": 1,
+                "COD_SUPERVISOR": 1,
+                "MES": 1,
+                "ANO": 2025,
+                "VENDA_LIQ": 120000.0,
+                "VALOR_META": 150000.0,
+            },
+            # FILIAL B: cresceu (100k -> 150k) mas JÁ bateu a meta em
+            # 2025 (150k / 100k = 150%) -> NÃO deve aparecer.
+            {
+                "FILIAL": "FILIAL B",
+                "COD_RCA": 2,
+                "COD_SUPERVISOR": 1,
+                "MES": 1,
+                "ANO": 2024,
+                "VENDA_LIQ": 100000.0,
+                "VALOR_META": 100000.0,
+            },
+            {
+                "FILIAL": "FILIAL B",
+                "COD_RCA": 2,
+                "COD_SUPERVISOR": 1,
+                "MES": 1,
+                "ANO": 2025,
+                "VENDA_LIQ": 150000.0,
+                "VALOR_META": 100000.0,
+            },
+            # FILIAL C: caiu (200k -> 150k) -> NÃO deve aparecer,
+            # mesmo estando abaixo da meta.
+            {
+                "FILIAL": "FILIAL C",
+                "COD_RCA": 3,
+                "COD_SUPERVISOR": 1,
+                "MES": 1,
+                "ANO": 2024,
+                "VENDA_LIQ": 200000.0,
+                "VALOR_META": 200000.0,
+            },
+            {
+                "FILIAL": "FILIAL C",
+                "COD_RCA": 3,
+                "COD_SUPERVISOR": 1,
+                "MES": 1,
+                "ANO": 2025,
+                "VENDA_LIQ": 150000.0,
+                "VALOR_META": 200000.0,
+            },
+            # FILIAL D: só tem dado em 2025 (sem ano anterior) -> NÃO
+            # deve aparecer, não dá pra calcular crescimento.
+            {
+                "FILIAL": "FILIAL D",
+                "COD_RCA": 4,
+                "COD_SUPERVISOR": 1,
+                "MES": 1,
+                "ANO": 2025,
+                "VENDA_LIQ": 80000.0,
+                "VALOR_META": 100000.0,
+            },
+            # FILIAL E: cresceu (50k -> 80k) mas sem meta cadastrada
+            # em 2025 (VALOR_META 0) -> vai pra lista separada.
+            {
+                "FILIAL": "FILIAL E",
+                "COD_RCA": 5,
+                "COD_SUPERVISOR": 1,
+                "MES": 1,
+                "ANO": 2024,
+                "VENDA_LIQ": 50000.0,
+                "VALOR_META": 0.0,
+            },
+            {
+                "FILIAL": "FILIAL E",
+                "COD_RCA": 5,
+                "COD_SUPERVISOR": 1,
+                "MES": 1,
+                "ANO": 2025,
+                "VENDA_LIQ": 80000.0,
+                "VALOR_META": 0.0,
+            },
+        ]
+    )
+
+
+def test_consultar_crescimento_abaixo_meta_filtra_corretamente(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        mq,
+        "carregar_faturamento_8280",
+        lambda: _dados_crescimento_abaixo_meta(),
+    )
+    monkeypatch.setattr(mq, "construir_mapa_rca_nome", lambda: {})
+    monkeypatch.setattr(mq, "construir_lista_supervisores", lambda: [])
+
+    resultado = mq.consultar_crescimento_abaixo_meta(ano=2025)
+
+    assert resultado["encontrado"] is True
+
+    filiais_no_resultado = {
+        item["filial"] for item in resultado["resultados"]
+    }
+    assert filiais_no_resultado == {"FILIAL A"}
+
+    item_a = resultado["resultados"][0]
+    assert item_a["faturamento_realizado_ano_anterior"] == 100000.0
+    assert item_a["faturamento_realizado"] == 120000.0
+    assert item_a["crescimento_valor"] == 20000.0
+    assert item_a["percentual_atingimento"] == 80.0
+
+    filiais_sem_meta = {
+        item["filial"]
+        for item in resultado["cresceram_sem_meta_cadastrada"]
+    }
+    assert filiais_sem_meta == {"FILIAL E"}
+
+
+def test_consultar_crescimento_abaixo_meta_sem_dado_ano_atual(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        mq, "carregar_faturamento_8280", lambda: _dados_teste()
+    )
+
+    resultado = mq.consultar_crescimento_abaixo_meta(ano=2019)
+
+    assert resultado["encontrado"] is False
+
+
 def test_consultar_metas_sem_necessidade_diaria_fora_do_mes_atual(
     monkeypatch,
 ):

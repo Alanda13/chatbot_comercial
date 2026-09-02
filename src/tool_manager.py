@@ -15,7 +15,10 @@ from src.faturamento_tools import (
 from src.faturamento_diario_tools import (
     executar_consulta_indicadores_faturamento_diario,
 )
-from src.metas_tools import executar_consultar_metas
+from src.metas_tools import (
+    executar_consultar_metas,
+    executar_consultar_crescimento_abaixo_meta,
+)
 from src.meta_tonelada_tools import executar_consultar_meta_tonelada
 from src.filiais_tools import executar_listar_filiais
 from src.exceptions import FerramentaError
@@ -113,6 +116,29 @@ FERRAMENTAS_DISPONIVEIS = {
             "agrupar_por",
         ],
         "funcao": executar_consultar_metas,
+    },
+
+    "consultar_crescimento_abaixo_meta": {
+        "descricao": (
+            "Ferramenta para identificar quais filiais (ou RCAs/"
+            "supervisores) CRESCERAM em faturamento em relação ao ano "
+            "anterior e AINDA ESTÃO ABAIXO DA META no ano informado "
+            "(ex: 'quais filiais cresceram mas ficaram abaixo da "
+            "meta'). O cálculo de crescimento e o filtro de quem está "
+            "abaixo da meta são feitos de forma exata pelo sistema, "
+            "não pela IA. Use SEMPRE esta ferramenta para esse tipo "
+            "de pergunta, em vez de 'consultar_metas' — não tente "
+            "calcular esse filtro sozinho a partir dos dados de "
+            "'consultar_metas'."
+        ),
+        "argumentos_obrigatorios": ["ano"],
+        "argumentos_opcionais": [
+            "filiais",
+            "rcas",
+            "supervisores",
+            "agrupar_por",
+        ],
+        "funcao": executar_consultar_crescimento_abaixo_meta,
     },
 
     "consultar_meta_tonelada": {

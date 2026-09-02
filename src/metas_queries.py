@@ -231,3 +231,118 @@ def consultar_metas(
         "agrupar_por": agrupar_por,
         "resultados": resultados,
     }
+
+
+def consultar_crescimento_abaixo_meta(
+    ano: int,
+    filiais: list[str] | None = None,
+    rcas: list[int] | None = None,
+    supervisores: list[int] | None = None,
+    agrupar_por: str = "filial",
+) -> dict:
+    """
+    Identifica filiais/RCAs/supervisores que CRESCERAM em faturamento
+    em relação ao ano anterior e AINDA estão abaixo da meta no ano
+    informado.
+
+    O filtro (cresceu E está abaixo de 100% de atingimento) é
+    calculado aqui, em Python, de forma determinística — não é
+    deixado a cargo da IA, porque envolve comparar dois anos e
+    aplicar dois critérios numéricos ao mesmo tempo sobre uma lista
+    de itens, o que a IA não faz de forma confiável.
+    """
+    if agrupar_por not in ("filial", "rca", "supervisor"):
+        raise ValueError(f"Agrupamento inválido: '{agrupar_por}'.")
+
+    ano_anterior = ano - 1
+
+    filtros_aplicados = {
+        "filiais": filiais,
+        "rcas": rcas,
+        "supervisores": supervisores,
+        "ano": ano,
+        "ano_anterior": ano_anterior,
+        "agrupar_por": agrupar_por,
+    }
+
+    resultado_atual = consultar_metas(
+        filiais=filiais,
+        rcas=rcas,
+        supervisores=supervisores,
+        anos=[ano],
+        agrupar_por=[agrupar_por],
+    )
+
+    if not resultado_atual.get("encontrado"):
+        return {
+            "encontrado": False,
+            "filtros_aplicados": filtros_aplicados,
+            "mensagem": (
+                f"Nenhuma meta encontrada para o ano de {ano}."
+            ),
+        }
+
+    resultado_anterior = consultar_metas(
+        filiais=filiais,
+        rcas=rcas,
+        supervisores=supervisores,
+        anos=[ano_anterior],
+        agrupar_por=[agrupar_por],
+    )
+
+    realizado_anterior_por_chave = {}
+
+    if resultado_anterior.get("encontrado"):
+        for item in resultado_anterior["resultados"]:
+            realizado_anterior_por_chave[item[agrupar_por]] = (
+                item["faturamento_realizado"]
+            )
+
+    cresceram_abaixo_meta = []
+    cresceram_sem_meta_cadastrada = []
+
+    for item in resultado_atual["resultados"]:
+        chave = item[agrupar_por]
+        realizado_atual = item["faturamento_realizado"]
+        realizado_ant = realizado_anterior_por_chave.get(chave)
+
+        if realizado_ant is None or realizado_atual <= realizado_ant:
+            continue
+
+        crescimento_valor = round(realizado_atual - realizado_ant, 2)
+        crescimento_percentual = (
+            round(crescimento_valor / realizado_ant * 100, 2)
+            if realizado_ant
+            else None
+        )
+        percentual_atingimento = item["percentual_atingimento"]
+
+        item_resultado = {
+            agrupar_por: chave,
+            "faturamento_realizado_ano_anterior": realizado_ant,
+            "faturamento_realizado": realizado_atual,
+            "crescimento_valor": crescimento_valor,
+            "crescimento_percentual": crescimento_percentual,
+            "valor_meta": item["valor_meta"],
+            "percentual_atingimento": percentual_atingimento,
+        }
+
+        if agrupar_por == "rca":
+            item_resultado["rca_nome"] = item.get("rca_nome")
+
+        if agrupar_por == "supervisor":
+            item_resultado["supervisor_nome"] = item.get(
+                "supervisor_nome"
+            )
+
+        if percentual_atingimento is None:
+            cresceram_sem_meta_cadastrada.append(item_resultado)
+        elif percentual_atingimento < 100:
+            cresceram_abaixo_meta.append(item_resultado)
+
+    return {
+        "encontrado": True,
+        "filtros_aplicados": filtros_aplicados,
+        "resultados": cresceram_abaixo_meta,
+        "cresceram_sem_meta_cadastrada": cresceram_sem_meta_cadastrada,
+    }

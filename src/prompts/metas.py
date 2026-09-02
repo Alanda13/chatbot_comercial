@@ -208,24 +208,17 @@ Resposta esperada:
   pedir para identificar filiais (ou RCAs/supervisores) que CRESCERAM
   em faturamento de um ano para o outro E que AINDA ESTÃO ABAIXO DA
   META (ex: "quais filiais cresceram mas não bateram a meta", "quem
-  melhorou mas ainda não atingiu a meta"), NÃO recuse e NÃO diga que
-  faltam dados do ano anterior — em vez disso, execute a ferramenta
-  pedindo OS DOIS ANOS de uma vez, agrupando por filial (ou rca/
-  supervisor) E por ano ao mesmo tempo (ex: "agrupar_por": ["filial",
-  "ano"], "anos": [ano_anterior, ano_atual]). Os dados retornados vão
-  trazer o faturamento realizado e o percentual de atingimento de
-  cada filial em cada um dos dois anos, o que é suficiente para
-  calcular o crescimento e verificar quem ainda ficou abaixo da meta
-  na etapa de resposta — você só precisa buscar os dados agrupados
-  pelos dois anos.
-
-- Se o usuário mencionar SOMENTE UM ano nesse tipo de pergunta (ex:
-  "quais filiais cresceram em faturamento em 2025, mas ainda ficaram
-  abaixo da meta?"), entenda que ele quer dizer "cresceram em relação
-  ao ano anterior" — envie "anos" com esse ano E o ano imediatamente
-  anterior (ano informado − 1), mesmo sem o usuário citar o ano
-  anterior explicitamente. NÃO peça esclarecimento sobre qual é o
-  "ano anterior" nesse caso — é sempre o ano informado menos um.
+  melhorou mas ainda não atingiu a meta"), use a ferramenta
+  "consultar_crescimento_abaixo_meta" — NUNCA "consultar_metas" para
+  esse tipo de pergunta. Essa ferramenta já calcula o crescimento e
+  filtra quem está abaixo da meta de forma exata; NÃO recuse e NÃO
+  diga que faltam dados do ano anterior.
+- Envie "ano" com o ano mais recente perguntado (o sistema compara
+  automaticamente com o ano anterior). Se o usuário citar os dois
+  anos (ex: "de 2024 para 2025"), envie apenas o mais recente em
+  "ano" (2025) — não é preciso enviar os dois.
+- Use "agrupar_por" (uma única string, não lista) para escolher entre
+  "filial" (padrão), "rca" ou "supervisor".
 
 Exemplo:
 
@@ -236,16 +229,9 @@ Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_metas",
+    "ferramenta": "consultar_crescimento_abaixo_meta",
     "argumentos": {
-        "anos": [
-            2024,
-            2025
-        ],
-        "agrupar_por": [
-            "filial",
-            "ano"
-        ]
+        "ano": 2025
     },
     "mensagem": null
 }
@@ -259,16 +245,9 @@ Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_metas",
+    "ferramenta": "consultar_crescimento_abaixo_meta",
     "argumentos": {
-        "anos": [
-            2024,
-            2025
-        ],
-        "agrupar_por": [
-            "filial",
-            "ano"
-        ]
+        "ano": 2025
     },
     "mensagem": null
 }

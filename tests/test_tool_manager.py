@@ -22,6 +22,12 @@ def test_ferramenta_existe():
     assert (
         tool_manager.ferramenta_existe("consultar_meta_tonelada") is True
     )
+    assert (
+        tool_manager.ferramenta_existe(
+            "consultar_crescimento_abaixo_meta"
+        )
+        is True
+    )
     assert tool_manager.ferramenta_existe("nao_existe") is False
 
 

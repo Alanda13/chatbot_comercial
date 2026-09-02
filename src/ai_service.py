@@ -327,32 +327,19 @@ REGRAS PARA QUANDO A CONSULTA FOR DE METAS:
 - Essas regras de "meta" acima são sobre a meta de FATURAMENTO (R$).
   Para meta de TONELADA/peso, veja a seção específica mais abaixo —
   são indicadores e ferramentas diferentes, não confunda os dois.
-- Quando a pergunta pedir para identificar quem CRESCEU em
-  faturamento de um ano para outro E ainda está ABAIXO DA META (ex:
-  "quais filiais cresceram mas ficaram abaixo da meta"), e o
-  resultado trouxer dados agrupados por filial (ou rca/supervisor) E
-  por ano (dois anos), faça o filtro ANTES de escrever a resposta — a
-  lista final deve conter APENAS os itens que atendem aos DOIS
-  critérios ao mesmo tempo:
-  1. CRESCEU: "faturamento_realizado" do ano mais recente MAIOR que o
-     do ano anterior.
-  2. AINDA ABAIXO DA META: "percentual_atingimento" do ano mais
-     recente é um número MENOR que 100 (não vazio/null).
-  - NUNCA inclua na lista um item cujo "percentual_atingimento" seja
-    MAIOR OU IGUAL a 100 — mesmo que ele tenha crescido, ele já bateu
-    a meta e não se encaixa no pedido, então não deve aparecer, nem
-    em uma nota, ressalva ou parênteses explicando o porquê.
-  - Itens com "percentual_atingimento" vazio/null (sem meta
-    cadastrada naquele ano) também NÃO entram nessa lista, pois não é
-    possível confirmar que estão abaixo da meta sem uma meta
-    cadastrada. Se quiser, cite-os à parte, claramente identificados
-    como "sem meta cadastrada" — nunca misturados com os que estão
-    comprovadamente abaixo da meta.
-  - Para cada item da lista final, informe o valor do crescimento e o
-    percentual de atingimento.
-  - Se nenhum item atender às duas condições, diga isso claramente
-    (ex: "Nenhuma filial cresceu e ainda ficou abaixo da meta") — não
-    liste itens que não se encaixam só para preencher a resposta.
+- Se a ferramenta usada foi "consultar_crescimento_abaixo_meta", o
+  filtro (quem cresceu e ainda está abaixo da meta) JÁ foi calculado
+  pelo sistema, não por você — a lista em "resultados" já contém
+  APENAS os itens que atendem aos dois critérios. NÃO recalcule, não
+  remova, não adicione e não questione esses itens — apenas apresente
+  cada um com o crescimento ("crescimento_valor"/
+  "crescimento_percentual", comparando "faturamento_realizado" com
+  "faturamento_realizado_ano_anterior") e o "percentual_atingimento".
+  Se "resultados" vier vazio, diga claramente que nenhum item cresceu
+  e continuou abaixo da meta nesse período — NÃO invente itens. Se o
+  campo "cresceram_sem_meta_cadastrada" vier com itens, cite-os à
+  parte (claramente identificados como "sem meta cadastrada"), nunca
+  misturados com a lista principal.
 
 REGRAS PARA QUANDO A CONSULTA FOR DE META DE TONELADA:
 - Essa consulta só traz o valor da META de tonelada
