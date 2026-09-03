@@ -55,6 +55,34 @@ def test_executar_consulta_indicadores_nps_repassa_agrupar_por_ano(
     assert chamadas[0]["filiais"] == ["FERRONORTE TIMON"]
 
 
+def test_executar_consulta_indicadores_nps_repassa_agrupar_por_mes(
+    monkeypatch,
+):
+    chamadas = []
+
+    monkeypatch.setattr(
+        nt,
+        "obter_nps_por_filial",
+        lambda: [{"filial": "FERRONORTE TIMON"}],
+    )
+    monkeypatch.setattr(
+        nt,
+        "consultar_indicadores_nps",
+        lambda **kwargs: chamadas.append(kwargs) or {"resultados": []},
+    )
+
+    nt.executar_consulta_indicadores_nps(
+        {
+            "filiais": ["Timon"],
+            "agrupar_por_mes": True,
+            "ano": 2025,
+        }
+    )
+
+    assert chamadas[0]["agrupar_por_mes"] is True
+    assert chamadas[0]["ano"] == 2025
+
+
 def test_executar_consulta_indicadores_nps_padrao_nao_agrupa(
     monkeypatch,
 ):

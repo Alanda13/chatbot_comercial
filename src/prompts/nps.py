@@ -98,6 +98,37 @@ Resposta esperada:
     "mensagem": null
 }
 
+- IMPORTANTE — "MÊS A MÊS" / VÁRIOS MESES DE UM ANO: quando o usuário
+  pedir o NPS "mês a mês", "por mês", "liste os meses", ou nomear
+  vários meses de um mesmo ano (ex: "em janeiro, fevereiro e março de
+  2025"), NÃO monte a lista de "periodos" manualmente calculando a
+  data final de cada mês — em vez disso, envie "agrupar_por_mes":
+  true junto com "ano" (o ano desejado). O sistema monta os 12
+  períodos mensais sozinho, de forma exata, e retorna o NPS de cada
+  mês do ano — mesmo que o usuário tenha citado só alguns meses
+  específicos, envie o ano inteiro (é mais simples e a resposta pode
+  filtrar só os meses pedidos).
+
+Exemplo:
+
+Pergunta:
+"Como ficou o NPS de Timon mês a mês em 2025?"
+
+Resposta esperada:
+
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "consultar_indicadores_nps",
+    "argumentos": {
+        "filiais": [
+            "Timon"
+        ],
+        "agrupar_por_mes": true,
+        "ano": 2025
+    },
+    "mensagem": null
+}
+
 Exemplo com uma filial e dois períodos:
 
 Pergunta:

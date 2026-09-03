@@ -33,6 +33,10 @@ def executar_consulta_indicadores_nps(argumentos: dict) -> dict:
     agrupar_por_ano = bool(
         argumentos.get("agrupar_por_ano")
     )
+    agrupar_por_mes = bool(
+        argumentos.get("agrupar_por_mes")
+    )
+    ano = argumentos.get("ano")
 
     # Se nenhuma filial foi informada,
     # consulta a empresa inteira (ou todas as filiais
@@ -43,6 +47,8 @@ def executar_consulta_indicadores_nps(argumentos: dict) -> dict:
             periodos=periodos,
             agrupar_por_filial=agrupar_por_filial,
             agrupar_por_ano=agrupar_por_ano,
+            agrupar_por_mes=agrupar_por_mes,
+            ano=ano,
         )
 
     # Garante que sempre trabalharemos com uma lista.
@@ -83,4 +89,6 @@ def executar_consulta_indicadores_nps(argumentos: dict) -> dict:
         filiais=filiais_encontradas,
         periodos=periodos,
         agrupar_por_ano=agrupar_por_ano,
+        agrupar_por_mes=agrupar_por_mes,
+        ano=ano,
     )

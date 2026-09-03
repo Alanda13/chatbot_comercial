@@ -52,7 +52,11 @@ FERRAMENTAS_DISPONIVEIS = {
             "Para perguntas do tipo 'qual ano teve o maior/menor NPS' de "
             "uma filial (ou da empresa), use 'agrupar_por_ano': true em "
             "vez de listar anos um a um — o sistema descobre sozinho "
-            "quais anos têm dado."
+            "quais anos têm dado. "
+            "Para perguntas do tipo 'NPS mês a mês', 'liste os meses' ou "
+            "quando o usuário nomear vários meses de um mesmo ano, use "
+            "'agrupar_por_mes': true junto com 'ano' (o ano desejado) em "
+            "vez de montar os períodos de cada mês manualmente."
         ),
         "argumentos_obrigatorios": [],
         "argumentos_opcionais": [
@@ -60,6 +64,8 @@ FERRAMENTAS_DISPONIVEIS = {
             "periodos",
             "agrupar_por_filial",
             "agrupar_por_ano",
+            "agrupar_por_mes",
+            "ano",
         ],
         "funcao": executar_consulta_indicadores_nps,
     },

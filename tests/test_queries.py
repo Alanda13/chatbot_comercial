@@ -66,6 +66,73 @@ def test_consultar_indicadores_nps_agrupar_por_filial_com_periodo(
     assert len(chamadas) == 2
 
 
+def test_consultar_indicadores_nps_agrupar_por_mes_com_filial(
+    monkeypatch,
+):
+    chamadas = []
+
+    def obter_falso(filial, data_inicial, data_final):
+        chamadas.append((filial, data_inicial, data_final))
+        return {
+            "filial": filial,
+            "data_inicial": data_inicial,
+            "data_final": data_final,
+            "nps": 90.0,
+        }
+
+    monkeypatch.setattr(
+        q, "obter_nps_filial_periodo", obter_falso
+    )
+
+    resultado = q.consultar_indicadores_nps(
+        filiais=["FERRONORTE TIMON"],
+        agrupar_por_mes=True,
+        ano=2025,
+    )
+
+    assert resultado["filiais"] == ["FERRONORTE TIMON"]
+    assert len(resultado["resultados"]) == 12
+    assert chamadas[0] == (
+        "FERRONORTE TIMON",
+        "2025-01-01",
+        "2025-01-31",
+    )
+    # Fevereiro de 2025 (não bissexto) deve ir até o dia 28.
+    assert chamadas[1] == (
+        "FERRONORTE TIMON",
+        "2025-02-01",
+        "2025-02-28",
+    )
+
+
+def test_consultar_indicadores_nps_agrupar_por_mes_empresa_inteira(
+    monkeypatch,
+):
+    chamadas = []
+
+    def obter_falso(data_inicial, data_final):
+        chamadas.append((data_inicial, data_final))
+        return {
+            "data_inicial": data_inicial,
+            "data_final": data_final,
+            "nps": 50.0,
+        }
+
+    monkeypatch.setattr(
+        q, "obter_nps_por_periodo", obter_falso
+    )
+
+    resultado = q.consultar_indicadores_nps(
+        agrupar_por_mes=True,
+        ano=2026,
+    )
+
+    assert resultado["filiais"] is None
+    assert len(resultado["resultados"]) == 12
+    # Fevereiro de 2026 (não bissexto) deve ir até o dia 28.
+    assert chamadas[1] == ("2026-02-01", "2026-02-28")
+
+
 def test_consultar_indicadores_nps_agrupar_por_ano_com_filial(
     monkeypatch,
 ):
