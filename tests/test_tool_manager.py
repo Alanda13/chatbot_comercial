@@ -31,6 +31,13 @@ def test_ferramenta_existe():
     assert tool_manager.ferramenta_existe("nao_existe") is False
 
 
+def test_consultar_indicadores_nps_aceita_agrupar_por_filial():
+    ferramenta = tool_manager.FERRAMENTAS_DISPONIVEIS[
+        "consultar_indicadores_nps"
+    ]
+    assert "agrupar_por_filial" in ferramenta["argumentos_opcionais"]
+
+
 def test_faturamento_diario_exige_periodo_como_obrigatorio():
     argumentos = tool_manager.obter_argumentos_obrigatorios(
         "consultar_indicadores_faturamento_diario"

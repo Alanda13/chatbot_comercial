@@ -259,6 +259,9 @@ REGRAS PARA ANÁLISE E COMPARAÇÃO:
   NUNCA liste todos os itens quando a pergunta pediu só o maior ou
   o menor. Se dois ou mais itens empatarem no valor extremo, cite
   todos os empatados.
+- Ao procurar o maior/menor, IGNORE itens cujo valor do indicador
+  seja nulo/vazio (ex: "nps": null, quando a filial não teve
+  respostas no período) — eles não entram na comparação.
 
 REGRAS PARA QUANDO A CONSULTA FOI FEITA POR RCA:
 - Se "filtros_aplicados" tiver o campo "rcas_identificados", a

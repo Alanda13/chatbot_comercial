@@ -27,13 +27,18 @@ def executar_consulta_indicadores_nps(argumentos: dict) -> dict:
 
     filiais_solicitadas = argumentos.get("filiais")
     periodos = argumentos.get("periodos")
+    agrupar_por_filial = bool(
+        argumentos.get("agrupar_por_filial")
+    )
 
     # Se nenhuma filial foi informada,
-    # consulta a empresa inteira.
+    # consulta a empresa inteira (ou todas as filiais
+    # agrupadas, se agrupar_por_filial for True).
     if not filiais_solicitadas:
         return consultar_indicadores_nps(
             filiais=None,
             periodos=periodos,
+            agrupar_por_filial=agrupar_por_filial,
         )
 
     # Garante que sempre trabalharemos com uma lista.

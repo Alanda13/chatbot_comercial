@@ -97,6 +97,38 @@ Resposta esperada:
     "mensagem": null
 }
 
+- IMPORTANTE — "QUAL TEVE O MAIOR/MENOR": quando o usuário pedir
+  "qual filial teve o maior/menor NPS", "liste as filiais com maior
+  NPS", "quais filiais têm o pior NPS" ou expressão equivalente, NÃO
+  peça esclarecimento e NÃO responda só com o NPS geral da empresa —
+  em vez disso, envie "agrupar_por_filial": true (SEM enviar o
+  argumento "filiais", já que é impraticável listar o nome de cada
+  filial uma por uma). Isso traz o NPS de TODAS as filiais de uma
+  vez, e o sistema identifica sozinho qual é a maior ou menor na
+  etapa de resposta.
+
+Exemplo:
+
+Pergunta:
+"Liste as filiais com maiores NPS em 2026."
+
+Resposta esperada:
+
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "consultar_indicadores_nps",
+    "argumentos": {
+        "agrupar_por_filial": true,
+        "periodos": [
+            {
+                "data_inicial": "2026-01-01",
+                "data_final": "2026-12-31"
+            }
+        ]
+    },
+    "mensagem": null
+}
+
 Exemplo com duas filiais e um período:
 
 Pergunta:

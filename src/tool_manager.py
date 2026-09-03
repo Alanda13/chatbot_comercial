@@ -45,12 +45,16 @@ FERRAMENTAS_DISPONIVEIS = {
             "com nenhum, um ou vários períodos. "
             "Use esta ferramenta para consultas de NPS, quantidade de respostas, "
             "promotores, neutros, detratores e comparações entre filiais. "
-            "Quando a consulta for da empresa inteira, não envie filiais."
+            "Quando a consulta for da empresa inteira, não envie filiais. "
+            "Para perguntas do tipo 'qual filial teve o maior/menor NPS', "
+            "use 'agrupar_por_filial': true em vez de listar filiais uma "
+            "a uma — isso traz o NPS de TODAS as filiais de uma vez."
         ),
         "argumentos_obrigatorios": [],
         "argumentos_opcionais": [
             "filiais",
             "periodos",
+            "agrupar_por_filial",
         ],
         "funcao": executar_consulta_indicadores_nps,
     },

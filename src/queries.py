@@ -578,6 +578,7 @@ def obter_nps_por_periodo(data_inicial, data_final):
 def consultar_indicadores_nps(
     filiais: list[str] | None = None,
     periodos: list[dict] | None = None,
+    agrupar_por_filial: bool = False,
 ):
     """
     Consulta indicadores de NPS de forma genérica.
@@ -587,10 +588,21 @@ def consultar_indicadores_nps(
     - uma filial;
     - várias filiais;
     - um período;
-    - vários períodos.
+    - vários períodos;
+    - TODAS as filiais de uma vez, agrupadas (agrupar_por_filial=True)
+      — usado para perguntas tipo "qual filial teve o maior/menor NPS",
+      já que não é prático o usuário/IA listar o nome de cada filial
+      uma por uma.
     """
 
     resultados = []
+
+    # Todas as filiais agrupadas, sem período informado.
+    if not filiais and not periodos and agrupar_por_filial:
+        return {
+            "filiais": None,
+            "resultados": obter_nps_por_filial(),
+        }
 
     # Empresa inteira, sem período.
     if not filiais and not periodos:
@@ -599,6 +611,28 @@ def consultar_indicadores_nps(
             "periodos": [
                 obter_resumo_nps()
             ],
+        }
+
+    # Todas as filiais agrupadas, com um ou vários períodos.
+    if not filiais and periodos and agrupar_por_filial:
+        nomes_filiais = [
+            dados_filial["filial"]
+            for dados_filial in obter_nps_por_filial()
+        ]
+
+        for nome_filial in nomes_filiais:
+            for periodo in periodos:
+                resultado = obter_nps_filial_periodo(
+                    nome_filial,
+                    periodo["data_inicial"],
+                    periodo["data_final"],
+                )
+
+                resultados.append(resultado)
+
+        return {
+            "filiais": nomes_filiais,
+            "resultados": resultados,
         }
 
     # Empresa inteira, com um ou vários períodos.
