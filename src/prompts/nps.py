@@ -69,6 +69,35 @@ Exemplo para comparação entre dois períodos:
     }
 ]
 
+- IMPORTANTE — "QUAL ANO TEVE O MAIOR/MENOR": quando o usuário pedir
+  "qual ano a filial X teve o maior/menor NPS", "em qual ano o NPS
+  foi pior" ou expressão equivalente, NÃO peça esclarecimento sobre
+  qual período consultar — em vez disso, envie "agrupar_por_ano":
+  true (SEM enviar "periodos", já que é impraticável adivinhar quais
+  anos têm dado). Isso traz o NPS de TODOS os anos com dado de uma
+  vez (da filial informada, ou da empresa inteira se nenhuma filial
+  for informada), e o sistema identifica sozinho qual é o maior ou
+  menor na etapa de resposta.
+
+Exemplo:
+
+Pergunta:
+"Qual foi o ano que Timon teve o menor NPS?"
+
+Resposta esperada:
+
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "consultar_indicadores_nps",
+    "argumentos": {
+        "filiais": [
+            "Timon"
+        ],
+        "agrupar_por_ano": true
+    },
+    "mensagem": null
+}
+
 Exemplo com uma filial e dois períodos:
 
 Pergunta:

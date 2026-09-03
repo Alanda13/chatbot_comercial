@@ -48,13 +48,18 @@ FERRAMENTAS_DISPONIVEIS = {
             "Quando a consulta for da empresa inteira, não envie filiais. "
             "Para perguntas do tipo 'qual filial teve o maior/menor NPS', "
             "use 'agrupar_por_filial': true em vez de listar filiais uma "
-            "a uma — isso traz o NPS de TODAS as filiais de uma vez."
+            "a uma — isso traz o NPS de TODAS as filiais de uma vez. "
+            "Para perguntas do tipo 'qual ano teve o maior/menor NPS' de "
+            "uma filial (ou da empresa), use 'agrupar_por_ano': true em "
+            "vez de listar anos um a um — o sistema descobre sozinho "
+            "quais anos têm dado."
         ),
         "argumentos_obrigatorios": [],
         "argumentos_opcionais": [
             "filiais",
             "periodos",
             "agrupar_por_filial",
+            "agrupar_por_ano",
         ],
         "funcao": executar_consulta_indicadores_nps,
     },

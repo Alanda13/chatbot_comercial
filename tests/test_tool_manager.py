@@ -36,6 +36,7 @@ def test_consultar_indicadores_nps_aceita_agrupar_por_filial():
         "consultar_indicadores_nps"
     ]
     assert "agrupar_por_filial" in ferramenta["argumentos_opcionais"]
+    assert "agrupar_por_ano" in ferramenta["argumentos_opcionais"]
 
 
 def test_faturamento_diario_exige_periodo_como_obrigatorio():

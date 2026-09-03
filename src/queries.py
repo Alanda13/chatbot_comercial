@@ -446,6 +446,40 @@ def obter_nps_filial_periodo(
         if connection is not None:
             connection.close()
 
+#### DESCOBRIR OS ANOS COM DADOS DE NPS ###
+def obter_anos_com_dados_nps():
+    """
+    Retorna a lista de anos (inteiros, do mais antigo ao mais
+    recente) que têm pelo menos uma avaliação registrada.
+
+    Usado para perguntas do tipo "qual ano teve o maior/menor NPS"
+    — não é prático a IA adivinhar quais anos existem dados, então o
+    sistema descobre isso direto no banco.
+    """
+    connection = None
+    cursor = None
+
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        consulta = """
+            SELECT DISTINCT YEAR(DataHora) AS Ano
+            FROM dbo.Avaliacoes
+            WHERE TRY_CONVERT(INT, Nota) BETWEEN 0 AND 10
+            ORDER BY Ano
+        """
+        cursor.execute(consulta)
+        registros = cursor.fetchall()
+
+        return [registro[0] for registro in registros]
+    finally:
+        if cursor is not None:
+            cursor.close()
+
+        if connection is not None:
+            connection.close()
+
 #### CALCULAR NPS POR PERIODO###
 def obter_nps_por_periodo(data_inicial, data_final):
     """
@@ -579,6 +613,7 @@ def consultar_indicadores_nps(
     filiais: list[str] | None = None,
     periodos: list[dict] | None = None,
     agrupar_por_filial: bool = False,
+    agrupar_por_ano: bool = False,
 ):
     """
     Consulta indicadores de NPS de forma genérica.
@@ -592,10 +627,50 @@ def consultar_indicadores_nps(
     - TODAS as filiais de uma vez, agrupadas (agrupar_por_filial=True)
       — usado para perguntas tipo "qual filial teve o maior/menor NPS",
       já que não é prático o usuário/IA listar o nome de cada filial
-      uma por uma.
+      uma por uma;
+    - TODOS os anos com dados, agrupados (agrupar_por_ano=True) —
+      usado para perguntas tipo "qual ano teve o maior/menor NPS" de
+      uma filial (ou da empresa inteira) — o sistema descobre sozinho
+      quais anos têm dado, sem precisar que a IA adivinhe o período.
     """
 
     resultados = []
+
+    # Todos os anos com dados, agrupados — uma ou mais filiais.
+    if filiais and agrupar_por_ano:
+        anos = obter_anos_com_dados_nps()
+
+        for nome_filial in filiais:
+            for ano in anos:
+                resultado = obter_nps_filial_periodo(
+                    nome_filial,
+                    f"{ano}-01-01",
+                    f"{ano}-12-31",
+                )
+
+                resultados.append(resultado)
+
+        return {
+            "filiais": filiais,
+            "resultados": resultados,
+        }
+
+    # Todos os anos com dados, agrupados — empresa inteira.
+    if not filiais and agrupar_por_ano:
+        anos = obter_anos_com_dados_nps()
+
+        for ano in anos:
+            resultado = obter_nps_por_periodo(
+                f"{ano}-01-01",
+                f"{ano}-12-31",
+            )
+
+            resultados.append(resultado)
+
+        return {
+            "filiais": None,
+            "resultados": resultados,
+        }
 
     # Todas as filiais agrupadas, sem período informado.
     if not filiais and not periodos and agrupar_por_filial:
