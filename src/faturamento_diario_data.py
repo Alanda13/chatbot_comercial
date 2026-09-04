@@ -18,20 +18,21 @@ ARQUIVO_8302 = (
     / "faturamento_por_rca_filial_dia_2020_a_2025.csv"
 )
 
+ARQUIVO_8302_COBRANCA = (
+    RAIZ_PROJETO
+    / "dados"
+    / "faturamento_por_rca_filial_dia_2024_a_2025_cobranca.csv"
+)
 
-def carregar_faturamento_8302() -> pd.DataFrame:
-    """
-    Carrega o arquivo CSV exportado da rotina 8302 do Winthor,
-    com o faturamento detalhado por filial, RCA, dia e forma
-    de pagamento.
-    """
-    if not ARQUIVO_8302.exists():
+
+def _carregar_csv_8302(caminho: Path) -> pd.DataFrame:
+    if not caminho.exists():
         raise FileNotFoundError(
-            f"Arquivo não encontrado: {ARQUIVO_8302}"
+            f"Arquivo não encontrado: {caminho}"
         )
 
     dados = pd.read_csv(
-        ARQUIVO_8302,
+        caminho,
         sep=";",
         encoding="latin1",
         decimal=",",
@@ -51,6 +52,28 @@ def carregar_faturamento_8302() -> pd.DataFrame:
     )
 
     return dados
+
+
+def carregar_faturamento_8302() -> pd.DataFrame:
+    """
+    Carrega o arquivo CSV exportado da rotina 8302 do Winthor,
+    com o faturamento detalhado por filial, RCA, dia e forma
+    de pagamento.
+    """
+    return _carregar_csv_8302(ARQUIVO_8302)
+
+
+def carregar_faturamento_8302_cobranca() -> pd.DataFrame:
+    """
+    Carrega um export separado da rotina 8302 (2024-2025), usado
+    SOMENTE para agrupamento por forma de pagamento — o arquivo
+    principal (ARQUIVO_8302) tem a coluna COBRANCA sempre vazia,
+    então essa consulta específica usa essa base alternativa, mais
+    recente e com a forma de pagamento preenchida. Cobre um período
+    menor que o arquivo principal, então não substitui ele nas
+    outras consultas.
+    """
+    return _carregar_csv_8302(ARQUIVO_8302_COBRANCA)
 
 
 def construir_mapa_rca_nome() -> dict[int, str]:

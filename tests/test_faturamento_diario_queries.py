@@ -109,7 +109,15 @@ def test_consulta_agrupada_por_dia(dados_faturamento_diario):
     assert valores["2026-08-26"] == 300.0
 
 
-def test_consulta_agrupada_por_forma_pagamento(dados_faturamento_diario):
+def test_consulta_agrupada_por_forma_pagamento(
+    dados_faturamento_diario, monkeypatch
+):
+    monkeypatch.setattr(
+        fdq,
+        "carregar_faturamento_8302_cobranca",
+        lambda: dados_faturamento_diario,
+    )
+
     resultado = fdq.consultar_indicadores_faturamento_diario(
         data_inicial="2026-08-25",
         data_final="2026-08-25",
@@ -158,7 +166,9 @@ def test_forma_pagamento_ausente_vira_nao_informado(monkeypatch):
             },
         ]
     )
-    monkeypatch.setattr(fdq, "carregar_faturamento_8302", lambda: df)
+    monkeypatch.setattr(
+        fdq, "carregar_faturamento_8302_cobranca", lambda: df
+    )
 
     resultado = fdq.consultar_indicadores_faturamento_diario(
         data_inicial="2025-07-01",

@@ -4,7 +4,10 @@ As consultas utilizam os dados exportados da rotina 8302 do Winthor.
 """
 import pandas as pd
 
-from src.faturamento_diario_data import carregar_faturamento_8302
+from src.faturamento_diario_data import (
+    carregar_faturamento_8302,
+    carregar_faturamento_8302_cobranca,
+)
 
 
 def consultar_indicadores_faturamento_diario(
@@ -29,7 +32,13 @@ def consultar_indicadores_faturamento_diario(
     - dia;
     - forma de pagamento.
     """
-    dados = carregar_faturamento_8302()
+    # Forma de pagamento só existe preenchida no export alternativo
+    # (o principal sempre traz COBRANCA vazia) — usa essa base
+    # apenas quando esse agrupamento for pedido.
+    if agrupar_por and "forma_pagamento" in agrupar_por:
+        dados = carregar_faturamento_8302_cobranca()
+    else:
+        dados = carregar_faturamento_8302()
 
     dados = dados[
         (dados["DATA"] >= pd.to_datetime(data_inicial))
