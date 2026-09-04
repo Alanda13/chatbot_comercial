@@ -40,6 +40,14 @@ def test_consultar_indicadores_nps_aceita_agrupar_por_filial():
     assert "agrupar_por_mes" in ferramenta["argumentos_opcionais"]
 
 
+def test_consultar_evolucao_nps_registrada():
+    assert tool_manager.ferramenta_existe("consultar_evolucao_nps")
+    argumentos = tool_manager.obter_argumentos_obrigatorios(
+        "consultar_evolucao_nps"
+    )
+    assert argumentos == ["ano_inicial", "ano_final"]
+
+
 def test_faturamento_diario_exige_periodo_como_obrigatorio():
     argumentos = tool_manager.obter_argumentos_obrigatorios(
         "consultar_indicadores_faturamento_diario"

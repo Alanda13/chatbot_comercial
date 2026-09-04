@@ -629,6 +629,62 @@ def obter_nps_por_periodo(data_inicial, data_final):
         if connection is not None:
             connection.close()
 
+#### MAIOR/MENOR EVOLUÇÃO DE NPS ENTRE DOIS ANOS ####
+def obter_evolucao_nps_por_filial(
+    ano_inicial: int,
+    ano_final: int,
+    filiais: list[str] | None = None,
+) -> list[dict]:
+    """
+    Calcula a diferença de NPS de cada filial entre dois anos,
+    ordenada da maior evolução (positiva) pra maior queda.
+
+    Esse cálculo é feito aqui, em Python, de forma exata — não é
+    deixado a cargo da IA, porque envolve comparar duas datas e
+    calcular a diferença pra cada filial (podem ser dezenas), o que
+    a IA não faz de forma confiável.
+
+    Filiais sem resposta em algum dos dois anos (nps nulo) são
+    ignoradas, já que não dá pra calcular uma diferença real.
+    """
+    nomes_filiais = filiais or [
+        dados_filial["filial"]
+        for dados_filial in obter_nps_por_filial()
+    ]
+
+    evolucao = []
+
+    for nome_filial in nomes_filiais:
+        resultado_inicial = obter_nps_filial_periodo(
+            nome_filial,
+            f"{ano_inicial}-01-01",
+            f"{ano_inicial}-12-31",
+        )
+        resultado_final = obter_nps_filial_periodo(
+            nome_filial,
+            f"{ano_final}-01-01",
+            f"{ano_final}-12-31",
+        )
+
+        nps_inicial = resultado_inicial["nps"]
+        nps_final = resultado_final["nps"]
+
+        if nps_inicial is None or nps_final is None:
+            continue
+
+        evolucao.append({
+            "filial": nome_filial,
+            "ano_inicial": ano_inicial,
+            "nps_inicial": nps_inicial,
+            "ano_final": ano_final,
+            "nps_final": nps_final,
+            "diferenca": round(nps_final - nps_inicial, 2),
+        })
+
+    evolucao.sort(key=lambda item: item["diferenca"], reverse=True)
+
+    return evolucao
+
 ## PARA CONSULTAR INDICADORES DE NPS DE FORMA GENÉRICA
 def consultar_indicadores_nps(
     filiais: list[str] | None = None,

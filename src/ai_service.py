@@ -347,6 +347,20 @@ REGRAS PARA QUANDO A CONSULTA FOR DE METAS:
   não têm meta cadastrada — nesse caso, cite-a claramente identificada
   como "sem meta cadastrada", nunca misturada com a lista principal.
 
+REGRAS PARA QUANDO A FERRAMENTA FOR "consultar_evolucao_nps":
+- A lista em "resultados" JÁ vem calculada e ordenada pelo sistema,
+  da maior evolução (positiva) pra maior queda — NÃO recalcule, não
+  reordene, não questione os valores. O primeiro item da lista é a
+  maior evolução; o último é a maior queda.
+- Se o usuário pediu a MAIOR evolução, responda só com o primeiro
+  item (ou os empatados, se houver). Se pediu a MAIOR QUEDA, responda
+  com o último item (menor "diferenca", que pode ser negativa).
+- Cite o nome da filial, o NPS do ano inicial, o NPS do ano final e a
+  diferença entre eles.
+- Se "resultados" vier vazio, diga que não há dados suficientes pra
+  calcular evolução nesse período (nenhuma filial tinha NPS nos dois
+  anos) — NÃO invente um resultado.
+
 REGRAS PARA QUANDO A CONSULTA FOR DE META DE TONELADA:
 - Essa consulta só traz o valor da META de tonelada
   ("meta_tonelada_filial" e/ou "meta_tonelada_rca") — NÃO tem o

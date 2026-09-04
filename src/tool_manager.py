@@ -7,7 +7,10 @@ seus argumentos obrigatórios e as funções Python
 que devem ser executadas.
 """
 
-from src.nps_tools import executar_consulta_indicadores_nps
+from src.nps_tools import (
+    executar_consulta_indicadores_nps,
+    executar_consultar_evolucao_nps,
+)
 from src.faturamento_tools import (
     executar_consulta_indicadores_faturamento,
     executar_verificar_rca,
@@ -56,7 +59,10 @@ FERRAMENTAS_DISPONIVEIS = {
             "Para perguntas do tipo 'NPS mês a mês', 'liste os meses' ou "
             "quando o usuário nomear vários meses de um mesmo ano, use "
             "'agrupar_por_mes': true junto com 'ano' (o ano desejado) em "
-            "vez de montar os períodos de cada mês manualmente."
+            "vez de montar os períodos de cada mês manualmente. "
+            "NÃO use esta ferramenta para 'qual filial teve a maior "
+            "evolução/queda de NPS entre dois anos' — use "
+            "'consultar_evolucao_nps' para isso."
         ),
         "argumentos_obrigatorios": [],
         "argumentos_opcionais": [
@@ -68,6 +74,24 @@ FERRAMENTAS_DISPONIVEIS = {
             "ano",
         ],
         "funcao": executar_consulta_indicadores_nps,
+    },
+
+    "consultar_evolucao_nps": {
+        "descricao": (
+            "Ferramenta para identificar qual filial teve a maior "
+            "evolução (melhora) ou queda de NPS entre dois anos. Use "
+            "para perguntas do tipo 'qual filial teve a maior "
+            "evolução de NPS entre 2024 e 2025', 'que filial mais "
+            "melhorou o NPS'. O cálculo da diferença entre os dois "
+            "anos, para cada filial, é feito de forma exata pelo "
+            "sistema (já vem ordenado da maior evolução pra maior "
+            "queda) — não pela IA. Se o usuário não informar filiais "
+            "específicas, não envie o argumento 'filiais' (traz "
+            "todas)."
+        ),
+        "argumentos_obrigatorios": ["ano_inicial", "ano_final"],
+        "argumentos_opcionais": ["filiais"],
+        "funcao": executar_consultar_evolucao_nps,
     },
 
     "consultar_indicadores_faturamento": {

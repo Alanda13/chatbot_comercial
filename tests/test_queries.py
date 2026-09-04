@@ -66,6 +66,67 @@ def test_consultar_indicadores_nps_agrupar_por_filial_com_periodo(
     assert len(chamadas) == 2
 
 
+def test_obter_evolucao_nps_por_filial_ordena_maior_pra_menor(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        q,
+        "obter_nps_por_filial",
+        lambda: [
+            {"filial": "FERRONORTE TIMON"},
+            {"filial": "FERRONORTE TIBIRI"},
+            {"filial": "FERRONORTE IMPERATRIZ"},
+        ],
+    )
+
+    valores = {
+        ("FERRONORTE TIMON", "2024"): 80.0,
+        ("FERRONORTE TIMON", "2025"): 85.0,
+        ("FERRONORTE TIBIRI", "2024"): 90.0,
+        ("FERRONORTE TIBIRI", "2025"): 70.0,
+        ("FERRONORTE IMPERATRIZ", "2024"): 60.0,
+        ("FERRONORTE IMPERATRIZ", "2025"): 90.0,
+    }
+
+    def obter_falso(filial, data_inicial, data_final):
+        ano = data_inicial[:4]
+        return {"filial": filial, "nps": valores[(filial, ano)]}
+
+    monkeypatch.setattr(
+        q, "obter_nps_filial_periodo", obter_falso
+    )
+
+    resultado = q.obter_evolucao_nps_por_filial(2024, 2025)
+
+    assert [item["filial"] for item in resultado] == [
+        "FERRONORTE IMPERATRIZ",
+        "FERRONORTE TIMON",
+        "FERRONORTE TIBIRI",
+    ]
+    assert resultado[0]["diferenca"] == 30.0
+    assert resultado[-1]["diferenca"] == -20.0
+
+
+def test_obter_evolucao_nps_por_filial_ignora_nps_nulo(monkeypatch):
+    monkeypatch.setattr(
+        q,
+        "obter_nps_por_filial",
+        lambda: [{"filial": "FERRONORTE SEM DADO"}],
+    )
+    monkeypatch.setattr(
+        q,
+        "obter_nps_filial_periodo",
+        lambda filial, data_inicial, data_final: {
+            "filial": filial,
+            "nps": None,
+        },
+    )
+
+    resultado = q.obter_evolucao_nps_por_filial(2024, 2025)
+
+    assert resultado == []
+
+
 def test_consultar_indicadores_nps_agrupar_por_mes_com_filial(
     monkeypatch,
 ):

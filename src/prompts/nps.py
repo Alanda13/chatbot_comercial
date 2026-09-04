@@ -129,6 +129,32 @@ Resposta esperada:
     "mensagem": null
 }
 
+- IMPORTANTE — "MAIOR EVOLUÇÃO/QUEDA DE NPS": quando o usuário pedir
+  "qual filial teve a maior evolução de NPS entre [ano] e [ano]",
+  "que filial mais melhorou o NPS", "maior evolução de NPS" ou
+  expressão equivalente comparando DOIS ANOS, use a ferramenta
+  "consultar_evolucao_nps" — NUNCA "consultar_indicadores_nps" para
+  esse tipo de pergunta, mesmo que pareça parecido com "qual filial
+  teve o maior NPS". NÃO recuse dizendo que não consegue calcular
+  evolução entre anos.
+
+Exemplo:
+
+Pergunta:
+"Qual filial teve a maior evolução de NPS entre 2024 e 2025?"
+
+Resposta esperada:
+
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "consultar_evolucao_nps",
+    "argumentos": {
+        "ano_inicial": 2024,
+        "ano_final": 2025
+    },
+    "mensagem": null
+}
+
 Exemplo com uma filial e dois períodos:
 
 Pergunta:
