@@ -21,7 +21,7 @@ ARQUIVO_8302 = (
 ARQUIVO_8302_COBRANCA = (
     RAIZ_PROJETO
     / "dados"
-    / "faturamento_por_rca_filial_dia_2024_a_2025_cobranca.csv"
+    / "rotina 8302 2024 a 2025 cobranca.csv"
 )
 
 
