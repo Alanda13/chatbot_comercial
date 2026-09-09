@@ -45,6 +45,7 @@ PALAVRAS_PARA_COLUNA = {
 COLUNAS_MONETARIAS = {"faturamento", "venda_bruta", "valor_desconto"}
 
 RENOMEAR_COLUNAS = {
+    "filial": "Filial",
     "mes": "Mês",
     "ano": "Ano",
     "faturamento": "Faturamento",
@@ -93,12 +94,12 @@ def preparar_tabela(dados_tabela, texto_referencia):
 
         def formatar_valor(valor):
             if valor is None or (isinstance(valor, float) and pd.isna(valor)):
-                return ""
+                return "sem dados"
             return formatar_moeda(valor) if eh_monetario else valor
 
         def formatar_percentual(valor):
             if valor is None or (isinstance(valor, float) and pd.isna(valor)):
-                return ""
+                return "sem dados"
             sinal = "+" if valor >= 0 else ""
             return f"{sinal}{valor}%"
 
@@ -111,9 +112,75 @@ def preparar_tabela(dados_tabela, texto_referencia):
 
         return tabela_comparacao
 
+    # Formato especial: filiais comparadas entre EXATAMENTE 2 anos
+    # (sem ser mês a mês) — pivota pra Filial | ano_1 | ano_2 | Variação,
+    # no mesmo espírito da comparação mensal acima.
+    if (
+        "filial" in df.columns
+        and "ano" in df.columns
+        and "mes" not in df.columns
+        and df["ano"].nunique() == 2
+    ):
+        anos_ordenados = sorted(df["ano"].unique())
+        ano_1, ano_2 = anos_ordenados[0], anos_ordenados[1]
+
+        coluna_valor = "nps" if "nps" in df.columns else None
+        if coluna_valor is None:
+            for candidata in PALAVRAS_PARA_COLUNA.values():
+                if candidata in df.columns:
+                    coluna_valor = candidata
+                    break
+
+        eh_monetario = coluna_valor in COLUNAS_MONETARIAS
+
+        linhas = []
+        for nome_filial in df["filial"].unique():
+            valor_1 = df[
+                (df["filial"] == nome_filial) & (df["ano"] == ano_1)
+            ][coluna_valor]
+            valor_2 = df[
+                (df["filial"] == nome_filial) & (df["ano"] == ano_2)
+            ][coluna_valor]
+
+            valor_1 = valor_1.iloc[0] if len(valor_1) else None
+            valor_2 = valor_2.iloc[0] if len(valor_2) else None
+
+            if valor_1 is None or valor_2 is None or pd.isna(valor_1) or pd.isna(valor_2) or valor_1 == 0:
+                percentual_texto = "sem dados"
+            else:
+                percentual = round((valor_2 - valor_1) / abs(valor_1) * 100, 2)
+                sinal = "+" if percentual >= 0 else ""
+                percentual_texto = f"{sinal}{percentual}%"
+
+            def formatar(valor):
+                if valor is None or pd.isna(valor):
+                    return "sem dados"
+                return formatar_moeda(valor) if eh_monetario else valor
+
+            linhas.append({
+                "Filial": nome_filial,
+                str(ano_1): formatar(valor_1),
+                str(ano_2): formatar(valor_2),
+                "Variação": percentual_texto,
+            })
+
+        return pd.DataFrame(linhas)
+
+    # Se não tem coluna "ano" pronta mas tem "data_inicial" (formato
+    # YYYY-MM-DD), extrai o ano de lá — usado em consultas por
+    # filial+período que não passam pelo agrupamento mês a mês.
+    if "ano" not in df.columns and "data_inicial" in df.columns:
+        df["ano"] = df["data_inicial"].str.slice(0, 4)
+
     colunas_base = [
-        coluna for coluna in ("ano", "mes") if coluna in df.columns
+        coluna for coluna in ("filial", "ano", "mes") if coluna in df.columns
     ]
+
+    # Se só tem UM ano nos dados, tira a coluna "ano" da tabela — ela
+    # já aparece na legenda acima ("Ano: 2025"), repetir em toda
+    # linha é redundante. Só mantém quando há vários anos misturados.
+    if "ano" in colunas_base and df["ano"].nunique() <= 1:
+        colunas_base.remove("ano")
 
     texto_lower = texto_referencia.lower()
     colunas_metricas = [
@@ -147,6 +214,10 @@ def preparar_tabela(dados_tabela, texto_referencia):
     for coluna in colunas_metricas:
         if coluna in COLUNAS_MONETARIAS:
             df[coluna] = df[coluna].apply(formatar_moeda)
+
+    # Troca valores vazios (None/NaN) por um texto claro, pra não
+    # aparecer "None" nem um traço confuso de se enxergar na tela.
+    df = df.fillna("sem dados")
 
     df = df.rename(columns=RENOMEAR_COLUNAS)
 
@@ -191,20 +262,10 @@ def exibir_tabela(dados_tabela, texto_referencia, chave):
 
     tabela = preparar_tabela(dados_tabela, texto_referencia)
 
-    # Calcula a altura exata pra caber todas as linhas sem sobrar
-    # espaço em branco (35px por linha + 38px do cabeçalho + margem).
-    altura = min(35 * len(tabela) + 38 + 3, 500)
-
-    st.dataframe(
-        tabela,
-        hide_index=True,
-        height=altura,
-        use_container_width=True,
-        column_config={
-            coluna: st.column_config.Column(width="small")
-            for coluna in tabela.columns
-        },
-    )
+    # st.table é uma tabela estática, sem barra de ferramentas — não
+    # tem botão de tela cheia nem de baixar CSV, evitando os problemas
+    # de layout que apareciam com st.dataframe.
+    st.table(tabela.set_index(tabela.columns[0]))
 
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:

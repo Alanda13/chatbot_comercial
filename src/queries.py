@@ -868,17 +868,21 @@ def consultar_indicadores_nps(
             "resultados": resultados,
         }
 
-    # Todos os anos com dados, agrupados — uma ou mais filiais.
+    # Anos agrupados — uma ou mais filiais. Se anos específicos foram
+    # informados, usa só esses; senão, descobre TODOS os anos com dado
+    # (comportamento original, pra perguntas tipo "qual ano teve o
+    # maior NPS").
     if filiais and agrupar_por_ano:
-        anos = obter_anos_com_dados_nps()
+        anos_para_usar = anos if anos else obter_anos_com_dados_nps()
 
         for nome_filial in filiais:
-            for ano in anos:
+            for ano_atual in anos_para_usar:
                 resultado = obter_nps_filial_periodo(
                     nome_filial,
-                    f"{ano}-01-01",
-                    f"{ano}-12-31",
+                    f"{ano_atual}-01-01",
+                    f"{ano_atual}-12-31",
                 )
+                resultado["ano"] = ano_atual
 
                 resultados.append(resultado)
 
@@ -887,15 +891,17 @@ def consultar_indicadores_nps(
             "resultados": resultados,
         }
 
-    # Todos os anos com dados, agrupados — empresa inteira.
+    # Anos agrupados — empresa inteira. Mesma lógica: respeita anos
+    # específicos se informados, senão descobre todos.
     if not filiais and agrupar_por_ano:
-        anos = obter_anos_com_dados_nps()
+        anos_para_usar = anos if anos else obter_anos_com_dados_nps()
 
-        for ano in anos:
+        for ano_atual in anos_para_usar:
             resultado = obter_nps_por_periodo(
-                f"{ano}-01-01",
-                f"{ano}-12-31",
+                f"{ano_atual}-01-01",
+                f"{ano_atual}-12-31",
             )
+            resultado["ano"] = ano_atual
 
             resultados.append(resultado)
 

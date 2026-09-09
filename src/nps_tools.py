@@ -90,6 +90,12 @@ def executar_consulta_indicadores_nps(argumentos: dict) -> dict:
     if not anos and argumentos.get("ano"):
         anos = [argumentos.get("ano")]
 
+    # Se anos foram informados mas a IA esqueceu de marcar o
+    # agrupamento, força automaticamente — não faz sentido informar
+    # anos sem querer o resultado separado por ano.
+    if anos and not agrupar_por_mes:
+        agrupar_por_ano = True
+
     # Se nenhuma filial foi informada,
     # consulta a empresa inteira (ou todas as filiais
     # agrupadas, se agrupar_por_filial for True).
