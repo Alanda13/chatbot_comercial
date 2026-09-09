@@ -1,0 +1,18 @@
+        try:
+            resposta, dados_tabela = processar_pergunta(
+                pergunta=pergunta,
+                historico=historico,
+            )
+            placeholder.text(resposta)
+
+            if dados_tabela:
+                with st.expander("📊 Ver como tabela"):
+                    st.dataframe(pd.DataFrame(dados_tabela))
+
+            st.session_state.mensagens.append(
+                {
+                    "papel": "assistant",
+                    "conteudo": resposta,
+                    "dados_tabela": dados_tabela,
+                }
+            )

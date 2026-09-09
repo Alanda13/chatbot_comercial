@@ -13,7 +13,7 @@ from src.logger import obter_logger
 logger = obter_logger(__name__)
 
 LIMITE_RESULTADOS_RESPOSTA = 60
-
+LIMITE_MINIMO_PARA_TABELA = 3
 
 def _limitar_resultados(resultado: dict) -> dict:
     """
@@ -39,18 +39,17 @@ def _limitar_resultados(resultado: dict) -> dict:
 
     return resultado
 
-## função principal que será chamada pelo app.py futuramente! 
 def processar_pergunta(
     pergunta: str,
     historico: list[dict[str, str]] | None = None,
-) -> str:
+) -> tuple[str, list[dict] | None]:
     """
     Executa o fluxo completo do chatbot.
 
-    1. Interpreta a pergunta com o Gemini.
-    2. Analisa a ação solicitada.
-    3. Executa a ferramenta autorizada.
-    4. Formata a resposta para o usuário.
+    Retorna uma tupla: (texto_da_resposta, dados_para_tabela).
+    dados_para_tabela vem preenchido só quando o resultado tiver mais
+    de LIMITE_MINIMO_PARA_TABELA linhas — usado pelo app.py pra
+    oferecer a visualização em tabela.
     """
 
     solicitacao = interpretar_pergunta(
@@ -61,7 +60,8 @@ def processar_pergunta(
     if solicitacao.acao == "pedir_esclarecimento":
         return (
             solicitacao.mensagem
-            or "Preciso de mais informações para realizar a consulta."
+            or "Preciso de mais informações para realizar a consulta.",
+            None,
         )
 
     if solicitacao.acao == "fora_do_escopo":
@@ -70,13 +70,15 @@ def processar_pergunta(
             or (
                 "Essa pergunta ainda está fora do escopo do chatbot. "
                 "Neste momento, estão disponíveis consultas de NPS."
-            )
+            ),
+            None,
         )
 
     if solicitacao.acao == "responder_com_historico":
         return (
             solicitacao.mensagem
-            or "Não consegui reorganizar essa informação. Pode reformular?"
+            or "Não consegui reorganizar essa informação. Pode reformular?",
+            None,
         )
 
     if solicitacao.acao != "executar_ferramenta":
@@ -102,22 +104,29 @@ def processar_pergunta(
         )
         logger.info("Resultado da ferramenta: %s", resultado)
     except (FerramentaError, ValueError) as error:
-        # Erros esperados do domínio (filial não encontrada, período
-        # inválido, agrupamento inválido, etc.) não abortam a conversa:
-        # viram um resultado "não encontrado" e passam pela mesma etapa
-        # de formulação natural da resposta final, em vez de expor o
-        # texto cru da exceção ao usuário.
         resultado = {
             "encontrado": False,
             "mensagem": str(error),
         }
 
+    resultado_limitado = _limitar_resultados(resultado)
+
+    dados_tabela = None
+    lista_resultados = resultado_limitado.get("resultados")
+
+    if (
+        isinstance(lista_resultados, list)
+        and len(lista_resultados) > LIMITE_MINIMO_PARA_TABELA
+    ):
+        dados_tabela = lista_resultados
+
     resposta_final = gerar_resposta_final(
         pergunta=pergunta,
         nome_ferramenta=solicitacao.ferramenta,
-        resultado=_limitar_resultados(resultado),
+        resultado=resultado_limitado,
         historico=historico,
     )
-    return resposta_final
+
+    return (resposta_final, dados_tabela)
     
 

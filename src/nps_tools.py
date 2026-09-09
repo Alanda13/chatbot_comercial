@@ -68,7 +68,8 @@ def executar_consulta_indicadores_nps(argumentos: dict) -> dict:
     - uma filial;
     - várias filiais;
     - um período;
-    - vários períodos.
+    - vários períodos;
+    - um ou mais anos, mês a mês.
     """
 
     filiais_solicitadas = argumentos.get("filiais")
@@ -82,7 +83,12 @@ def executar_consulta_indicadores_nps(argumentos: dict) -> dict:
     agrupar_por_mes = bool(
         argumentos.get("agrupar_por_mes")
     )
-    ano = argumentos.get("ano")
+
+    # Aceita tanto "anos" (lista) quanto o antigo "ano" (um só),
+    # pra IA poder mandar de qualquer um dos dois jeitos.
+    anos = argumentos.get("anos")
+    if not anos and argumentos.get("ano"):
+        anos = [argumentos.get("ano")]
 
     # Se nenhuma filial foi informada,
     # consulta a empresa inteira (ou todas as filiais
@@ -94,7 +100,7 @@ def executar_consulta_indicadores_nps(argumentos: dict) -> dict:
             agrupar_por_filial=agrupar_por_filial,
             agrupar_por_ano=agrupar_por_ano,
             agrupar_por_mes=agrupar_por_mes,
-            ano=ano,
+            anos=anos,
         )
 
     # Garante que sempre trabalharemos com uma lista.
@@ -136,9 +142,8 @@ def executar_consulta_indicadores_nps(argumentos: dict) -> dict:
         periodos=periodos,
         agrupar_por_ano=agrupar_por_ano,
         agrupar_por_mes=agrupar_por_mes,
-        ano=ano,
+        anos=anos,
     )
-
 
 def executar_consultar_evolucao_nps(argumentos: dict) -> dict:
     """

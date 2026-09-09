@@ -1,5 +1,8 @@
-import streamlit as st
+import io
+import re
 
+import streamlit as st
+import pandas as pd
 from src.chatbot import processar_pergunta
 from src.exceptions import ChatbotError
 from src.logger import obter_logger
@@ -19,6 +22,205 @@ PERGUNTAS_EXEMPLO = [
 ]
 
 QUANTIDADE_MINIMA_PARA_FREQUENTES = 5
+
+MESES_PT = {
+    1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+    5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+    9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro",
+}
+
+# Palavra que pode aparecer na pergunta -> coluna correspondente nos
+# dados. Usado pra mostrar na tabela só o que a pessoa perguntou, em
+# vez de todas as colunas que a consulta retornou.
+PALAVRAS_PARA_COLUNA = {
+    "faturamento": "faturamento",
+    "venda bruta": "venda_bruta",
+    "desconto": "valor_desconto",
+    "tonelada": "toneladas",
+    "peso": "peso_liquido",
+    "nota": "quantidade_notas",
+    "nps": "nps",
+}
+
+COLUNAS_MONETARIAS = {"faturamento", "venda_bruta", "valor_desconto"}
+
+RENOMEAR_COLUNAS = {
+    "mes": "Mês",
+    "ano": "Ano",
+    "faturamento": "Faturamento",
+    "venda_bruta": "Venda Bruta",
+    "valor_desconto": "Desconto",
+    "toneladas": "Toneladas",
+    "peso_liquido": "Peso Líquido",
+    "quantidade_notas": "Qtd. Notas",
+    "nps": "NPS",
+}
+
+
+def formatar_moeda(valor):
+    """Formata um número no padrão R$ 91.783.909,07."""
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return ""
+
+    texto = f"{valor:,.2f}"
+    texto = texto.replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"R$ {texto}"
+
+
+def preparar_tabela(dados_tabela, texto_referencia):
+    """
+    Monta a tabela pronta pra exibição: filtra só as colunas que o
+    texto de referência menciona (a resposta do chatbot, de
+    preferência — mais confiável que a pergunta digitada, que pode
+    ter erro de digitação), troca número do mês pelo nome, formata
+    moeda e renomeia os títulos das colunas pra português legível.
+    """
+    df = pd.DataFrame(dados_tabela)
+
+    # Formato especial: comparação entre exatamente 2 anos, já vem
+    # com valor_ano_1/valor_ano_2/diferenca/percentual prontos do
+    # queries.py — monta a tabela com os anos como nome de coluna.
+    if "valor_ano_1" in df.columns and "valor_ano_2" in df.columns:
+        ano_1 = df["ano_1"].iloc[0]
+        ano_2 = df["ano_2"].iloc[0]
+
+        df["mes"] = df["mes"].map(MESES_PT).fillna(df["mes"])
+
+        eh_monetario = any(
+            palavra in texto_referencia.lower()
+            for palavra in ("faturamento", "venda bruta", "desconto")
+        )
+
+        def formatar_valor(valor):
+            if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+                return ""
+            return formatar_moeda(valor) if eh_monetario else valor
+
+        def formatar_percentual(valor):
+            if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+                return ""
+            sinal = "+" if valor >= 0 else ""
+            return f"{sinal}{valor}%"
+
+        tabela_comparacao = pd.DataFrame({
+            "Mês": df["mes"],
+            str(ano_1): df["valor_ano_1"].apply(formatar_valor),
+            str(ano_2): df["valor_ano_2"].apply(formatar_valor),
+            "Variação": df["percentual"].apply(formatar_percentual),
+        })
+
+        return tabela_comparacao
+
+    colunas_base = [
+        coluna for coluna in ("ano", "mes") if coluna in df.columns
+    ]
+
+    texto_lower = texto_referencia.lower()
+    colunas_metricas = [
+        coluna
+        for palavra, coluna in PALAVRAS_PARA_COLUNA.items()
+        if palavra in texto_lower and coluna in df.columns
+    ]
+
+    # "Faturamento" às vezes aparece no texto só como nome genérico do
+    # indicador (ex: "faturamento em toneladas"), não significando que
+    # o valor em R$ também foi pedido. Só mantém a coluna de R$ junto
+    # com toneladas/peso se "reais" ou "r$" também aparecer no texto.
+    pediu_toneladas = "toneladas" in colunas_metricas or "peso_liquido" in colunas_metricas
+    mencionou_reais = "real" in texto_lower or "r$" in texto_lower
+
+    if pediu_toneladas and not mencionou_reais and "faturamento" in colunas_metricas:
+        colunas_metricas.remove("faturamento")
+
+    # Se nenhuma palavra bateu, mostra todas as colunas de dado
+    # (fallback de segurança pra nunca esconder informação sem querer).
+    if not colunas_metricas:
+        colunas_metricas = [
+            coluna for coluna in df.columns if coluna not in colunas_base
+        ]
+
+    df = df[colunas_base + colunas_metricas].copy()
+
+    if "mes" in df.columns:
+        df["mes"] = df["mes"].map(MESES_PT).fillna(df["mes"])
+
+    for coluna in colunas_metricas:
+        if coluna in COLUNAS_MONETARIAS:
+            df[coluna] = df[coluna].apply(formatar_moeda)
+
+    df = df.rename(columns=RENOMEAR_COLUNAS)
+
+    return df
+
+
+def descrever_periodo(dados_tabela, texto_referencia):
+    """
+    Tenta descobrir o(s) ano(s) envolvido(s) pra mostrar como legenda
+    acima da tabela — primeiro olhando os próprios dados, depois como
+    último recurso procurando um ano escrito na pergunta.
+    """
+    if dados_tabela and "ano_1" in dados_tabela[0]:
+        ano_1 = dados_tabela[0]["ano_1"]
+        ano_2 = dados_tabela[0]["ano_2"]
+        return f"Comparando: {ano_1} vs {ano_2}"
+
+    anos_nos_dados = sorted({
+        item.get("ano")
+        for item in dados_tabela
+        if isinstance(item, dict) and item.get("ano")
+    })
+
+    if len(anos_nos_dados) == 1:
+        return f"Ano: {anos_nos_dados[0]}"
+
+    if len(anos_nos_dados) > 1:
+        return f"Anos: {', '.join(str(ano) for ano in anos_nos_dados)}"
+
+    anos_completos = re.findall(r"\b(?:19|20)\d{2}\b", texto_referencia)
+    if anos_completos:
+        return f"Ano: {', '.join(sorted(set(anos_completos)))}"
+
+    return None
+
+
+def exibir_tabela(dados_tabela, texto_referencia, chave):
+    """Renderiza a tabela formatada + botão de download em Excel."""
+    legenda = descrever_periodo(dados_tabela, texto_referencia)
+    if legenda:
+        st.caption(legenda)
+
+    tabela = preparar_tabela(dados_tabela, texto_referencia)
+
+    # Calcula a altura exata pra caber todas as linhas sem sobrar
+    # espaço em branco (35px por linha + 38px do cabeçalho + margem).
+    altura = min(35 * len(tabela) + 38 + 3, 500)
+
+    st.dataframe(
+        tabela,
+        hide_index=True,
+        height=altura,
+        use_container_width=True,
+        column_config={
+            coluna: st.column_config.Column(width="small")
+            for coluna in tabela.columns
+        },
+    )
+
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        tabela.to_excel(writer, index=False, sheet_name="Dados")
+
+    st.download_button(
+        label="⬇️ Baixar em Excel",
+        data=buffer.getvalue(),
+        file_name="resultado.xlsx",
+        mime=(
+            "application/vnd.openxmlformats-officedocument"
+            ".spreadsheetml.sheet"
+        ),
+        key=f"download_{chave}",
+    )
+
 
 st.set_page_config(
     page_title="Chatbot Comercial Ferronorte",
@@ -83,9 +285,17 @@ with st.sidebar:
             ):
                 st.session_state.pergunta_sugerida = sugestao
 
-for mensagem in st.session_state.mensagens:
+for indice_mensagem, mensagem in enumerate(st.session_state.mensagens):
     with st.chat_message(mensagem["papel"]):
         st.text(mensagem["conteudo"])
+
+        if mensagem.get("dados_tabela"):
+            with st.expander("📊 Ver como tabela"):
+                exibir_tabela(
+                    mensagem["dados_tabela"],
+                    mensagem.get("conteudo", ""),
+                    chave=f"historico_{indice_mensagem}",
+                )
 
 pergunta = st.chat_input(
     "Digite sua pergunta sobre algum indicador comercial..."
@@ -141,16 +351,25 @@ if pergunta:
         # A bolha de "digitando" é sempre substituída pelo conteúdo
         # final, seja a resposta ou o erro — nunca fica travada na tela.
         try:
-            resposta = processar_pergunta(
+            resposta, dados_tabela = processar_pergunta(
                 pergunta=pergunta,
                 historico=historico,
             )
             placeholder.text(resposta)
 
+            if dados_tabela:
+                with st.expander("📊 Ver como tabela"):
+                    exibir_tabela(
+                        dados_tabela,
+                        resposta,
+                        chave="atual",
+                    )
+
             st.session_state.mensagens.append(
                 {
                     "papel": "assistant",
                     "conteudo": resposta,
+                    "dados_tabela": dados_tabela,
                 }
             )
 

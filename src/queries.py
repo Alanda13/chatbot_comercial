@@ -15,6 +15,8 @@ def _periodos_mensais_do_ano(ano: int) -> list[dict]:
         ultimo_dia = calendar.monthrange(ano, mes)[1]
 
         periodos_gerados.append({
+            "ano": ano,
+            "mes": mes,
             "data_inicial": f"{ano}-{mes:02d}-01",
             "data_final": f"{ano}-{mes:02d}-{ultimo_dia:02d}",
         })
@@ -692,7 +694,7 @@ def consultar_indicadores_nps(
     agrupar_por_filial: bool = False,
     agrupar_por_ano: bool = False,
     agrupar_por_mes: bool = False,
-    ano: int | None = None,
+    anos: list[int] | None = None,
 ):
     """
     Consulta indicadores de NPS de forma genérica.
@@ -707,11 +709,14 @@ def consultar_indicadores_nps(
       — usado para perguntas tipo "qual filial teve o maior/menor NPS",
       já que não é prático o usuário/IA listar o nome de cada filial
       uma por uma;
-    - TODOS os meses de um ano, agrupados (agrupar_por_mes=True,
-      junto com "ano") — usado para perguntas tipo "NPS mês a mês",
+    - TODOS os meses de um ou mais anos, agrupados (agrupar_por_mes=True,
+      junto com "anos") — usado para perguntas tipo "NPS mês a mês",
       "liste os meses" ou quando o usuário nomeia vários meses de uma
       vez — o sistema monta os 12 períodos mensais sozinho, em vez de
-      depender da IA calcular a data final de cada mês na mão;
+      depender da IA calcular a data final de cada mês na mão. Quando
+      são EXATAMENTE 2 anos, o sistema já calcula a diferença e o
+      percentual de variação entre eles, mês a mês (não é deixado a
+      cargo da IA);
     - TODOS os anos com dados, agrupados (agrupar_por_ano=True) —
       usado para perguntas tipo "qual ano teve o maior/menor NPS" de
       uma filial (ou da empresa inteira) — o sistema descobre sozinho
@@ -720,36 +725,143 @@ def consultar_indicadores_nps(
 
     resultados = []
 
-    # Todos os meses de um ano, agrupados — uma ou mais filiais.
-    if filiais and agrupar_por_mes and ano:
-        periodos_mensais = _periodos_mensais_do_ano(ano)
+    # Todos os meses de EXATAMENTE 2 anos — comparação mês a mês
+    # com diferença e percentual já calculados em Python (não pela
+    # IA, pra garantir que o número está certo) — uma ou mais filiais.
+    if filiais and agrupar_por_mes and anos and len(anos) == 2:
+        ano_1, ano_2 = anos[0], anos[1]
+        periodos_ano_1 = _periodos_mensais_do_ano(ano_1)
+        periodos_ano_2 = _periodos_mensais_do_ano(ano_2)
 
         for nome_filial in filiais:
-            for periodo in periodos_mensais:
-                resultado = obter_nps_filial_periodo(
+            for indice_mes in range(12):
+                periodo_1 = periodos_ano_1[indice_mes]
+                periodo_2 = periodos_ano_2[indice_mes]
+
+                resultado_1 = obter_nps_filial_periodo(
                     nome_filial,
-                    periodo["data_inicial"],
-                    periodo["data_final"],
+                    periodo_1["data_inicial"],
+                    periodo_1["data_final"],
+                )
+                resultado_2 = obter_nps_filial_periodo(
+                    nome_filial,
+                    periodo_2["data_inicial"],
+                    periodo_2["data_final"],
                 )
 
-                resultados.append(resultado)
+                nps_1 = resultado_1["nps"]
+                nps_2 = resultado_2["nps"]
+
+                if nps_1 is None or nps_2 is None or nps_1 == 0:
+                    diferenca = None
+                    percentual = None
+                else:
+                    diferenca = round(nps_2 - nps_1, 2)
+                    percentual = round(
+                        (nps_2 - nps_1) / abs(nps_1) * 100, 2
+                    )
+
+                resultados.append({
+                    "filial": nome_filial,
+                    "mes": periodo_1["mes"],
+                    "ano_1": ano_1,
+                    "valor_ano_1": nps_1,
+                    "ano_2": ano_2,
+                    "valor_ano_2": nps_2,
+                    "diferenca": diferenca,
+                    "percentual": percentual,
+                })
 
         return {
             "filiais": filiais,
             "resultados": resultados,
         }
 
-    # Todos os meses de um ano, agrupados — empresa inteira.
-    if not filiais and agrupar_por_mes and ano:
-        periodos_mensais = _periodos_mensais_do_ano(ano)
+    # Todos os meses de um ou mais anos (1, 3+, ou fallback) — uma
+    # ou mais filiais, sem comparação par a par.
+    if filiais and agrupar_por_mes and anos:
+        for ano_atual in anos:
+            periodos_mensais = _periodos_mensais_do_ano(ano_atual)
 
-        for periodo in periodos_mensais:
-            resultado = obter_nps_por_periodo(
-                periodo["data_inicial"],
-                periodo["data_final"],
+            for nome_filial in filiais:
+                for periodo in periodos_mensais:
+                    resultado = obter_nps_filial_periodo(
+                        nome_filial,
+                        periodo["data_inicial"],
+                        periodo["data_final"],
+                    )
+                    resultado["ano"] = periodo["ano"]
+                    resultado["mes"] = periodo["mes"]
+
+                    resultados.append(resultado)
+
+        return {
+            "filiais": filiais,
+            "resultados": resultados,
+        }
+
+    # Todos os meses de EXATAMENTE 2 anos — empresa inteira, com
+    # diferença e percentual já calculados.
+    if not filiais and agrupar_por_mes and anos and len(anos) == 2:
+        ano_1, ano_2 = anos[0], anos[1]
+        periodos_ano_1 = _periodos_mensais_do_ano(ano_1)
+        periodos_ano_2 = _periodos_mensais_do_ano(ano_2)
+
+        for indice_mes in range(12):
+            periodo_1 = periodos_ano_1[indice_mes]
+            periodo_2 = periodos_ano_2[indice_mes]
+
+            resultado_1 = obter_nps_por_periodo(
+                periodo_1["data_inicial"],
+                periodo_1["data_final"],
+            )
+            resultado_2 = obter_nps_por_periodo(
+                periodo_2["data_inicial"],
+                periodo_2["data_final"],
             )
 
-            resultados.append(resultado)
+            nps_1 = resultado_1["nps"]
+            nps_2 = resultado_2["nps"]
+
+            if nps_1 is None or nps_2 is None or nps_1 == 0:
+                diferenca = None
+                percentual = None
+            else:
+                diferenca = round(nps_2 - nps_1, 2)
+                percentual = round(
+                    (nps_2 - nps_1) / abs(nps_1) * 100, 2
+                )
+
+            resultados.append({
+                "mes": periodo_1["mes"],
+                "ano_1": ano_1,
+                "valor_ano_1": nps_1,
+                "ano_2": ano_2,
+                "valor_ano_2": nps_2,
+                "diferenca": diferenca,
+                "percentual": percentual,
+            })
+
+        return {
+            "filiais": None,
+            "resultados": resultados,
+        }
+
+    # Todos os meses de um ou mais anos (1, 3+, ou fallback) —
+    # empresa inteira, sem comparação par a par.
+    if not filiais and agrupar_por_mes and anos:
+        for ano_atual in anos:
+            periodos_mensais = _periodos_mensais_do_ano(ano_atual)
+
+            for periodo in periodos_mensais:
+                resultado = obter_nps_por_periodo(
+                    periodo["data_inicial"],
+                    periodo["data_final"],
+                )
+                resultado["ano"] = periodo["ano"]
+                resultado["mes"] = periodo["mes"]
+
+                resultados.append(resultado)
 
         return {
             "filiais": None,

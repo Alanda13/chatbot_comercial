@@ -41,7 +41,7 @@ FERRAMENTAS_DISPONIVEIS = {
         "funcao": executar_listar_filiais,
     },
 
-    "consultar_indicadores_nps": {
+        "consultar_indicadores_nps": {
         "descricao": (
             "Ferramenta genérica para consultar indicadores de NPS. "
             "Pode consultar a empresa inteira, uma filial específica ou várias filiais, "
@@ -57,9 +57,12 @@ FERRAMENTAS_DISPONIVEIS = {
             "vez de listar anos um a um — o sistema descobre sozinho "
             "quais anos têm dado. "
             "Para perguntas do tipo 'NPS mês a mês', 'liste os meses' ou "
-            "quando o usuário nomear vários meses de um mesmo ano, use "
-            "'agrupar_por_mes': true junto com 'ano' (o ano desejado) em "
-            "vez de montar os períodos de cada mês manualmente. "
+            "quando o usuário nomear vários meses de um ou mais anos "
+            "(inclusive para COMPARAR meses entre anos diferentes, como "
+            "'compare o NPS de cada mês em 2024 e 2025'), use "
+            "'agrupar_por_mes': true junto com 'anos' (uma LISTA com "
+            "um ou mais anos, ex: [2024, 2025]) em vez de montar os "
+            "períodos de cada mês manualmente. "
             "NÃO use esta ferramenta para 'qual filial teve a maior "
             "evolução/queda de NPS entre dois anos' — use "
             "'consultar_evolucao_nps' para isso."
@@ -71,7 +74,7 @@ FERRAMENTAS_DISPONIVEIS = {
             "agrupar_por_filial",
             "agrupar_por_ano",
             "agrupar_por_mes",
-            "ano",
+            "anos",
         ],
         "funcao": executar_consulta_indicadores_nps,
     },
@@ -320,6 +323,7 @@ def executar_ferramenta(
             "Argumentos obrigatórios ausentes: "
             + ", ".join(argumentos_faltantes)
         )
+    
 
     funcao = ferramenta["funcao"]
 
