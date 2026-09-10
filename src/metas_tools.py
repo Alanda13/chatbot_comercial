@@ -122,3 +122,47 @@ def executar_consultar_crescimento_abaixo_meta(argumentos: dict) -> dict:
         supervisores=supervisores_resolvidos,
         agrupar_por=agrupar_por,
     )
+def executar_listar_rcas_filial(argumentos: dict) -> dict:
+    """
+    Lista os RCAs (vendedores) que têm meta cadastrada em uma ou mais
+    filiais — essa é a definição de "RCA de uma filial" usada no
+    projeto. Reaproveita consultar_metas agrupando por RCA, mas
+    devolve só a identificação (nome e código), sem valores de meta,
+    já que essa ferramenta é só para listagem.
+    """
+    anos = argumentos.get("anos")
+
+    filiais_resolvidas, _, _ = _resolver_filtros(argumentos)
+
+    resultado = consultar_metas(
+        filiais=filiais_resolvidas,
+        anos=anos,
+        agrupar_por=["rca"],
+    )
+
+    if not resultado.get("encontrado"):
+        return {
+            "encontrado": False,
+            "filiais": filiais_resolvidas,
+            "mensagem": resultado.get(
+                "mensagem", "Nenhum RCA encontrado para essa filial."
+            ),
+        }
+
+    rcas_listados = [
+        {
+            "codigo": item["rca"],
+            "rca": item.get("rca_nome") or f"RCA {item['rca']}",
+        }
+        for item in resultado["resultados"]
+        if item.get("valor_meta")
+    ]
+
+    rcas_listados.sort(key=lambda item: item["rca"] or "")
+
+    return {
+        "encontrado": True,
+        "filiais": filiais_resolvidas,
+        "anos": anos,
+        "resultados": rcas_listados,
+    }

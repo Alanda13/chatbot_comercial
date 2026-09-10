@@ -13,7 +13,7 @@ from src.logger import obter_logger
 logger = obter_logger(__name__)
 
 LIMITE_RESULTADOS_RESPOSTA = 60
-LIMITE_MINIMO_PARA_TABELA = 3
+LIMITE_MINIMO_PARA_TABELA = 2
 
 def _limitar_resultados(resultado: dict) -> dict:
     """

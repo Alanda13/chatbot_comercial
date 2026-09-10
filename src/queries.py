@@ -720,7 +720,12 @@ def consultar_indicadores_nps(
     - TODOS os anos com dados, agrupados (agrupar_por_ano=True) —
       usado para perguntas tipo "qual ano teve o maior/menor NPS" de
       uma filial (ou da empresa inteira) — o sistema descobre sozinho
-      quais anos têm dado, sem precisar que a IA adivinhe o período.
+      quais anos têm dado. Quando são EXATAMENTE 2 anos, o sistema
+      também já calcula a diferença e o percentual entre eles (não é
+      deixado a cargo da IA);
+    - TODAS as filiais + anos agrupados AO MESMO TEMPO
+      (agrupar_por_filial=True E agrupar_por_ano=True) — usado para
+      "compare o NPS de todas as filiais entre 2024 e 2025".
     """
 
     resultados = []
@@ -778,12 +783,15 @@ def consultar_indicadores_nps(
         }
 
     # Todos os meses de um ou mais anos (1, 3+, ou fallback) — uma
-    # ou mais filiais, sem comparação par a par.
+    # ou mais filiais. Quando é 1 ano só, calcula também a variação
+    # de cada mês em relação ao mês anterior (dentro do mesmo ano).
     if filiais and agrupar_por_mes and anos:
         for ano_atual in anos:
             periodos_mensais = _periodos_mensais_do_ano(ano_atual)
 
             for nome_filial in filiais:
+                nps_mes_anterior = None
+
                 for periodo in periodos_mensais:
                     resultado = obter_nps_filial_periodo(
                         nome_filial,
@@ -792,6 +800,23 @@ def consultar_indicadores_nps(
                     )
                     resultado["ano"] = periodo["ano"]
                     resultado["mes"] = periodo["mes"]
+
+                    nps_atual = resultado["nps"]
+
+                    if len(anos) == 1:
+                        if nps_mes_anterior is None or nps_atual is None or nps_mes_anterior == 0:
+                            resultado["diferenca_mes_anterior"] = None
+                            resultado["percentual_mes_anterior"] = None
+                        else:
+                            resultado["diferenca_mes_anterior"] = round(
+                                nps_atual - nps_mes_anterior, 2
+                            )
+                            resultado["percentual_mes_anterior"] = round(
+                                (nps_atual - nps_mes_anterior) / abs(nps_mes_anterior) * 100, 2
+                            )
+
+                        if nps_atual is not None:
+                            nps_mes_anterior = nps_atual
 
                     resultados.append(resultado)
 
@@ -868,14 +893,17 @@ def consultar_indicadores_nps(
             "resultados": resultados,
         }
 
-    # Anos agrupados — uma ou mais filiais. Se anos específicos foram
-    # informados, usa só esses; senão, descobre TODOS os anos com dado
-    # (comportamento original, pra perguntas tipo "qual ano teve o
-    # maior NPS").
-    if filiais and agrupar_por_ano:
+    # Todas as filiais + anos agrupados ao mesmo tempo — usado quando
+    # o usuário pede "compare o NPS de todas as filiais entre 2024 e
+    # 2025" (sem nomear as filiais uma a uma).
+    if not filiais and agrupar_por_filial and agrupar_por_ano:
         anos_para_usar = anos if anos else obter_anos_com_dados_nps()
+        nomes_filiais = [
+            dados_filial["filial"]
+            for dados_filial in obter_nps_por_filial()
+        ]
 
-        for nome_filial in filiais:
+        for nome_filial in nomes_filiais:
             for ano_atual in anos_para_usar:
                 resultado = obter_nps_filial_periodo(
                     nome_filial,
@@ -887,14 +915,62 @@ def consultar_indicadores_nps(
                 resultados.append(resultado)
 
         return {
+            "filiais": nomes_filiais,
+            "resultados": resultados,
+        }
+
+    # Anos agrupados — uma ou mais filiais. Se anos específicos foram
+    # informados, usa só esses; senão, descobre TODOS os anos com dado
+    # (comportamento original, pra perguntas tipo "qual ano teve o
+    # maior NPS"). Quando são 2 OU MAIS anos, calcula também a
+    # diferença e o percentual em relação ao ano anterior, pra cada
+    # filial (mesmo padrão usado no "mês anterior").
+    if filiais and agrupar_por_ano:
+        anos_para_usar = anos if anos else obter_anos_com_dados_nps()
+
+        for nome_filial in filiais:
+            nps_ano_anterior = None
+
+            for ano_atual in anos_para_usar:
+                resultado = obter_nps_filial_periodo(
+                    nome_filial,
+                    f"{ano_atual}-01-01",
+                    f"{ano_atual}-12-31",
+                )
+                resultado["ano"] = ano_atual
+
+                nps_atual = resultado["nps"]
+
+                if len(anos_para_usar) >= 2:
+                    if nps_ano_anterior is None or nps_atual is None or nps_ano_anterior == 0:
+                        resultado["diferenca_ano_anterior"] = None
+                        resultado["percentual_ano_anterior"] = None
+                    else:
+                        resultado["diferenca_ano_anterior"] = round(
+                            nps_atual - nps_ano_anterior, 2
+                        )
+                        resultado["percentual_ano_anterior"] = round(
+                            (nps_atual - nps_ano_anterior) / abs(nps_ano_anterior) * 100, 2
+                        )
+
+                    if nps_atual is not None:
+                        nps_ano_anterior = nps_atual
+
+                resultados.append(resultado)
+
+        return {
             "filiais": filiais,
             "resultados": resultados,
         }
 
     # Anos agrupados — empresa inteira. Mesma lógica: respeita anos
-    # específicos se informados, senão descobre todos.
+    # específicos se informados, senão descobre todos. Quando são 2
+    # OU MAIS anos, calcula também a diferença e o percentual entre
+    # cada ano e o anterior.
     if not filiais and agrupar_por_ano:
         anos_para_usar = anos if anos else obter_anos_com_dados_nps()
+
+        nps_ano_anterior = None
 
         for ano_atual in anos_para_usar:
             resultado = obter_nps_por_periodo(
@@ -902,6 +978,23 @@ def consultar_indicadores_nps(
                 f"{ano_atual}-12-31",
             )
             resultado["ano"] = ano_atual
+
+            nps_atual = resultado["nps"]
+
+            if len(anos_para_usar) >= 2:
+                if nps_ano_anterior is None or nps_atual is None or nps_ano_anterior == 0:
+                    resultado["diferenca_ano_anterior"] = None
+                    resultado["percentual_ano_anterior"] = None
+                else:
+                    resultado["diferenca_ano_anterior"] = round(
+                        nps_atual - nps_ano_anterior, 2
+                    )
+                    resultado["percentual_ano_anterior"] = round(
+                        (nps_atual - nps_ano_anterior) / abs(nps_ano_anterior) * 100, 2
+                    )
+
+                if nps_atual is not None:
+                    nps_ano_anterior = nps_atual
 
             resultados.append(resultado)
 

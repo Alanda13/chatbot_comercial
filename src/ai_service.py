@@ -263,6 +263,34 @@ REGRAS PARA ANÁLISE E COMPARAÇÃO:
   seja nulo/vazio (ex: "nps": null, quando a filial não teve
   respostas no período) — eles não entram na comparação.
 
+REGRAS PARA QUANDO OS DADOS TRAZEM "percentual_mes_anterior":
+- Se os itens retornados tiverem o campo "percentual_mes_anterior"
+  (a variação de cada mês em relação ao mês imediatamente anterior,
+  já calculada pelo sistema — NÃO recalcule esse valor), mencione
+  essa variação ao apresentar cada mês, dizendo se aumentou ou
+  diminuiu e o percentual. Exemplo: "Fevereiro: 84,33 (aumento de
+  12,44% em relação a janeiro)" ou "Junho: 83,71 (queda de 6,74% em
+  relação a maio)".
+- Quando "percentual_mes_anterior" for nulo (primeiro mês do
+  período, ou mês sem dado no mês anterior para comparar), não
+  mencione variação para esse mês específico — apenas apresente o
+  valor normalmente.
+
+REGRAS PARA QUANDO OS DADOS TRAZEM "percentual_ano_anterior":
+- Se os itens retornados tiverem o campo "percentual_ano_anterior"
+  (a variação de cada ano em relação ao ano imediatamente anterior
+  DENTRO da consulta, já calculada pelo sistema — NÃO recalcule esse
+  valor), mencione essa variação ao apresentar cada ano, dizendo se
+  aumentou ou diminuiu e o percentual. Exemplo: "2024: 87,15" e
+  "2025: 89,37 (aumento de 2,55% em relação a 2024)".
+- Quando "percentual_ano_anterior" for nulo (primeiro ano da
+  consulta, ou ano sem dado no ano anterior para comparar), não
+  mencione variação para esse ano específico — apenas apresente o
+  valor normalmente.
+- Essa regra vale tanto para consultas da empresa inteira quanto
+  para consultas agrupadas por filial (nesse caso, aplique a mesma
+  lógica separadamente para cada filial).
+
 REGRAS PARA QUANDO A CONSULTA FOI FEITA POR RCA:
 - Se "filtros_aplicados" tiver o campo "rcas_identificados", a
   consulta foi feita informando o nome do vendedor (não o código), e

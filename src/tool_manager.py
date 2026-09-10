@@ -21,6 +21,7 @@ from src.faturamento_diario_tools import (
 from src.metas_tools import (
     executar_consultar_metas,
     executar_consultar_crescimento_abaixo_meta,
+    executar_listar_rcas_filial,
 )
 from src.meta_tonelada_tools import executar_consultar_meta_tonelada
 from src.filiais_tools import executar_listar_filiais
@@ -41,7 +42,7 @@ FERRAMENTAS_DISPONIVEIS = {
         "funcao": executar_listar_filiais,
     },
 
-        "consultar_indicadores_nps": {
+    "consultar_indicadores_nps": {
         "descricao": (
             "Ferramenta genérica para consultar indicadores de NPS. "
             "Pode consultar a empresa inteira, uma filial específica ou várias filiais, "
@@ -107,7 +108,15 @@ FERRAMENTAS_DISPONIVEIS = {
             "valor de desconto, peso líquido/toneladas e quantidade de "
             "notas, sempre que a pergunta for por mês(es) e/ou ano(s) — nunca por "
             "um dia específico ou período de dias. "
-            "O faturamento é baseado na coluna VENDA_LIQ da rotina 8280."
+            "O faturamento é baseado na coluna VENDA_LIQ da rotina 8280. "
+            "Quando agrupar_por incluir 'rca' e o usuário não especificar "
+            "RCAs, por padrão o sistema já filtra para trazer só os RCAs "
+            "com meta cadastrada na filial (vendedores de verdade, não "
+            "contas genéricas/contábeis). Só use "
+            "'apenas_rcas_com_meta': false quando o usuário pedir "
+            "explicitamente TODOS que venderam, mesmo sem meta cadastrada "
+            "(ex: 'todos que venderam', 'mesmo sem meta', 'qualquer "
+            "código que vendeu') — nesses casos o filtro é desativado."
         ),
         "argumentos_obrigatorios": [],
         "argumentos_opcionais": [
@@ -116,6 +125,7 @@ FERRAMENTAS_DISPONIVEIS = {
             "meses",
             "anos",
             "agrupar_por",
+            "apenas_rcas_com_meta",
         ],
         "funcao": executar_consulta_indicadores_faturamento,
     },
@@ -202,6 +212,24 @@ FERRAMENTAS_DISPONIVEIS = {
             "agrupar_por",
         ],
         "funcao": executar_consultar_meta_tonelada,
+    },
+
+    "listar_rcas_filial": {
+        "descricao": (
+            "Ferramenta para listar os RCAs (vendedores) de uma ou "
+            "mais filiais — um RCA pertence a uma filial quando tem "
+            "meta cadastrada naquela filial. Use esta ferramenta "
+            "SEMPRE que o usuário pedir para 'listar os RCAs', "
+            "'quais são os vendedores', ou similar, de uma filial — "
+            "em vez de tentar montar essa lista a partir de "
+            "'consultar_indicadores_faturamento' ou "
+            "'consultar_metas', que trazem RCAs genéricos/contábeis "
+            "que não são vendedores de verdade. Se o usuário não "
+            "informar ano, traz de todos os anos disponíveis."
+        ),
+        "argumentos_obrigatorios": ["filiais"],
+        "argumentos_opcionais": ["anos"],
+        "funcao": executar_listar_rcas_filial,
     },
 
     "consultar_indicadores_faturamento_diario": {
@@ -328,8 +356,3 @@ def executar_ferramenta(
     funcao = ferramenta["funcao"]
 
     return funcao(argumentos)
-
-
-
-
-

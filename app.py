@@ -46,6 +46,9 @@ COLUNAS_MONETARIAS = {"faturamento", "venda_bruta", "valor_desconto"}
 
 RENOMEAR_COLUNAS = {
     "filial": "Filial",
+    "rca_nome": "RCA",
+    "rca": "Código RCA",
+    "codigo": "Código",
     "mes": "Mês",
     "ano": "Ano",
     "faturamento": "Faturamento",
@@ -55,6 +58,12 @@ RENOMEAR_COLUNAS = {
     "peso_liquido": "Peso Líquido",
     "quantidade_notas": "Qtd. Notas",
     "nps": "NPS",
+    "meta_tonelada_rca": "Meta Tonelada (RCA)",
+    "meta_tonelada_filial": "Meta Tonelada (Filial)",
+    "diferenca_mes_anterior": "Diferença (mês anterior)",
+    "percentual_mes_anterior": "Variação (mês anterior)",
+    "diferenca_ano_anterior": "Diferença (ano anterior)",
+    "percentual_ano_anterior": "Variação (ano anterior)",
 }
 
 
@@ -66,6 +75,39 @@ def formatar_moeda(valor):
     texto = f"{valor:,.2f}"
     texto = texto.replace(",", "X").replace(".", ",").replace("X", ".")
     return f"R$ {texto}"
+
+
+def formatar_percentual_com_sinal(valor):
+    """Formata um percentual com sinal + explícito (ex: +5.64%)."""
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return "sem dados"
+
+    sinal = "+" if valor >= 0 else ""
+    return f"{sinal}{valor}%"
+
+
+def ocultar_repeticoes_consecutivas(df, coluna):
+    """
+    Deixa em branco as repetições consecutivas de uma coluna (ex: o
+    nome da filial repetido em toda linha) — só mostra o valor na
+    primeira linha de cada grupo, evitando poluição visual.
+    """
+    if coluna not in df.columns or len(df) <= 1:
+        return df
+
+    valores = df[coluna].tolist()
+    novos_valores = []
+    valor_anterior = object()  # sentinela, nunca é igual a nada real
+
+    for valor in valores:
+        if valor == valor_anterior:
+            novos_valores.append("")
+        else:
+            novos_valores.append(valor)
+            valor_anterior = valor
+
+    df[coluna] = novos_valores
+    return df
 
 
 def preparar_tabela(dados_tabela, texto_referencia):
@@ -111,6 +153,14 @@ def preparar_tabela(dados_tabela, texto_referencia):
         })
 
         return tabela_comparacao
+
+    # Se não tem coluna "ano" pronta mas tem "data_inicial" (formato
+    # YYYY-MM-DD), extrai o ano de lá — usado em consultas por
+    # filial+período que não passam pelo agrupamento mês a mês. Isso
+    # precisa vir ANTES da checagem de pivô Filial x Ano logo abaixo,
+    # senão o pivô nunca detecta os 2 anos nesse formato de dado.
+    if "ano" not in df.columns and "data_inicial" in df.columns:
+        df["ano"] = df["data_inicial"].str.slice(0, 4)
 
     # Formato especial: filiais comparadas entre EXATAMENTE 2 anos
     # (sem ser mês a mês) — pivota pra Filial | ano_1 | ano_2 | Variação,
@@ -166,15 +216,57 @@ def preparar_tabela(dados_tabela, texto_referencia):
 
         return pd.DataFrame(linhas)
 
-    # Se não tem coluna "ano" pronta mas tem "data_inicial" (formato
-    # YYYY-MM-DD), extrai o ano de lá — usado em consultas por
-    # filial+período que não passam pelo agrupamento mês a mês.
-    if "ano" not in df.columns and "data_inicial" in df.columns:
-        df["ano"] = df["data_inicial"].str.slice(0, 4)
+    # Se a resposta em texto só menciona ALGUMAS das filiais que vieram
+    # na consulta (ex: "qual filial teve o maior NPS" — a IA já filtrou
+    # pra responder só a vencedora), a tabela segue o mesmo filtro, em
+    # vez de mostrar a lista crua com todas as filiais da consulta.
+    #
+    # Nomes mais LONGOS são checados primeiro, e o trecho encontrado é
+    # "consumido" do texto — sem isso, um nome curto que é prefixo de
+    # outro (ex: "FERRONORTE AREINHA" dentro de "FERRONORTE AREINHA
+    # LOGISTICA") apareceria como falso positivo.
+    if "filial" in df.columns:
+        texto_restante = texto_referencia.lower()
+        nomes_ordenados = sorted(
+            df["filial"].unique(), key=lambda nome: -len(str(nome))
+        )
+        filiais_na_resposta = []
+
+        for nome_filial in nomes_ordenados:
+            nome_lower = str(nome_filial).lower()
+            if nome_lower in texto_restante:
+                filiais_na_resposta.append(nome_filial)
+                texto_restante = texto_restante.replace(nome_lower, "")
+
+        if filiais_na_resposta and len(filiais_na_resposta) < df["filial"].nunique():
+            df = df[df["filial"].isin(filiais_na_resposta)]
+
+    if "rca_nome" in df.columns:
+        texto_restante = texto_referencia.lower()
+        nomes_ordenados = sorted(
+            df["rca_nome"].dropna().unique(), key=lambda nome: -len(str(nome))
+        )
+        rcas_na_resposta = []
+
+        for nome_rca in nomes_ordenados:
+            nome_lower = str(nome_rca).lower()
+            if nome_lower in texto_restante:
+                rcas_na_resposta.append(nome_rca)
+                texto_restante = texto_restante.replace(nome_lower, "")
+
+        if rcas_na_resposta and len(rcas_na_resposta) < df["rca_nome"].nunique():
+            df = df[df["rca_nome"].isin(rcas_na_resposta)]
 
     colunas_base = [
-        coluna for coluna in ("filial", "ano", "mes") if coluna in df.columns
+        coluna
+        for coluna in ("filial", "rca_nome", "rca", "codigo", "ano", "mes")
+        if coluna in df.columns
     ]
+
+    # Se já tem o nome do RCA (rca_nome), não precisa mostrar também o
+    # código cru (rca) — uma coluna só de identificação é mais limpo.
+    if "rca_nome" in colunas_base and "rca" in colunas_base:
+        colunas_base.remove("rca")
 
     # Se só tem UM ano nos dados, tira a coluna "ano" da tabela — ela
     # já aparece na legenda acima ("Ano: 2025"), repetir em toda
@@ -199,12 +291,38 @@ def preparar_tabela(dados_tabela, texto_referencia):
     if pediu_toneladas and not mencionou_reais and "faturamento" in colunas_metricas:
         colunas_metricas.remove("faturamento")
 
-    # Se nenhuma palavra bateu, mostra todas as colunas de dado
-    # (fallback de segurança pra nunca esconder informação sem querer).
+    # Caso especial: "meta de tonelada" pode existir por RCA e por
+    # filial ao mesmo tempo nos dados. Escolhe a coluna certa conforme
+    # o que a resposta menciona, em vez de mostrar as duas juntas.
+    tem_meta_rca = "meta_tonelada_rca" in df.columns
+    tem_meta_filial = "meta_tonelada_filial" in df.columns
+
+    if "meta" in texto_lower and "tonelada" in texto_lower and (tem_meta_rca or tem_meta_filial):
+        if "rca" in texto_lower or "vendedor" in texto_lower:
+            colunas_metricas = [c for c in ("meta_tonelada_rca",) if c in df.columns]
+        elif "filial" in texto_lower:
+            colunas_metricas = [c for c in ("meta_tonelada_filial",) if c in df.columns]
+        else:
+            colunas_metricas = [
+                c for c in ("meta_tonelada_rca", "meta_tonelada_filial")
+                if c in df.columns
+            ]
+
+    # Se nenhuma palavra bateu com nenhuma métrica conhecida, mostra
+    # só as colunas de IDENTIFICAÇÃO (nome, código, filial, período) —
+    # nunca despeja valores/métricas que ninguém pediu. Isso cobre
+    # perguntas tipo "liste os RCAs", que não pedem nenhum número.
     if not colunas_metricas:
-        colunas_metricas = [
-            coluna for coluna in df.columns if coluna not in colunas_base
-        ]
+        colunas_metricas = []
+
+    # Se os dados trazem a variação em relação ao mês/ano anterior,
+    # inclui essa coluna automaticamente — é sempre relevante quando
+    # presente, não depende de palavra-chave na pergunta.
+    if "percentual_mes_anterior" in df.columns and "percentual_mes_anterior" not in colunas_metricas:
+        colunas_metricas.append("percentual_mes_anterior")
+
+    if "percentual_ano_anterior" in df.columns and "percentual_ano_anterior" not in colunas_metricas:
+        colunas_metricas.append("percentual_ano_anterior")
 
     df = df[colunas_base + colunas_metricas].copy()
 
@@ -214,6 +332,8 @@ def preparar_tabela(dados_tabela, texto_referencia):
     for coluna in colunas_metricas:
         if coluna in COLUNAS_MONETARIAS:
             df[coluna] = df[coluna].apply(formatar_moeda)
+        elif coluna in ("percentual_mes_anterior", "percentual_ano_anterior"):
+            df[coluna] = df[coluna].apply(formatar_percentual_com_sinal)
 
     # Troca valores vazios (None/NaN) por um texto claro, pra não
     # aparecer "None" nem um traço confuso de se enxergar na tela.
@@ -254,6 +374,34 @@ def descrever_periodo(dados_tabela, texto_referencia):
     return None
 
 
+COLUNAS_DE_IDENTIFICACAO = {
+    "Filial", "RCA", "Código", "Código RCA", "Ano", "Mês",
+}
+
+
+def vale_a_pena_mostrar_tabela(dados_tabela, texto_referencia):
+    """
+    Decide se a tabela agrega algo além do texto. Duas condições
+    precisam ser verdadeiras ao mesmo tempo:
+    1. Ter pelo menos uma coluna de valor/métrica (não só
+       identificação como nome, código, filial...);
+    2. Sobrar mais de 1 linha DEPOIS de qualquer filtro (ex: quando a
+       pergunta é "qual filial teve o maior NPS", a tabela é filtrada
+       pra só a vencedora — se sobra 1 linha só, é a mesma coisa que
+       um valor único, e o texto já basta).
+    """
+    tabela = preparar_tabela(dados_tabela, texto_referencia)
+
+    if len(tabela) <= 1:
+        return False
+
+    colunas_de_valor = [
+        coluna for coluna in tabela.columns
+        if coluna not in COLUNAS_DE_IDENTIFICACAO
+    ]
+    return len(colunas_de_valor) > 0
+
+
 def exibir_tabela(dados_tabela, texto_referencia, chave):
     """Renderiza a tabela formatada + botão de download em Excel."""
     legenda = descrever_periodo(dados_tabela, texto_referencia)
@@ -262,10 +410,17 @@ def exibir_tabela(dados_tabela, texto_referencia, chave):
 
     tabela = preparar_tabela(dados_tabela, texto_referencia)
 
+    # Converte tudo pra texto antes de exibir — evita erro do pyarrow
+    # quando uma coluna mistura números com texto (ex: NPS com valor
+    # numérico em alguns meses e "sem dados" em outros). O Excel
+    # (mais abaixo) continua usando os dados originais, sem essa
+    # conversão.
+    tabela_exibicao = tabela.astype(str)
+
     # st.table é uma tabela estática, sem barra de ferramentas — não
     # tem botão de tela cheia nem de baixar CSV, evitando os problemas
     # de layout que apareciam com st.dataframe.
-    st.table(tabela.set_index(tabela.columns[0]))
+    st.table(tabela_exibicao.set_index(tabela_exibicao.columns[0]))
 
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -290,8 +445,37 @@ st.set_page_config(
 )
 st.title("🤖 Chatbot Comercial Ferronorte")
 
-st.caption(
-    "Consulte Informações sobre Indicadores Comerciais."
+st.markdown(
+    """
+    <style>
+    .badge-indicador {
+        display: inline-block;
+        padding: 2px 10px;
+        margin: 2px 4px 2px 0;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        background-color: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    .legenda-filtros {
+        font-size: 0.8rem;
+        opacity: 0.6;
+        margin-top: 4px;
+    }
+    </style>
+    <div style="opacity: 0.75; font-size: 0.85rem; margin-bottom: 4px;">
+        No momento posso ajudar com consultas de:
+    </div>
+    <span class="badge-indicador">💰 Faturamento (R$ e toneladas — anual, mensal e diário) — 2020 a 2025</span>
+    <span class="badge-indicador">🎯 Metas (faturamento) — 2020 a 2025</span>
+    <span class="badge-indicador">🎯 Metas (tonelada) — 2024 a 2026</span>
+    <span class="badge-indicador">⭐ NPS</span>
+    <div class="legenda-filtros">
+        Tudo por <b>filial, RCA, supervisor ou período</b>, além da
+        lista de filiais.
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 if "mensagens" not in st.session_state:
@@ -350,7 +534,9 @@ for indice_mensagem, mensagem in enumerate(st.session_state.mensagens):
     with st.chat_message(mensagem["papel"]):
         st.text(mensagem["conteudo"])
 
-        if mensagem.get("dados_tabela"):
+        if mensagem.get("dados_tabela") and vale_a_pena_mostrar_tabela(
+            mensagem["dados_tabela"], mensagem.get("conteudo", "")
+        ):
             with st.expander("📊 Ver como tabela"):
                 exibir_tabela(
                     mensagem["dados_tabela"],
@@ -418,7 +604,7 @@ if pergunta:
             )
             placeholder.text(resposta)
 
-            if dados_tabela:
+            if dados_tabela and vale_a_pena_mostrar_tabela(dados_tabela, resposta):
                 with st.expander("📊 Ver como tabela"):
                     exibir_tabela(
                         dados_tabela,
