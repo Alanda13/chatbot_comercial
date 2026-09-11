@@ -70,20 +70,144 @@ MESES_PT = {
     9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro",
 }
 
-# Palavra que pode aparecer na pergunta -> coluna correspondente nos
-# dados. Usado pra mostrar na tabela só o que a pessoa perguntou, em
-# vez de todas as colunas que a consulta retornou.
-PALAVRAS_PARA_COLUNA = {
-    "faturamento": "faturamento",
-    "venda bruta": "venda_bruta",
-    "desconto": "valor_desconto",
-    "tonelada": "toneladas",
-    "peso": "peso_liquido",
-    "nota": "quantidade_notas",
-    "nps": "nps",
+def _selecionar_colunas_meta_tonelada(texto_lower, colunas_disponiveis):
+    """
+    Meta de tonelada pode existir por RCA e por filial ao mesmo tempo
+    nos dados — escolhe a coluna certa conforme o que a resposta
+    menciona, em vez de mostrar as duas juntas.
+    """
+    if "rca" in texto_lower or "vendedor" in texto_lower:
+        return [c for c in ("meta_tonelada_rca",) if c in colunas_disponiveis]
+
+    if "filial" in texto_lower:
+        return [c for c in ("meta_tonelada_filial",) if c in colunas_disponiveis]
+
+    return [
+        c for c in ("meta_tonelada_rca", "meta_tonelada_filial")
+        if c in colunas_disponiveis
+    ]
+
+
+# Configuração de tabela por ferramenta — fonte única de verdade sobre
+# as colunas de valor de cada ferramenta: nome do campo, "tipo" (usado
+# pra formatação, veja FORMATADORES_POR_TIPO), rótulo de exibição, e
+# quando a coluna deve aparecer. Uma ferramenta nova só precisa de uma
+# entrada aqui — a lógica de montagem da tabela (preparar_tabela, mais
+# abaixo) nunca precisa saber o nome dela.
+#
+# Cada coluna tem "sempre": True (aparece sempre que presente, usado
+# quando os números sempre andam juntos, ex: meta/realizado/
+# atingimento) OU "palavras": [...] (só aparece se uma dessas palavras
+# estiver na resposta — evita mostrar dado que ninguém pediu).
+#
+# "seletor" é um escape hatch pra ferramentas cuja escolha de coluna
+# não é um simples "sempre" ou "por palavra" (ex: meta de tonelada,
+# que escolhe entre duas colunas mutuamente exclusivas).
+CONFIG_TABELA_POR_FERRAMENTA = {
+    "consultar_indicadores_faturamento": {
+        "colunas": [
+            {"coluna": "faturamento", "tipo": "moeda", "rotulo": "Faturamento", "palavras": ["faturamento"]},
+            {"coluna": "venda_bruta", "tipo": "moeda", "rotulo": "Venda Bruta", "palavras": ["venda bruta"]},
+            {"coluna": "valor_desconto", "tipo": "moeda", "rotulo": "Desconto", "palavras": ["desconto"]},
+            {"coluna": "toneladas", "tipo": "texto", "rotulo": "Toneladas", "palavras": ["tonelada"]},
+            {"coluna": "peso_liquido", "tipo": "texto", "rotulo": "Peso Líquido", "palavras": ["peso"]},
+            {"coluna": "quantidade_notas", "tipo": "texto", "rotulo": "Qtd. Notas", "palavras": ["nota"]},
+        ],
+    },
+    "consultar_indicadores_faturamento_diario": {
+        "colunas": [
+            {"coluna": "faturamento", "tipo": "moeda", "rotulo": "Faturamento", "palavras": ["faturamento"]},
+            {"coluna": "venda_bruta", "tipo": "moeda", "rotulo": "Venda Bruta", "palavras": ["venda bruta"]},
+            {"coluna": "valor_desconto", "tipo": "moeda", "rotulo": "Desconto", "palavras": ["desconto"]},
+            {"coluna": "quantidade_notas", "tipo": "texto", "rotulo": "Qtd. Notas", "palavras": ["nota"]},
+        ],
+    },
+    "consultar_indicadores_nps": {
+        "colunas": [
+            {"coluna": "nps", "tipo": "texto", "rotulo": "NPS", "palavras": ["nps"]},
+        ],
+    },
+    "consultar_metas": {
+        "colunas": [
+            {"coluna": "valor_meta", "tipo": "moeda", "rotulo": "Meta", "sempre": True},
+            {"coluna": "faturamento_realizado", "tipo": "moeda", "rotulo": "Faturamento Realizado", "sempre": True},
+            {"coluna": "percentual_atingimento", "tipo": "percentual", "rotulo": "Atingimento", "sempre": True},
+            {"coluna": "falta_para_meta", "tipo": "moeda", "rotulo": "Falta para Meta", "palavras": ["falta"]},
+        ],
+    },
+    "consultar_crescimento_abaixo_meta": {
+        "colunas": [
+            {"coluna": "faturamento_realizado_ano_anterior", "tipo": "moeda", "rotulo": "Faturamento (ano anterior)", "sempre": True},
+            {"coluna": "faturamento_realizado", "tipo": "moeda", "rotulo": "Faturamento Realizado", "sempre": True},
+            {"coluna": "crescimento_valor", "tipo": "moeda", "rotulo": "Crescimento (R$)", "sempre": True},
+            {"coluna": "crescimento_percentual", "tipo": "percentual", "rotulo": "Crescimento (%)", "sempre": True},
+            {"coluna": "valor_meta", "tipo": "moeda", "rotulo": "Meta", "sempre": True},
+            {"coluna": "percentual_atingimento", "tipo": "percentual", "rotulo": "Atingimento", "sempre": True},
+        ],
+    },
+    "consultar_evolucao_nps": {
+        "colunas": [
+            {"coluna": "ano_inicial", "tipo": "texto", "rotulo": "Ano Inicial", "sempre": True},
+            {"coluna": "nps_inicial", "tipo": "texto", "rotulo": "NPS Inicial", "sempre": True},
+            {"coluna": "ano_final", "tipo": "texto", "rotulo": "Ano Final", "sempre": True},
+            {"coluna": "nps_final", "tipo": "texto", "rotulo": "NPS Final", "sempre": True},
+            {"coluna": "diferenca", "tipo": "texto", "rotulo": "Diferença", "sempre": True},
+        ],
+    },
+    "consultar_meta_tonelada": {
+        "seletor": _selecionar_colunas_meta_tonelada,
+        "colunas": [
+            {"coluna": "meta_tonelada_rca", "tipo": "texto", "rotulo": "Meta Tonelada (RCA)"},
+            {"coluna": "meta_tonelada_filial", "tipo": "texto", "rotulo": "Meta Tonelada (Filial)"},
+        ],
+    },
 }
 
-COLUNAS_MONETARIAS = {"faturamento", "venda_bruta", "valor_desconto"}
+
+def selecionar_colunas_metricas(nome_ferramenta, texto_lower, colunas_disponiveis):
+    """
+    Decide quais colunas de valor entram na tabela, usando a
+    configuração da ferramenta que gerou o resultado (veja
+    CONFIG_TABELA_POR_FERRAMENTA). Ferramentas sem configuração (ex:
+    listar_filiais) não têm coluna de valor — a tabela fica só com as
+    colunas de identificação.
+    """
+    config = CONFIG_TABELA_POR_FERRAMENTA.get(nome_ferramenta, {})
+
+    if "seletor" in config:
+        return config["seletor"](texto_lower, colunas_disponiveis)
+
+    colunas = []
+
+    for especificacao in config.get("colunas", []):
+        coluna = especificacao["coluna"]
+
+        if coluna not in colunas_disponiveis:
+            continue
+
+        bateu_palavra = any(
+            palavra in texto_lower
+            for palavra in especificacao.get("palavras", [])
+        )
+
+        if especificacao.get("sempre") or bateu_palavra:
+            colunas.append(coluna)
+
+    return colunas
+
+
+# Tipo de cada coluna (pra formatação) e rótulo de exibição, derivados
+# da config acima — nenhuma ferramenta precisa ser listada duas vezes.
+TIPO_POR_COLUNA = {
+    especificacao["coluna"]: especificacao["tipo"]
+    for config in CONFIG_TABELA_POR_FERRAMENTA.values()
+    for especificacao in config.get("colunas", [])
+}
+# "percentual_mes_anterior"/"percentual_ano_anterior" não pertencem a
+# uma ferramenta específica — podem aparecer no resultado de qualquer
+# ferramenta agrupada por mês/ano, então têm o tipo registrado à parte.
+TIPO_POR_COLUNA["percentual_mes_anterior"] = "percentual_com_sinal"
+TIPO_POR_COLUNA["percentual_ano_anterior"] = "percentual_com_sinal"
 
 RENOMEAR_COLUNAS = {
     "filial": "Filial",
@@ -92,19 +216,13 @@ RENOMEAR_COLUNAS = {
     "codigo": "Código",
     "mes": "Mês",
     "ano": "Ano",
-    "faturamento": "Faturamento",
-    "venda_bruta": "Venda Bruta",
-    "valor_desconto": "Desconto",
-    "toneladas": "Toneladas",
-    "peso_liquido": "Peso Líquido",
-    "quantidade_notas": "Qtd. Notas",
-    "nps": "NPS",
-    "meta_tonelada_rca": "Meta Tonelada (RCA)",
-    "meta_tonelada_filial": "Meta Tonelada (Filial)",
-    "diferenca_mes_anterior": "Diferença (mês anterior)",
     "percentual_mes_anterior": "Variação (mês anterior)",
-    "diferenca_ano_anterior": "Diferença (ano anterior)",
     "percentual_ano_anterior": "Variação (ano anterior)",
+    **{
+        especificacao["coluna"]: especificacao["rotulo"]
+        for config in CONFIG_TABELA_POR_FERRAMENTA.values()
+        for especificacao in config.get("colunas", [])
+    },
 }
 
 
@@ -119,12 +237,30 @@ def formatar_moeda(valor):
 
 
 def formatar_percentual_com_sinal(valor):
-    """Formata um percentual com sinal + explícito (ex: +5.64%)."""
+    """Formata um percentual com sinal + explícito (ex: +5,64%)."""
     if valor is None or (isinstance(valor, float) and pd.isna(valor)):
         return "sem dados"
 
     sinal = "+" if valor >= 0 else ""
-    return f"{sinal}{valor}%"
+    return f"{sinal}{valor:.2f}%".replace(".", ",")
+
+
+def formatar_percentual_atingimento(valor):
+    """Formata o percentual de atingimento de meta (ex: 122,37%)."""
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return "sem dados"
+
+    return f"{valor:.2f}%".replace(".", ",")
+
+
+# Formatador de cada "tipo" declarado em CONFIG_TABELA_POR_FERRAMENTA.
+# Colunas do tipo "texto" (ou sem tipo registrado) não passam por
+# nenhum formatador — ficam com o valor cru.
+FORMATADORES_POR_TIPO = {
+    "moeda": formatar_moeda,
+    "percentual": formatar_percentual_atingimento,
+    "percentual_com_sinal": formatar_percentual_com_sinal,
+}
 
 
 def ocultar_repeticoes_consecutivas(df, coluna):
@@ -151,13 +287,13 @@ def ocultar_repeticoes_consecutivas(df, coluna):
     return df
 
 
-def preparar_tabela(dados_tabela, texto_referencia):
+def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
     """
-    Monta a tabela pronta pra exibição: filtra só as colunas que o
-    texto de referência menciona (a resposta do chatbot, de
-    preferência — mais confiável que a pergunta digitada, que pode
-    ter erro de digitação), troca número do mês pelo nome, formata
-    moeda e renomeia os títulos das colunas pra português legível.
+    Monta a tabela pronta pra exibição: escolhe as colunas de valor
+    certas pra ferramenta que gerou o dado (veja
+    CONFIG_TABELA_POR_FERRAMENTA), troca número do mês pelo nome,
+    formata moeda e renomeia os títulos das colunas pra português
+    legível.
     """
     df = pd.DataFrame(dados_tabela)
 
@@ -180,17 +316,11 @@ def preparar_tabela(dados_tabela, texto_referencia):
                 return "sem dados"
             return formatar_moeda(valor) if eh_monetario else valor
 
-        def formatar_percentual(valor):
-            if valor is None or (isinstance(valor, float) and pd.isna(valor)):
-                return "sem dados"
-            sinal = "+" if valor >= 0 else ""
-            return f"{sinal}{valor}%"
-
         tabela_comparacao = pd.DataFrame({
             "Mês": df["mes"],
             str(ano_1): df["valor_ano_1"].apply(formatar_valor),
             str(ano_2): df["valor_ano_2"].apply(formatar_valor),
-            "Variação": df["percentual"].apply(formatar_percentual),
+            "Variação": df["percentual"].apply(formatar_percentual_com_sinal),
         })
 
         return tabela_comparacao
@@ -215,14 +345,12 @@ def preparar_tabela(dados_tabela, texto_referencia):
         anos_ordenados = sorted(df["ano"].unique())
         ano_1, ano_2 = anos_ordenados[0], anos_ordenados[1]
 
-        coluna_valor = "nps" if "nps" in df.columns else None
-        if coluna_valor is None:
-            for candidata in PALAVRAS_PARA_COLUNA.values():
-                if candidata in df.columns:
-                    coluna_valor = candidata
-                    break
+        colunas_candidatas = selecionar_colunas_metricas(
+            nome_ferramenta, texto_referencia.lower(), df.columns
+        )
+        coluna_valor = colunas_candidatas[0] if colunas_candidatas else None
 
-        eh_monetario = coluna_valor in COLUNAS_MONETARIAS
+        eh_monetario = TIPO_POR_COLUNA.get(coluna_valor) == "moeda"
 
         linhas = []
         for nome_filial in df["filial"].unique():
@@ -240,8 +368,7 @@ def preparar_tabela(dados_tabela, texto_referencia):
                 percentual_texto = "sem dados"
             else:
                 percentual = round((valor_2 - valor_1) / abs(valor_1) * 100, 2)
-                sinal = "+" if percentual >= 0 else ""
-                percentual_texto = f"{sinal}{percentual}%"
+                percentual_texto = formatar_percentual_com_sinal(percentual)
 
             def formatar(valor):
                 if valor is None or pd.isna(valor):
@@ -316,11 +443,9 @@ def preparar_tabela(dados_tabela, texto_referencia):
         colunas_base.remove("ano")
 
     texto_lower = texto_referencia.lower()
-    colunas_metricas = [
-        coluna
-        for palavra, coluna in PALAVRAS_PARA_COLUNA.items()
-        if palavra in texto_lower and coluna in df.columns
-    ]
+    colunas_metricas = selecionar_colunas_metricas(
+        nome_ferramenta, texto_lower, df.columns
+    )
 
     # "Faturamento" às vezes aparece no texto só como nome genérico do
     # indicador (ex: "faturamento em toneladas"), não significando que
@@ -331,23 +456,6 @@ def preparar_tabela(dados_tabela, texto_referencia):
 
     if pediu_toneladas and not mencionou_reais and "faturamento" in colunas_metricas:
         colunas_metricas.remove("faturamento")
-
-    # Caso especial: "meta de tonelada" pode existir por RCA e por
-    # filial ao mesmo tempo nos dados. Escolhe a coluna certa conforme
-    # o que a resposta menciona, em vez de mostrar as duas juntas.
-    tem_meta_rca = "meta_tonelada_rca" in df.columns
-    tem_meta_filial = "meta_tonelada_filial" in df.columns
-
-    if "meta" in texto_lower and "tonelada" in texto_lower and (tem_meta_rca or tem_meta_filial):
-        if "rca" in texto_lower or "vendedor" in texto_lower:
-            colunas_metricas = [c for c in ("meta_tonelada_rca",) if c in df.columns]
-        elif "filial" in texto_lower:
-            colunas_metricas = [c for c in ("meta_tonelada_filial",) if c in df.columns]
-        else:
-            colunas_metricas = [
-                c for c in ("meta_tonelada_rca", "meta_tonelada_filial")
-                if c in df.columns
-            ]
 
     # Se nenhuma palavra bateu com nenhuma métrica conhecida, mostra
     # só as colunas de IDENTIFICAÇÃO (nome, código, filial, período) —
@@ -371,10 +479,9 @@ def preparar_tabela(dados_tabela, texto_referencia):
         df["mes"] = df["mes"].map(MESES_PT).fillna(df["mes"])
 
     for coluna in colunas_metricas:
-        if coluna in COLUNAS_MONETARIAS:
-            df[coluna] = df[coluna].apply(formatar_moeda)
-        elif coluna in ("percentual_mes_anterior", "percentual_ano_anterior"):
-            df[coluna] = df[coluna].apply(formatar_percentual_com_sinal)
+        formatador = FORMATADORES_POR_TIPO.get(TIPO_POR_COLUNA.get(coluna))
+        if formatador:
+            df[coluna] = df[coluna].apply(formatador)
 
     # Troca valores vazios (None/NaN) por um texto claro, pra não
     # aparecer "None" nem um traço confuso de se enxergar na tela.
@@ -420,7 +527,7 @@ COLUNAS_DE_IDENTIFICACAO = {
 }
 
 
-def vale_a_pena_mostrar_tabela(dados_tabela, texto_referencia):
+def vale_a_pena_mostrar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
     """
     Decide se a tabela agrega algo além do texto. Duas condições
     precisam ser verdadeiras ao mesmo tempo:
@@ -431,7 +538,7 @@ def vale_a_pena_mostrar_tabela(dados_tabela, texto_referencia):
        pra só a vencedora — se sobra 1 linha só, é a mesma coisa que
        um valor único, e o texto já basta).
     """
-    tabela = preparar_tabela(dados_tabela, texto_referencia)
+    tabela = preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta)
 
     if len(tabela) <= 1:
         return False
@@ -443,13 +550,13 @@ def vale_a_pena_mostrar_tabela(dados_tabela, texto_referencia):
     return len(colunas_de_valor) > 0
 
 
-def exibir_tabela(dados_tabela, texto_referencia, chave):
+def exibir_tabela(dados_tabela, texto_referencia, chave, nome_ferramenta=None):
     """Renderiza a tabela formatada + botão de download em Excel."""
     legenda = descrever_periodo(dados_tabela, texto_referencia)
     if legenda:
         st.caption(legenda)
 
-    tabela = preparar_tabela(dados_tabela, texto_referencia)
+    tabela = preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta)
 
     # Converte tudo pra texto antes de exibir — evita erro do pyarrow
     # quando uma coluna mistura números com texto (ex: NPS com valor
@@ -643,13 +750,16 @@ for indice_mensagem, mensagem in enumerate(st.session_state.mensagens):
         st.text(mensagem["conteudo"])
 
         if mensagem.get("dados_tabela") and vale_a_pena_mostrar_tabela(
-            mensagem["dados_tabela"], mensagem.get("conteudo", "")
+            mensagem["dados_tabela"],
+            mensagem.get("conteudo", ""),
+            mensagem.get("nome_ferramenta"),
         ):
             with st.expander("📊 Ver como tabela"):
                 exibir_tabela(
                     mensagem["dados_tabela"],
                     mensagem.get("conteudo", ""),
                     chave=f"historico_{indice_mensagem}",
+                    nome_ferramenta=mensagem.get("nome_ferramenta"),
                 )
 
 pergunta = st.chat_input(
@@ -706,18 +816,21 @@ if pergunta:
         # A bolha de "digitando" é sempre substituída pelo conteúdo
         # final, seja a resposta ou o erro — nunca fica travada na tela.
         try:
-            resposta, dados_tabela = processar_pergunta(
+            resposta, dados_tabela, nome_ferramenta = processar_pergunta(
                 pergunta=pergunta,
                 historico=historico,
             )
             placeholder.text(resposta)
 
-            if dados_tabela and vale_a_pena_mostrar_tabela(dados_tabela, resposta):
+            if dados_tabela and vale_a_pena_mostrar_tabela(
+                dados_tabela, resposta, nome_ferramenta
+            ):
                 with st.expander("📊 Ver como tabela"):
                     exibir_tabela(
                         dados_tabela,
                         resposta,
                         chave="atual",
+                        nome_ferramenta=nome_ferramenta,
                     )
 
             st.session_state.mensagens.append(
@@ -725,6 +838,7 @@ if pergunta:
                     "papel": "assistant",
                     "conteudo": resposta,
                     "dados_tabela": dados_tabela,
+                    "nome_ferramenta": nome_ferramenta,
                 }
             )
 

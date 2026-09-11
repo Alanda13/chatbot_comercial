@@ -225,6 +225,44 @@ def consultar_metas(
 
         resultados.append(item)
 
+    # Quando a consulta é mês a mês de um único ano, calcula também a
+    # variação do faturamento realizado em relação ao mês anterior —
+    # mesmo cálculo já usado pra NPS (veja queries.py). Só faz sentido
+    # dentro de um único ano; comparação entre anos diferentes usa
+    # outra lógica (mês a mês lado a lado), não essa.
+    if "mes" in agrupar_por and anos and len(anos) == 1:
+        dimensoes_extras = [
+            agrupamento for agrupamento in agrupar_por
+            if agrupamento not in ("mes", "ano")
+        ]
+
+        def _chave_grupo(item):
+            return tuple(item[dimensao] for dimensao in dimensoes_extras)
+
+        resultados.sort(key=lambda item: (_chave_grupo(item), item["mes"]))
+
+        faturamento_anterior_por_grupo = {}
+
+        for item in resultados:
+            chave = _chave_grupo(item)
+            faturamento_anterior = faturamento_anterior_por_grupo.get(chave)
+            faturamento_atual = item["faturamento_realizado"]
+
+            if faturamento_anterior is None or faturamento_anterior == 0:
+                item["diferenca_mes_anterior"] = None
+                item["percentual_mes_anterior"] = None
+            else:
+                item["diferenca_mes_anterior"] = round(
+                    faturamento_atual - faturamento_anterior, 2
+                )
+                item["percentual_mes_anterior"] = round(
+                    (faturamento_atual - faturamento_anterior)
+                    / abs(faturamento_anterior) * 100,
+                    2,
+                )
+
+            faturamento_anterior_por_grupo[chave] = faturamento_atual
+
     return {
         "encontrado": True,
         "filtros_aplicados": filtros_aplicados,

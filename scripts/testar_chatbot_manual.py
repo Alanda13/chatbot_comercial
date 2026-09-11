@@ -3,7 +3,7 @@ from src.chatbot import processar_pergunta
 def testar_chatbot():
     pergunta = "Qual é o NPS de uma filial?"
 
-    resposta = processar_pergunta(pergunta)
+    resposta, _dados_tabela, _nome_ferramenta = processar_pergunta(pergunta)
 
     print("\n=== PERGUNTA ===\n")
     print(pergunta)

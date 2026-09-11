@@ -255,6 +255,18 @@ REGRAS PARA ANÁLISE E COMPARAÇÃO:
   para identificar o extremo entre VÁRIOS itens de uma lista grande
   (regra específica mais abaixo) — nesse segundo caso, responda só
   com o item extremo, sem comparar par a par.
+- IMPORTANTE — COMPARAÇÃO MÊS A MÊS ENTRE DOIS OU MAIS ANOS (ex:
+  "compare mês a mês o faturamento/meta de 2021 e 2022"): quando os
+  resultados tiverem várias combinações de mês E ano, mas NÃO
+  tiverem o campo "percentual_ano_anterior" já calculado (isso
+  acontece, por exemplo, em consultas de META, que não trazem esse
+  campo), NÃO liste um ano inteiro primeiro e depois o outro ano
+  inteiro em blocos separados — isso não é uma comparação, é só duas
+  listas lado a lado. Em vez disso, organize a resposta MÊS A MÊS,
+  mostrando os valores de cada ano lado a lado dentro da mesma linha.
+  Exemplo: "Janeiro — 2021: meta de R$ X e realizado de R$ Y
+  (111,10%); 2022: meta de R$ W e realizado de R$ Z (95,87%)." e
+  assim por diante para cada mês, na ordem do calendário.
 - Quando o usuário pedir apenas o valor de um indicador, não
   acrescente outros indicadores que ele não pediu (ex: venda bruta,
   desconto, peso líquido, quantidade de notas) — mas sempre em uma

@@ -42,14 +42,17 @@ def _limitar_resultados(resultado: dict) -> dict:
 def processar_pergunta(
     pergunta: str,
     historico: list[dict[str, str]] | None = None,
-) -> tuple[str, list[dict] | None]:
+) -> tuple[str, list[dict] | None, str | None]:
     """
     Executa o fluxo completo do chatbot.
 
-    Retorna uma tupla: (texto_da_resposta, dados_para_tabela).
-    dados_para_tabela vem preenchido só quando o resultado tiver mais
-    de LIMITE_MINIMO_PARA_TABELA linhas — usado pelo app.py pra
-    oferecer a visualização em tabela.
+    Retorna uma tupla: (texto_da_resposta, dados_para_tabela,
+    nome_ferramenta). dados_para_tabela vem preenchido só quando o
+    resultado tiver mais de LIMITE_MINIMO_PARA_TABELA linhas —
+    usado pelo app.py pra oferecer a visualização em tabela.
+    nome_ferramenta identifica qual ferramenta gerou os dados da
+    tabela (None quando nenhuma ferramenta foi executada) — o app.py
+    usa isso pra saber quais colunas mostrar.
     """
 
     solicitacao = interpretar_pergunta(
@@ -62,6 +65,7 @@ def processar_pergunta(
             solicitacao.mensagem
             or "Preciso de mais informações para realizar a consulta.",
             None,
+            None,
         )
 
     if solicitacao.acao == "fora_do_escopo":
@@ -72,12 +76,14 @@ def processar_pergunta(
                 "Neste momento, estão disponíveis consultas de NPS."
             ),
             None,
+            None,
         )
 
     if solicitacao.acao == "responder_com_historico":
         return (
             solicitacao.mensagem
             or "Não consegui reorganizar essa informação. Pode reformular?",
+            None,
             None,
         )
 
@@ -127,6 +133,6 @@ def processar_pergunta(
         historico=historico,
     )
 
-    return (resposta_final, dados_tabela)
+    return (resposta_final, dados_tabela, solicitacao.ferramenta)
     
 
