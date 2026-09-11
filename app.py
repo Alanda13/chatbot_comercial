@@ -1,27 +1,68 @@
+import base64
 import io
 import re
+from pathlib import Path
 
 import streamlit as st
 import pandas as pd
 from src.chatbot import processar_pergunta
 from src.exceptions import ChatbotError
 from src.logger import obter_logger
-from src.perguntas_log import (
-    contar_perguntas_registradas,
-    obter_perguntas_frequentes,
-    registrar_pergunta,
-)
+from src.perguntas_log import registrar_pergunta
 
 logger = obter_logger(__name__)
 
-PERGUNTAS_EXEMPLO = [
-    "Qual o faturamento de Timon em julho de 2025?",
-    "Qual o NPS geral da empresa?",
-    "Quanto faturamos hoje?",
-    "Compare o faturamento de Timon em 2024 e 2025.",
+# Perguntas norteadoras: uma por indicador, já mostrando a resposta,
+# pra dar uma ideia rápida do que o chatbot responde.
+#
+# "resposta" fixa só é usada para períodos FECHADOS (já aconteceram e
+# não mudam mais) de indicadores que vêm de base histórica (CSV) —
+# faturamento e meta. Quando "resposta" é None, o clique busca o dado
+# ao vivo (mesmo fluxo de uma pergunta digitada), porque o indicador é
+# ligado ao banco e muda a cada consulta.
+PERGUNTAS_NORTEADORAS = [
+    {
+        "categoria": "💰 Faturamento",
+        "pergunta": "Qual foi o faturamento de Timon em julho de 2025?",
+        "resposta": (
+            "O faturamento da filial Timon em julho de 2025 foi de "
+            "R$ 10.610.613,36."
+        ),
+    },
+    {
+        "categoria": "🎯 Meta de faturamento",
+        "pergunta": "Qual a meta de Timon em julho de 2025?",
+        "resposta": (
+            "A meta de faturamento da filial Timon em julho de 2025 "
+            "foi de R$ 8.671.193,51."
+        ),
+    },
+    {
+        "categoria": "🎯 Meta de tonelada",
+        "pergunta": "Qual a meta de tonelada de Timon em 2025?",
+        "resposta": (
+            "A meta de tonelada da filial Timon em 2025 é de "
+            "11.462,34 toneladas."
+        ),
+    },
+    {
+        "categoria": "⭐ NPS",
+        "pergunta": "Qual o NPS do mês passado?",
+        "resposta": "O NPS do mês passado (agosto de 2026) foi de 90,74.",
+    },
 ]
 
-QUANTIDADE_MINIMA_PARA_FREQUENTES = 5
+
+def escapar_para_markdown(texto):
+    """
+    Evita que o Streamlit interprete "$" como abertura de fórmula
+    matemática (LaTeX) — isso quebra a exibição de valores em reais
+    (ex: "R$ 10,00 ... R$ 20,00" vira uma fórmula em vez de texto)
+    sempre que o texto passa por st.markdown/st.caption. Usa a
+    entidade HTML do "$" em vez de escapar com "\\$", porque o
+    Streamlit mostra a barra invertida ao invés de escondê-la.
+    """
+    return texto.replace("$", "&#36;")
 
 MESES_PT = {
     1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
@@ -438,38 +479,63 @@ def exibir_tabela(dados_tabela, texto_referencia, chave):
     )
 
 
+# Cores da marca Ferronorte, usadas nos acentos visuais do app.
+AZUL_FERRONORTE = "#0E5EA6"
+LARANJA_FERRONORTE = "#F18325"
+VERDE_FERRONORTE = "#349959"
+
+CAMINHO_ICONE = "assets/icone_ferronorte.png"
+
+AVATAR_POR_PAPEL = {"user": "🧑‍💼", "assistant": CAMINHO_ICONE}
+
 st.set_page_config(
     page_title="Chatbot Comercial Ferronorte",
-    page_icon="🤖",
+    page_icon=CAMINHO_ICONE,
     layout="centered",
 )
-st.title("🤖 Chatbot Comercial Ferronorte")
+_icone_base64 = base64.b64encode(Path(CAMINHO_ICONE).read_bytes()).decode()
 
 st.markdown(
-    """
+    f"""
+    <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 4px;">
+        <img src="data:image/png;base64,{_icone_base64}" style="width: 64px; flex-shrink: 0;">
+        <div style="line-height: 1.35;">
+            <div style="font-size: 1.25rem; font-weight: 700;">Olá! 👋</div>
+            <div style="font-size: 0.9rem; opacity: 0.75;">
+                Sou seu assistente virtual. Como posso te ajudar?
+            </div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    f"""
     <style>
-    .badge-indicador {
+    .badge-indicador {{
         display: inline-block;
-        padding: 2px 10px;
+        padding: 2px 10px 2px 8px;
         margin: 2px 4px 2px 0;
         border-radius: 999px;
         font-size: 0.8rem;
-        background-color: rgba(255, 255, 255, 0.07);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-    }
-    .legenda-filtros {
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-left: 3px solid var(--cor-indicador, {AZUL_FERRONORTE});
+    }}
+    .legenda-filtros {{
         font-size: 0.8rem;
         opacity: 0.6;
         margin-top: 4px;
-    }
+    }}
     </style>
     <div style="opacity: 0.75; font-size: 0.85rem; margin-bottom: 4px;">
         No momento posso ajudar com consultas de:
     </div>
-    <span class="badge-indicador">💰 Faturamento (R$ e toneladas — anual, mensal e diário) — 2020 a 2025</span>
-    <span class="badge-indicador">🎯 Metas (faturamento) — 2020 a 2025</span>
-    <span class="badge-indicador">🎯 Metas (tonelada) — 2024 a 2026</span>
-    <span class="badge-indicador">⭐ NPS</span>
+    <span class="badge-indicador" style="--cor-indicador: {AZUL_FERRONORTE};">💰 Faturamento (R$ e toneladas — anual, mensal e diário) — 2020 a 2025</span>
+    <span class="badge-indicador" style="--cor-indicador: {LARANJA_FERRONORTE};">🎯 Metas (faturamento) — 2020 a 2025</span>
+    <span class="badge-indicador" style="--cor-indicador: {LARANJA_FERRONORTE};">🎯 Metas (tonelada) — 2024 a 2026</span>
+    <span class="badge-indicador" style="--cor-indicador: {VERDE_FERRONORTE};">⭐ NPS</span>
     <div class="legenda-filtros">
         Tudo por <b>filial, RCA, supervisor ou período</b>, além da
         lista de filiais.
@@ -485,53 +551,95 @@ if "pergunta_sugerida" not in st.session_state:
     st.session_state.pergunta_sugerida = None
 
 with st.sidebar:
-    total_perguntas = contar_perguntas_registradas()
-
     with st.container(border=True, key="painel_perguntas"):
-        if total_perguntas >= QUANTIDADE_MINIMA_PARA_FREQUENTES:
-            st.markdown("#### 🔥 Perguntas mais frequentes")
-            sugestoes = [
-                item["pergunta"]
-                for item in obter_perguntas_frequentes(limite=5)
-            ]
-        else:
-            st.markdown("#### 💡 Experimente perguntar")
-            sugestoes = PERGUNTAS_EXEMPLO
-
-        st.caption("Clique numa pergunta para enviá-la ao chat.")
-
         st.markdown(
             """
             <style>
             .st-key-painel_perguntas button[kind="secondary"] {
                 text-align: left;
-                border-radius: 14px;
-                padding: 0.75rem 1rem;
+                border-radius: 10px;
+                padding: 0.6rem 0.85rem;
                 background-color: rgba(255, 255, 255, 0.04);
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 transition: background-color 0.15s ease;
+                font-size: 0.88rem;
             }
             .st-key-painel_perguntas button[kind="secondary"]:hover {
-                background-color: rgba(255, 255, 255, 0.09);
-                border-color: rgba(255, 255, 255, 0.18);
+                background-color: rgba(14, 94, 166, 0.15);
+                border-color: #0E5EA6;
+                color: #F8F8F7;
+            }
+            .st-key-painel_perguntas [data-testid="stVerticalBlock"] {
+                gap: 0.2rem;
+            }
+            .st-key-painel_perguntas p {
+                margin: 0 !important;
+            }
+            .st-key-painel_perguntas .element-container,
+            .st-key-painel_perguntas [data-testid="stElementContainer"] {
+                margin: 0 !important;
+            }
+            .rotulo-indicador {
+                font-size: 0.8rem;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.03em;
+                opacity: 0.65;
+                margin-top: 0.5rem;
+            }
+            .separador-indicador {
+                margin: 0.2rem 0 !important;
+                border: none;
+                border-top: 1px solid rgba(255, 255, 255, 0.08);
             }
             </style>
             """,
             unsafe_allow_html=True,
         )
 
-        for indice, sugestao in enumerate(sugestoes):
-            rotulo = f"{sugestao}  ›"
+        st.markdown("#### 💡 Experimente perguntar")
+        st.caption("Um exemplo por indicador. Clique para ver no chat.")
+
+        for indice, item in enumerate(PERGUNTAS_NORTEADORAS):
+            st.markdown(
+                f'<div class="rotulo-indicador">{item["categoria"]}</div>',
+                unsafe_allow_html=True,
+            )
 
             if st.button(
-                rotulo,
-                key=f"sugestao_{indice}",
+                item["pergunta"],
+                key=f"norteadora_{indice}",
                 use_container_width=True,
             ):
-                st.session_state.pergunta_sugerida = sugestao
+                if item["resposta"] is None:
+                    st.session_state.pergunta_sugerida = item["pergunta"]
+                else:
+                    st.session_state.mensagens.append(
+                        {"papel": "user", "conteudo": item["pergunta"]}
+                    )
+                    st.session_state.mensagens.append(
+                        {
+                            "papel": "assistant",
+                            "conteudo": item["resposta"],
+                            "dados_tabela": None,
+                        }
+                    )
+
+            resposta_previa = item["resposta"] or "Busca o dado atualizado na hora do clique."
+            st.caption(
+                escapar_para_markdown(resposta_previa),
+                unsafe_allow_html=True,
+            )
+
+            if indice < len(PERGUNTAS_NORTEADORAS) - 1:
+                st.markdown(
+                    '<hr class="separador-indicador">', unsafe_allow_html=True
+                )
 
 for indice_mensagem, mensagem in enumerate(st.session_state.mensagens):
-    with st.chat_message(mensagem["papel"]):
+    with st.chat_message(
+        mensagem["papel"], avatar=AVATAR_POR_PAPEL.get(mensagem["papel"])
+    ):
         st.text(mensagem["conteudo"])
 
         if mensagem.get("dados_tabela") and vale_a_pena_mostrar_tabela(
@@ -562,7 +670,7 @@ if pergunta:
         }
     )
 
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=AVATAR_POR_PAPEL["user"]):
         st.markdown(pergunta)
 
     historico = [
@@ -570,7 +678,7 @@ if pergunta:
         for mensagem in st.session_state.mensagens[:-1]
     ]
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=AVATAR_POR_PAPEL["assistant"]):
         placeholder = st.empty()
         placeholder.markdown(
             """
