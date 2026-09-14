@@ -156,7 +156,14 @@ FERRAMENTAS_DISPONIVEIS = {
             "de atingimento, quanto falta para bater a meta, "
             "necessidade diária de venda e comparações com "
             "meses/anos anteriores. NÃO use esta ferramenta para meta "
-            "de tonelada/peso — veja 'consultar_meta_tonelada'."
+            "de tonelada/peso — veja 'consultar_meta_tonelada'. "
+            "Quando agrupar_por incluir 'rca' e o usuário não "
+            "especificar RCAs, por padrão o sistema já filtra para "
+            "trazer só os RCAs com meta cadastrada na filial "
+            "(vendedores de verdade, não contas genéricas/contábeis). "
+            "Só use 'apenas_rcas_com_meta': false quando o usuário "
+            "pedir explicitamente TODOS os códigos, mesmo sem meta "
+            "cadastrada."
         ),
         "argumentos_obrigatorios": [],
         "argumentos_opcionais": [
@@ -166,6 +173,7 @@ FERRAMENTAS_DISPONIVEIS = {
             "meses",
             "anos",
             "agrupar_por",
+            "apenas_rcas_com_meta",
         ],
         "funcao": executar_consultar_metas,
     },

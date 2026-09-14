@@ -12,6 +12,7 @@ import pandas as pd
 from src.faturamento_data import carregar_faturamento_8280
 from src.faturamento_diario_data import construir_mapa_rca_nome
 from src.metas_data import construir_lista_supervisores
+from src.variacao_utils import calcular_variacao_sequencial
 
 
 def _calcular_dias_uteis_restantes(ano: int, mes: int) -> int | None:
@@ -225,43 +226,58 @@ def consultar_metas(
 
         resultados.append(item)
 
+    # Quando a consulta é mês a mês de 2 OU MAIS anos, compara cada mês
+    # com o MESMO mês do ano anterior da lista (não com o mês anterior
+    # dentro do mesmo ano) — mesmo padrão genérico já usado pro NPS em
+    # "agrupar_por_ano" (veja queries.py). calcular_variacao_sequencial
+    # funciona pra qualquer quantidade de anos, sem caso especial por
+    # número de anos.
+    if "mes" in agrupar_por and "ano" in agrupar_por and anos and len(anos) >= 2:
+        dimensoes_extras = [
+            agrupamento for agrupamento in agrupar_por
+            if agrupamento not in ("mes", "ano")
+        ]
+        posicao_do_ano = {ano: indice for indice, ano in enumerate(anos)}
+
+        calcular_variacao_sequencial(
+            resultados,
+            campo_valor="faturamento_realizado",
+            sufixo="ano_anterior",
+            chave_grupo=lambda item: (
+                tuple(item[dimensao] for dimensao in dimensoes_extras),
+                item["mes"],
+            ),
+            chave_ordem=lambda item: (
+                tuple(item[dimensao] for dimensao in dimensoes_extras),
+                item["mes"],
+                posicao_do_ano.get(item["ano"], len(anos)),
+            ),
+            incluir_valor_anterior_como="faturamento_realizado_ano_anterior",
+        )
+
     # Quando a consulta é mês a mês de um único ano, calcula também a
     # variação do faturamento realizado em relação ao mês anterior —
     # mesmo cálculo já usado pra NPS (veja queries.py). Só faz sentido
-    # dentro de um único ano; comparação entre anos diferentes usa
-    # outra lógica (mês a mês lado a lado), não essa.
+    # dentro de um único ano; comparação entre 2+ anos usa a lógica
+    # acima ("percentual_ano_anterior", mesmo mês do ano anterior).
     if "mes" in agrupar_por and anos and len(anos) == 1:
         dimensoes_extras = [
             agrupamento for agrupamento in agrupar_por
             if agrupamento not in ("mes", "ano")
         ]
 
-        def _chave_grupo(item):
-            return tuple(item[dimensao] for dimensao in dimensoes_extras)
-
-        resultados.sort(key=lambda item: (_chave_grupo(item), item["mes"]))
-
-        faturamento_anterior_por_grupo = {}
-
-        for item in resultados:
-            chave = _chave_grupo(item)
-            faturamento_anterior = faturamento_anterior_por_grupo.get(chave)
-            faturamento_atual = item["faturamento_realizado"]
-
-            if faturamento_anterior is None or faturamento_anterior == 0:
-                item["diferenca_mes_anterior"] = None
-                item["percentual_mes_anterior"] = None
-            else:
-                item["diferenca_mes_anterior"] = round(
-                    faturamento_atual - faturamento_anterior, 2
-                )
-                item["percentual_mes_anterior"] = round(
-                    (faturamento_atual - faturamento_anterior)
-                    / abs(faturamento_anterior) * 100,
-                    2,
-                )
-
-            faturamento_anterior_por_grupo[chave] = faturamento_atual
+        calcular_variacao_sequencial(
+            resultados,
+            campo_valor="faturamento_realizado",
+            sufixo="mes_anterior",
+            chave_grupo=lambda item: tuple(
+                item[dimensao] for dimensao in dimensoes_extras
+            ),
+            chave_ordem=lambda item: (
+                tuple(item[dimensao] for dimensao in dimensoes_extras),
+                item["mes"],
+            ),
+        )
 
     return {
         "encontrado": True,
@@ -357,6 +373,8 @@ def consultar_crescimento_abaixo_meta(
 
         item_resultado = {
             agrupar_por: chave,
+            "ano": ano,
+            "ano_anterior": ano_anterior,
             "faturamento_realizado_ano_anterior": realizado_ant,
             "faturamento_realizado": realizado_atual,
             "crescimento_valor": crescimento_valor,

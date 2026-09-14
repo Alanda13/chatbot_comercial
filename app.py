@@ -9,6 +9,7 @@ from src.chatbot import processar_pergunta
 from src.exceptions import ChatbotError
 from src.logger import obter_logger
 from src.perguntas_log import registrar_pergunta
+from src.variacao_utils import calcular_diferenca_percentual
 
 logger = obter_logger(__name__)
 
@@ -100,6 +101,12 @@ def _selecionar_colunas_meta_tonelada(texto_lower, colunas_disponiveis):
 # atingimento) OU "palavras": [...] (só aparece se uma dessas palavras
 # estiver na resposta — evita mostrar dado que ninguém pediu).
 #
+# "rotulo" pode usar "{ano}" e/ou "{ano_anterior}" como placeholder —
+# preparar_tabela troca pelo ano de verdade quando esses campos vêm
+# nos dados (ex: "Faturamento {ano}" vira "Faturamento 2025"). Assim
+# nenhuma ferramenta nova precisa de código especial só pra mostrar o
+# ano certo no cabeçalho.
+#
 # "seletor" é um escape hatch pra ferramentas cuja escolha de coluna
 # não é um simples "sempre" ou "por palavra" (ex: meta de tonelada,
 # que escolhe entre duas colunas mutuamente exclusivas).
@@ -137,8 +144,8 @@ CONFIG_TABELA_POR_FERRAMENTA = {
     },
     "consultar_crescimento_abaixo_meta": {
         "colunas": [
-            {"coluna": "faturamento_realizado_ano_anterior", "tipo": "moeda", "rotulo": "Faturamento (ano anterior)", "sempre": True},
-            {"coluna": "faturamento_realizado", "tipo": "moeda", "rotulo": "Faturamento Realizado", "sempre": True},
+            {"coluna": "faturamento_realizado_ano_anterior", "tipo": "moeda", "rotulo": "Faturamento {ano_anterior}", "sempre": True},
+            {"coluna": "faturamento_realizado", "tipo": "moeda", "rotulo": "Faturamento {ano}", "sempre": True},
             {"coluna": "crescimento_valor", "tipo": "moeda", "rotulo": "Crescimento (R$)", "sempre": True},
             {"coluna": "crescimento_percentual", "tipo": "percentual", "rotulo": "Crescimento (%)", "sempre": True},
             {"coluna": "valor_meta", "tipo": "moeda", "rotulo": "Meta", "sempre": True},
@@ -287,6 +294,49 @@ def ocultar_repeticoes_consecutivas(df, coluna):
     return df
 
 
+def _montar_tabela_comparacao_dois_anos(
+    rotulo_coluna_grupo, itens, ano_1, ano_2, eh_monetario
+):
+    """
+    Monta a tabela padrão de comparação entre 2 anos — usada tanto pra
+    "Mês x 2 anos" quanto "Filial x 2 anos" (e qualquer indicador novo
+    que precisar do mesmo formato): uma linha por grupo (mês, filial,
+    RCA...), com o valor de cada ano lado a lado e a variação
+    percentual entre eles.
+
+    `itens` é uma lista de tuplas (rotulo_do_grupo, valor_ano_1,
+    valor_ano_2) — quem chama já resolveu qual valor pertence a cada
+    ano; essa função só formata e calcula a variação.
+    """
+    def formatar(valor):
+        if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+            return "sem dados"
+        return formatar_moeda(valor) if eh_monetario else valor
+
+    linhas = []
+
+    for rotulo_grupo, valor_1, valor_2 in itens:
+        valor_1_valido = None if pd.isna(valor_1) else valor_1
+        valor_2_valido = None if pd.isna(valor_2) else valor_2
+
+        _, percentual = calcular_diferenca_percentual(
+            valor_1_valido, valor_2_valido
+        )
+
+        linhas.append({
+            rotulo_coluna_grupo: rotulo_grupo,
+            str(ano_1): formatar(valor_1),
+            str(ano_2): formatar(valor_2),
+            "Variação": (
+                formatar_percentual_com_sinal(percentual)
+                if percentual is not None
+                else "sem dados"
+            ),
+        })
+
+    return pd.DataFrame(linhas)
+
+
 def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
     """
     Monta a tabela pronta pra exibição: escolhe as colunas de valor
@@ -296,6 +346,15 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
     legível.
     """
     df = pd.DataFrame(dados_tabela)
+
+    # Valores pra preencher os placeholders "{ano}"/"{ano_anterior}"
+    # que um "rotulo" de CONFIG_TABELA_POR_FERRAMENTA pode usar —
+    # capturados AQUI, antes de qualquer corte de coluna, porque
+    # "ano_anterior" não é uma coluna exibida, só serve pra isso.
+    valores_para_rotulo = {}
+    for campo in ("ano", "ano_anterior"):
+        if campo in df.columns and df[campo].nunique() == 1:
+            valores_para_rotulo[campo] = df[campo].iloc[0]
 
     # Formato especial: comparação entre exatamente 2 anos, já vem
     # com valor_ano_1/valor_ano_2/diferenca/percentual prontos do
@@ -311,19 +370,11 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
             for palavra in ("faturamento", "venda bruta", "desconto")
         )
 
-        def formatar_valor(valor):
-            if valor is None or (isinstance(valor, float) and pd.isna(valor)):
-                return "sem dados"
-            return formatar_moeda(valor) if eh_monetario else valor
+        itens = list(zip(df["mes"], df["valor_ano_1"], df["valor_ano_2"]))
 
-        tabela_comparacao = pd.DataFrame({
-            "Mês": df["mes"],
-            str(ano_1): df["valor_ano_1"].apply(formatar_valor),
-            str(ano_2): df["valor_ano_2"].apply(formatar_valor),
-            "Variação": df["percentual"].apply(formatar_percentual_com_sinal),
-        })
-
-        return tabela_comparacao
+        return _montar_tabela_comparacao_dois_anos(
+            "Mês", itens, ano_1, ano_2, eh_monetario
+        )
 
     # Se não tem coluna "ano" pronta mas tem "data_inicial" (formato
     # YYYY-MM-DD), extrai o ano de lá — usado em consultas por
@@ -352,7 +403,7 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
 
         eh_monetario = TIPO_POR_COLUNA.get(coluna_valor) == "moeda"
 
-        linhas = []
+        itens = []
         for nome_filial in df["filial"].unique():
             valor_1 = df[
                 (df["filial"] == nome_filial) & (df["ano"] == ano_1)
@@ -364,25 +415,11 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
             valor_1 = valor_1.iloc[0] if len(valor_1) else None
             valor_2 = valor_2.iloc[0] if len(valor_2) else None
 
-            if valor_1 is None or valor_2 is None or pd.isna(valor_1) or pd.isna(valor_2) or valor_1 == 0:
-                percentual_texto = "sem dados"
-            else:
-                percentual = round((valor_2 - valor_1) / abs(valor_1) * 100, 2)
-                percentual_texto = formatar_percentual_com_sinal(percentual)
+            itens.append((nome_filial, valor_1, valor_2))
 
-            def formatar(valor):
-                if valor is None or pd.isna(valor):
-                    return "sem dados"
-                return formatar_moeda(valor) if eh_monetario else valor
-
-            linhas.append({
-                "Filial": nome_filial,
-                str(ano_1): formatar(valor_1),
-                str(ano_2): formatar(valor_2),
-                "Variação": percentual_texto,
-            })
-
-        return pd.DataFrame(linhas)
+        return _montar_tabela_comparacao_dois_anos(
+            "Filial", itens, ano_1, ano_2, eh_monetario
+        )
 
     # Se a resposta em texto só menciona ALGUMAS das filiais que vieram
     # na consulta (ex: "qual filial teve o maior NPS" — a IA já filtrou
@@ -487,7 +524,19 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
     # aparecer "None" nem um traço confuso de se enxergar na tela.
     df = df.fillna("sem dados")
 
-    df = df.rename(columns=RENOMEAR_COLUNAS)
+    def _resolver_rotulo(rotulo):
+        if "{" not in rotulo:
+            return rotulo
+        try:
+            return rotulo.format(**valores_para_rotulo)
+        except KeyError:
+            return rotulo
+
+    mapa_renomear = {
+        coluna: _resolver_rotulo(rotulo)
+        for coluna, rotulo in RENOMEAR_COLUNAS.items()
+    }
+    df = df.rename(columns=mapa_renomear)
 
     return df
 

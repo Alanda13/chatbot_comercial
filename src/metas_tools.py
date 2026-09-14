@@ -73,18 +73,27 @@ def executar_consultar_metas(argumentos: dict) -> dict:
     - supervisores;
     - meses;
     - anos;
-    - agrupar_por.
+    - agrupar_por;
+    - apenas_rcas_com_meta (padrão True): quando agrupar_por inclui
+      "rca" e nenhum RCA específico foi informado, filtra o resultado
+      pra trazer só os RCAs com meta cadastrada (vendedores de
+      verdade) — mesma definição usada em listar_rcas_filial e no
+      filtro equivalente de consultar_indicadores_faturamento. Sem
+      isso, contas genéricas/contábeis (ex: "matriz"), que aparecem na
+      base com faturamento e meta zerados, podiam "ganhar" como o RCA
+      de menor faturamento.
     """
 
     meses = argumentos.get("meses")
     anos = argumentos.get("anos")
     agrupar_por = argumentos.get("agrupar_por")
+    apenas_rcas_com_meta = argumentos.get("apenas_rcas_com_meta", True)
 
     filiais_resolvidas, rcas_resolvidos, supervisores_resolvidos = (
         _resolver_filtros(argumentos)
     )
 
-    return consultar_metas(
+    resultado = consultar_metas(
         filiais=filiais_resolvidas,
         rcas=rcas_resolvidos,
         supervisores=supervisores_resolvidos,
@@ -92,6 +101,32 @@ def executar_consultar_metas(argumentos: dict) -> dict:
         anos=anos,
         agrupar_por=agrupar_por,
     )
+
+    if (
+        not rcas_resolvidos
+        and agrupar_por
+        and "rca" in agrupar_por
+        and apenas_rcas_com_meta
+        and resultado.get("encontrado")
+    ):
+        resultados_filtrados = [
+            item for item in resultado["resultados"]
+            if item.get("valor_meta")
+        ]
+
+        if not resultados_filtrados:
+            return {
+                "encontrado": False,
+                "filtros_aplicados": resultado.get("filtros_aplicados"),
+                "mensagem": (
+                    "Nenhum RCA com meta cadastrada encontrado para "
+                    "esses filtros."
+                ),
+            }
+
+        resultado = {**resultado, "resultados": resultados_filtrados}
+
+    return resultado
 
 
 def executar_consultar_crescimento_abaixo_meta(argumentos: dict) -> dict:

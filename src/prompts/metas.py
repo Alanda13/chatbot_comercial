@@ -167,6 +167,74 @@ Resposta esperada:
     "mensagem": null
 }
 
+- IMPORTANTE — "COMPARAÇÃO MÊS A MÊS ENTRE DOIS OU MAIS ANOS":
+  comparar não é só listar os anos lado a lado — é confrontar o MESMO
+  mês nos anos pedidos (ex: janeiro/2024 com janeiro/2025, e também
+  com janeiro/2026 se for o caso) para mostrar crescimento ou queda.
+  Quando o usuário pedir isso (ex: "compare o faturamento mês a mês
+  de 2024 e 2025", "faturamento vs meta mês a mês desses anos", ou
+  com 3+ anos: "compare 2023, 2024 e 2025 mês a mês"), envie
+  "agrupar_por": ["mes", "ano"] junto com "anos" contendo TODOS os
+  anos pedidos (2 ou mais — a mesma consulta funciona pra qualquer
+  quantidade). Quando "agrupar_por" tem "mes" e "ano" e "anos" tem 2
+  ou mais anos, o sistema já retorna, em cada item, a comparação com
+  o MESMO mês do ano anterior da lista, já calculada (campos
+  "faturamento_realizado_ano_anterior", "diferenca_ano_anterior" e
+  "percentual_ano_anterior") — NÃO calcule esses números você
+  mesma(o), apenas apresente os valores já calculados. O primeiro ano
+  da lista não tem "ano anterior" dentro da consulta, então esses
+  campos vêm nulos pra ele — normal, não invente um valor. Se
+  "agrupar_por" não tiver "ano" junto com "mes", o sistema NÃO faz
+  essa comparação automática — nesse caso não invente a variação
+  entre anos, mostre só os valores de cada mês separadamente.
+
+Exemplo (2 anos):
+
+Pergunta:
+"Compare o faturamento vs meta mês a mês de 2024 e 2025."
+
+Resposta esperada:
+
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "consultar_metas",
+    "argumentos": {
+        "anos": [
+            2024,
+            2025
+        ],
+        "agrupar_por": [
+            "mes",
+            "ano"
+        ]
+    },
+    "mensagem": null
+}
+
+Exemplo (3 anos — mesma lógica, só muda a lista de anos):
+
+Pergunta:
+"Compare o faturamento vs meta mês a mês de 2023, 2024 e 2025."
+
+Resposta esperada:
+
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "consultar_metas",
+    "argumentos": {
+        "anos": [
+            2023,
+            2024,
+            2025
+        ],
+        "agrupar_por": [
+            "mes",
+            "ano"
+        ]
+    },
+    "mensagem": null
+}
+
 - IMPORTANTE — "QUAL TEVE O MAIOR/MENOR": quando o usuário pedir
   "qual RCA teve o maior/menor faturamento/meta", "quem mais/menos
   vendeu", "qual filial está mais perto de bater a meta" ou

@@ -1,6 +1,10 @@
 import calendar
 
 from src.database import get_connection
+from src.variacao_utils import (
+    calcular_diferenca_percentual,
+    calcular_variacao_sequencial,
+)
 
 
 def _periodos_mensais_do_ano(ano: int) -> list[dict]:
@@ -757,14 +761,9 @@ def consultar_indicadores_nps(
                 nps_1 = resultado_1["nps"]
                 nps_2 = resultado_2["nps"]
 
-                if nps_1 is None or nps_2 is None or nps_1 == 0:
-                    diferenca = None
-                    percentual = None
-                else:
-                    diferenca = round(nps_2 - nps_1, 2)
-                    percentual = round(
-                        (nps_2 - nps_1) / abs(nps_1) * 100, 2
-                    )
+                diferenca, percentual = calcular_diferenca_percentual(
+                    nps_1, nps_2
+                )
 
                 resultados.append({
                     "filial": nome_filial,
@@ -790,8 +789,6 @@ def consultar_indicadores_nps(
             periodos_mensais = _periodos_mensais_do_ano(ano_atual)
 
             for nome_filial in filiais:
-                nps_mes_anterior = None
-
                 for periodo in periodos_mensais:
                     resultado = obter_nps_filial_periodo(
                         nome_filial,
@@ -801,24 +798,15 @@ def consultar_indicadores_nps(
                     resultado["ano"] = periodo["ano"]
                     resultado["mes"] = periodo["mes"]
 
-                    nps_atual = resultado["nps"]
-
-                    if len(anos) == 1:
-                        if nps_mes_anterior is None or nps_atual is None or nps_mes_anterior == 0:
-                            resultado["diferenca_mes_anterior"] = None
-                            resultado["percentual_mes_anterior"] = None
-                        else:
-                            resultado["diferenca_mes_anterior"] = round(
-                                nps_atual - nps_mes_anterior, 2
-                            )
-                            resultado["percentual_mes_anterior"] = round(
-                                (nps_atual - nps_mes_anterior) / abs(nps_mes_anterior) * 100, 2
-                            )
-
-                        if nps_atual is not None:
-                            nps_mes_anterior = nps_atual
-
                     resultados.append(resultado)
+
+        if len(anos) == 1:
+            calcular_variacao_sequencial(
+                resultados,
+                campo_valor="nps",
+                sufixo="mes_anterior",
+                chave_grupo=lambda item: item["filial"],
+            )
 
         return {
             "filiais": filiais,
@@ -848,14 +836,9 @@ def consultar_indicadores_nps(
             nps_1 = resultado_1["nps"]
             nps_2 = resultado_2["nps"]
 
-            if nps_1 is None or nps_2 is None or nps_1 == 0:
-                diferenca = None
-                percentual = None
-            else:
-                diferenca = round(nps_2 - nps_1, 2)
-                percentual = round(
-                    (nps_2 - nps_1) / abs(nps_1) * 100, 2
-                )
+            diferenca, percentual = calcular_diferenca_percentual(
+                nps_1, nps_2
+            )
 
             resultados.append({
                 "mes": periodo_1["mes"],
@@ -929,8 +912,6 @@ def consultar_indicadores_nps(
         anos_para_usar = anos if anos else obter_anos_com_dados_nps()
 
         for nome_filial in filiais:
-            nps_ano_anterior = None
-
             for ano_atual in anos_para_usar:
                 resultado = obter_nps_filial_periodo(
                     nome_filial,
@@ -939,24 +920,15 @@ def consultar_indicadores_nps(
                 )
                 resultado["ano"] = ano_atual
 
-                nps_atual = resultado["nps"]
-
-                if len(anos_para_usar) >= 2:
-                    if nps_ano_anterior is None or nps_atual is None or nps_ano_anterior == 0:
-                        resultado["diferenca_ano_anterior"] = None
-                        resultado["percentual_ano_anterior"] = None
-                    else:
-                        resultado["diferenca_ano_anterior"] = round(
-                            nps_atual - nps_ano_anterior, 2
-                        )
-                        resultado["percentual_ano_anterior"] = round(
-                            (nps_atual - nps_ano_anterior) / abs(nps_ano_anterior) * 100, 2
-                        )
-
-                    if nps_atual is not None:
-                        nps_ano_anterior = nps_atual
-
                 resultados.append(resultado)
+
+        if len(anos_para_usar) >= 2:
+            calcular_variacao_sequencial(
+                resultados,
+                campo_valor="nps",
+                sufixo="ano_anterior",
+                chave_grupo=lambda item: item["filial"],
+            )
 
         return {
             "filiais": filiais,
@@ -970,8 +942,6 @@ def consultar_indicadores_nps(
     if not filiais and agrupar_por_ano:
         anos_para_usar = anos if anos else obter_anos_com_dados_nps()
 
-        nps_ano_anterior = None
-
         for ano_atual in anos_para_usar:
             resultado = obter_nps_por_periodo(
                 f"{ano_atual}-01-01",
@@ -979,24 +949,12 @@ def consultar_indicadores_nps(
             )
             resultado["ano"] = ano_atual
 
-            nps_atual = resultado["nps"]
-
-            if len(anos_para_usar) >= 2:
-                if nps_ano_anterior is None or nps_atual is None or nps_ano_anterior == 0:
-                    resultado["diferenca_ano_anterior"] = None
-                    resultado["percentual_ano_anterior"] = None
-                else:
-                    resultado["diferenca_ano_anterior"] = round(
-                        nps_atual - nps_ano_anterior, 2
-                    )
-                    resultado["percentual_ano_anterior"] = round(
-                        (nps_atual - nps_ano_anterior) / abs(nps_ano_anterior) * 100, 2
-                    )
-
-                if nps_atual is not None:
-                    nps_ano_anterior = nps_atual
-
             resultados.append(resultado)
+
+        if len(anos_para_usar) >= 2:
+            calcular_variacao_sequencial(
+                resultados, campo_valor="nps", sufixo="ano_anterior"
+            )
 
         return {
             "filiais": None,
