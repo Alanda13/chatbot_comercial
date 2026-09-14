@@ -1,9 +1,11 @@
 import base64
 import io
+import json
 import re
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from src.chatbot import processar_pergunta
 from src.exceptions import ChatbotError
@@ -65,6 +67,55 @@ def escapar_para_markdown(texto):
     """
     return texto.replace("$", "&#36;")
 
+
+def botao_copiar(texto):
+    """
+    Botão de copiar o texto de uma mensagem.
+
+    Roda dentro de components.html (iframe isolado) de propósito: um
+    botão colado direto via st.markdown fica embaixo do "toolbar" que
+    o próprio Streamlit desenha por cima de blocos de texto ao passar
+    o mouse (o mesmo mecanismo do botão de copiar do st.code) — o
+    clique é capturado por esse toolbar antes de chegar no botão, e
+    nada é copiado. O iframe do components.html não tem esse problema
+    e é a única parte do Streamlit com permissão de "clipboard-write"
+    liberada de verdade.
+    """
+    texto_js = json.dumps(texto).replace("</", "<\\/")
+    components.html(
+        f"""
+        <style>
+            html, body {{
+                margin: 0;
+                padding: 0;
+                background: transparent;
+                overflow: hidden;
+            }}
+        </style>
+        <button id="botao-copiar" title="Copiar mensagem" style="
+            all: unset; cursor: pointer; display: inline-flex;
+            align-items: center; justify-content: center;
+            width: 22px; height: 22px; border-radius: 5px;
+            color: #9aa5b1;
+        ">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                 stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+        </button>
+        <script>
+        document.getElementById("botao-copiar").addEventListener("click", function () {{
+            navigator.clipboard.writeText({texto_js});
+            this.style.color = "#3ba55d";
+            setTimeout(() => {{ this.style.color = "#9aa5b1"; }}, 900);
+        }});
+        </script>
+        """,
+        height=22,
+    )
+
 MESES_PT = {
     1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
     5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
@@ -113,9 +164,9 @@ def _selecionar_colunas_meta_tonelada(texto_lower, colunas_disponiveis):
 CONFIG_TABELA_POR_FERRAMENTA = {
     "consultar_indicadores_faturamento": {
         "colunas": [
-            {"coluna": "faturamento", "tipo": "moeda", "rotulo": "Faturamento", "palavras": ["faturamento"]},
+            {"coluna": "faturamento", "tipo": "moeda", "rotulo": "Faturamento", "palavras": ["fatur"]},
             {"coluna": "venda_bruta", "tipo": "moeda", "rotulo": "Venda Bruta", "palavras": ["venda bruta"]},
-            {"coluna": "valor_desconto", "tipo": "moeda", "rotulo": "Desconto", "palavras": ["desconto"]},
+            {"coluna": "valor_desconto", "tipo": "moeda", "rotulo": "Desconto", "palavras": ["descont"]},
             {"coluna": "toneladas", "tipo": "texto", "rotulo": "Toneladas", "palavras": ["tonelada"]},
             {"coluna": "peso_liquido", "tipo": "texto", "rotulo": "Peso Líquido", "palavras": ["peso"]},
             {"coluna": "quantidade_notas", "tipo": "texto", "rotulo": "Qtd. Notas", "palavras": ["nota"]},
@@ -123,9 +174,9 @@ CONFIG_TABELA_POR_FERRAMENTA = {
     },
     "consultar_indicadores_faturamento_diario": {
         "colunas": [
-            {"coluna": "faturamento", "tipo": "moeda", "rotulo": "Faturamento", "palavras": ["faturamento"]},
+            {"coluna": "faturamento", "tipo": "moeda", "rotulo": "Faturamento", "palavras": ["fatur"]},
             {"coluna": "venda_bruta", "tipo": "moeda", "rotulo": "Venda Bruta", "palavras": ["venda bruta"]},
-            {"coluna": "valor_desconto", "tipo": "moeda", "rotulo": "Desconto", "palavras": ["desconto"]},
+            {"coluna": "valor_desconto", "tipo": "moeda", "rotulo": "Desconto", "palavras": ["descont"]},
             {"coluna": "quantidade_notas", "tipo": "texto", "rotulo": "Qtd. Notas", "palavras": ["nota"]},
         ],
     },
@@ -797,6 +848,7 @@ for indice_mensagem, mensagem in enumerate(st.session_state.mensagens):
         mensagem["papel"], avatar=AVATAR_POR_PAPEL.get(mensagem["papel"])
     ):
         st.text(mensagem["conteudo"])
+        botao_copiar(mensagem["conteudo"])
 
         if mensagem.get("dados_tabela") and vale_a_pena_mostrar_tabela(
             mensagem["dados_tabela"],
@@ -831,6 +883,7 @@ if pergunta:
 
     with st.chat_message("user", avatar=AVATAR_POR_PAPEL["user"]):
         st.markdown(pergunta)
+        botao_copiar(pergunta)
 
     historico = [
         mensagem
@@ -870,6 +923,7 @@ if pergunta:
                 historico=historico,
             )
             placeholder.text(resposta)
+            botao_copiar(resposta)
 
             if dados_tabela and vale_a_pena_mostrar_tabela(
                 dados_tabela, resposta, nome_ferramenta
