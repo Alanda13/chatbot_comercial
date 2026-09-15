@@ -48,7 +48,7 @@ def processar_pergunta(
 
     Retorna uma tupla: (texto_da_resposta, dados_para_tabela,
     nome_ferramenta). dados_para_tabela vem preenchido só quando o
-    resultado tiver mais de LIMITE_MINIMO_PARA_TABELA linhas —
+    resultado tiver pelo menos LIMITE_MINIMO_PARA_TABELA linhas —
     usado pelo app.py pra oferecer a visualização em tabela.
     nome_ferramenta identifica qual ferramenta gerou os dados da
     tabela (None quando nenhuma ferramenta foi executada) — o app.py
@@ -122,7 +122,7 @@ def processar_pergunta(
 
     if (
         isinstance(lista_resultados, list)
-        and len(lista_resultados) > LIMITE_MINIMO_PARA_TABELA
+        and len(lista_resultados) >= LIMITE_MINIMO_PARA_TABELA
     ):
         dados_tabela = lista_resultados
 
