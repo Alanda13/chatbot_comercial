@@ -8,27 +8,36 @@ def test_ferramenta_existe():
     assert tool_manager.ferramenta_existe("listar_filiais") is True
     assert tool_manager.ferramenta_existe("consultar_indicadores_nps") is True
     assert (
+        tool_manager.ferramenta_existe("consultar_dados_comerciais") is True
+    )
+    assert tool_manager.ferramenta_existe("verificar_rca") is True
+    # Substituídas por "consultar_dados_comerciais" — não são mais
+    # registradas como ferramenta própria (veja src/orquestrador.py).
+    assert (
         tool_manager.ferramenta_existe("consultar_indicadores_faturamento")
-        is True
+        is False
     )
     assert (
         tool_manager.ferramenta_existe(
             "consultar_indicadores_faturamento_diario"
         )
-        is True
+        is False
     )
-    assert tool_manager.ferramenta_existe("verificar_rca") is True
-    assert tool_manager.ferramenta_existe("consultar_metas") is True
+    assert tool_manager.ferramenta_existe("consultar_metas") is False
+    assert tool_manager.ferramenta_existe("consultar_meta_tonelada") is False
     assert (
-        tool_manager.ferramenta_existe("consultar_meta_tonelada") is True
+        tool_manager.ferramenta_existe("consultar_crescimento_abaixo_meta")
+        is False
     )
-    assert (
-        tool_manager.ferramenta_existe(
-            "consultar_crescimento_abaixo_meta"
-        )
-        is True
-    )
+    assert tool_manager.ferramenta_existe("listar_rcas_filial") is False
     assert tool_manager.ferramenta_existe("nao_existe") is False
+
+
+def test_consultar_dados_comerciais_exige_indicador_como_obrigatorio():
+    argumentos = tool_manager.obter_argumentos_obrigatorios(
+        "consultar_dados_comerciais"
+    )
+    assert argumentos == ["indicador"]
 
 
 def test_consultar_indicadores_nps_aceita_agrupar_por_filial():
@@ -46,13 +55,6 @@ def test_consultar_evolucao_nps_registrada():
         "consultar_evolucao_nps"
     )
     assert argumentos == ["ano_inicial", "ano_final"]
-
-
-def test_faturamento_diario_exige_periodo_como_obrigatorio():
-    argumentos = tool_manager.obter_argumentos_obrigatorios(
-        "consultar_indicadores_faturamento_diario"
-    )
-    assert argumentos == ["periodos"]
 
 
 def test_verificar_rca_exige_rca_como_obrigatorio_e_nao_exige_periodo():

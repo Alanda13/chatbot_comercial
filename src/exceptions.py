@@ -24,3 +24,11 @@ class RespostaInvalidaError(ChatbotError):
 
 class FerramentaError(ChatbotError):
     """Erro ao validar ou executar uma ferramenta solicitada pela IA."""
+
+
+class ConsultaInvalida(FerramentaError):
+    """
+    Uma consulta ao motor genérico (orquestrador.py) referenciou um
+    indicador, dimensão ou período fora do catálogo, ou pediu um
+    indicador ainda sem fonte de dados real conectada.
+    """

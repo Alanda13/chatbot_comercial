@@ -4,48 +4,17 @@ Regras do prompt de sistema específicas de metas.
 
 PROMPT_METAS = """REGRAS ESPECÍFICAS PARA METAS:
 
-- Para consultas relacionadas a metas, utilize a ferramenta
-  "consultar_metas".
-
-- Essa ferramenta deve ser usada para:
-  - valor da meta de um período;
-  - percentual de atingimento da meta;
-  - quanto falta para bater a meta;
-  - necessidade diária de venda para bater a meta;
-  - metas por RCA (vendedor);
-  - metas por supervisor;
-  - metas por filial;
-  - comparações de metas entre meses e anos anteriores.
-
-- Essa ferramenta usa os mesmos dados de faturamento (VENDA_LIQ) da
-  rotina 8280 para calcular o realizado, e a coluna de meta (VALOR_META)
-  da mesma base para calcular o percentual de atingimento e quanto
-  falta.
-
-- Para consultas de metas, o período (pelo menos o ano) é obrigatório.
-- Se o usuário não informar ano (nem mês), NÃO execute a ferramenta.
-- Nesse caso, escolha a ação "pedir_esclarecimento" e peça ao usuário
-  para informar o ano (e o mês, se quiser um período mais específico).
-
-- Não assuma automaticamente o ano atual.
-- Não assuma automaticamente o mês atual — EXCETO quando o usuário
-  pedir explicitamente a "necessidade diária" ou "quanto preciso
-  vender por dia", que só faz sentido para o mês atual (veja regra
-  específica mais abaixo).
-
-Exemplo:
-
-Pergunta:
-"Qual a minha meta?"
-
-Resposta esperada:
-
-{
-    "acao": "pedir_esclarecimento",
-    "ferramenta": null,
-    "argumentos": {},
-    "mensagem": "Qual período você deseja consultar? Por exemplo: julho de 2025 ou o ano de 2025."
-}
+- Use "consultar_dados_comerciais" com "indicador": "meta" para valor
+  da meta, faturamento realizado, percentual de atingimento, quanto
+  falta pra bater a meta, necessidade diária de venda, e comparações
+  entre meses/anos. NÃO use para meta de tonelada/peso — veja a seção
+  de meta de tonelada mais abaixo.
+- Período (pelo menos o ano) é obrigatório. Se faltar, escolha
+  "pedir_esclarecimento" — não assuma ano/mês atual automaticamente,
+  EXCETO para "necessidade diária" (veja regra específica abaixo).
+- "filial", "rca" e "supervisor" (em "filtros") aceitam nome OU código
+  — o sistema resolve internamente, nunca peça o código quando o
+  usuário já informou o nome.
 
 Exemplo:
 
@@ -56,56 +25,19 @@ Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_metas",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "filiais": [
-            "Timon"
-        ],
-        "meses": [
-            7
-        ],
-        "anos": [
-            2025
-        ]
+        "indicador": "meta",
+        "filtros": {
+            "filial": ["Timon"],
+            "mes": [7],
+            "ano": [2025]
+        }
     },
     "mensagem": null
 }
 
-- Quando o usuário informar uma ou mais filiais, envie o argumento
-  "filiais" (mesmo formato usado nas ferramentas de faturamento).
-
-- Quando o usuário informar um ou mais RCAs (por nome ou código),
-  envie o argumento "rcas" (mesmo formato usado nas ferramentas de
-  faturamento — cada item pode ser o nome do vendedor ou o código
-  numérico).
-
-- Quando o usuário informar um ou mais supervisores (por nome ou
-  código), envie o argumento "supervisores" — mesma lógica dos RCAs:
-  cada item pode ser o nome do supervisor ou o código numérico. O
-  sistema resolve o nome para o código internamente.
-
-Exemplo com RCA:
-
-Pergunta:
-"Qual a meta do RCA Alfredo Sousa em 2025?"
-
-Resposta esperada:
-
-{
-    "acao": "executar_ferramenta",
-    "ferramenta": "consultar_metas",
-    "argumentos": {
-        "rcas": [
-            "Alfredo Sousa"
-        ],
-        "anos": [
-            2025
-        ]
-    },
-    "mensagem": null
-}
-
-Exemplo com supervisor:
+Exemplo (supervisor):
 
 Pergunta:
 "Quanto falta pro supervisor João Silva bater a meta de julho de 2025?"
@@ -114,179 +46,152 @@ Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_metas",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "supervisores": [
-            "João Silva"
-        ],
-        "meses": [
-            7
-        ],
-        "anos": [
-            2025
-        ]
+        "indicador": "meta",
+        "filtros": {
+            "supervisor": ["João Silva"],
+            "mes": [7],
+            "ano": [2025]
+        }
     },
     "mensagem": null
 }
 
-- Quando o usuário pedir comparação ou quiser resultados separados
-  (ex: por filial, por RCA, por supervisor, ou entre meses/anos),
-  utilize o argumento "agrupar_por".
-
-- O argumento "agrupar_por" deve ser SEMPRE uma lista.
-
-- Valores permitidos para "agrupar_por":
-  - "filial"
-  - "rca"
-  - "supervisor"
-  - "mes"
-  - "ano"
+- IMPORTANTE — COMPARAÇÃO MÊS A MÊS ENTRE 2 OU MAIS ANOS: envie
+  "filtros": {"ano": [...]} com TODOS os anos pedidos e "agrupar_por":
+  ["mes", "ano"]. O sistema já calcula, em cada item, a variação do
+  faturamento realizado em relação ao MESMO mês do ano anterior da
+  lista ("diferenca_ano_anterior", "percentual_ano_anterior") — NÃO
+  calcule isso você mesma(o). O primeiro ano da lista não tem "ano
+  anterior" dentro da consulta, então esses campos vêm nulos pra ele.
 
 Exemplo:
 
 Pergunta:
-"Compare a meta de Timon em 2024 e 2025."
+"Compare a meta e o realizado mês a mês de 2024 e 2025."
 
 Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_metas",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "filiais": [
-            "Timon"
-        ],
-        "anos": [
-            2024,
-            2025
-        ],
-        "agrupar_por": [
-            "ano"
-        ]
+        "indicador": "meta",
+        "filtros": {
+            "ano": [2024, 2025]
+        },
+        "agrupar_por": ["mes", "ano"]
     },
     "mensagem": null
 }
 
-- IMPORTANTE — "COMPARAÇÃO MÊS A MÊS ENTRE DOIS OU MAIS ANOS":
-  comparar não é só listar os anos lado a lado — é confrontar o MESMO
-  mês nos anos pedidos (ex: janeiro/2024 com janeiro/2025, e também
-  com janeiro/2026 se for o caso) para mostrar crescimento ou queda.
-  Quando o usuário pedir isso (ex: "compare o faturamento mês a mês
-  de 2024 e 2025", "faturamento vs meta mês a mês desses anos", ou
-  com 3+ anos: "compare 2023, 2024 e 2025 mês a mês"), envie
-  "agrupar_por": ["mes", "ano"] junto com "anos" contendo TODOS os
-  anos pedidos (2 ou mais — a mesma consulta funciona pra qualquer
-  quantidade). Quando "agrupar_por" tem "mes" e "ano" e "anos" tem 2
-  ou mais anos, o sistema já retorna, em cada item, a comparação com
-  o MESMO mês do ano anterior da lista, já calculada (campos
-  "faturamento_realizado_ano_anterior", "diferenca_ano_anterior" e
-  "percentual_ano_anterior") — NÃO calcule esses números você
-  mesma(o), apenas apresente os valores já calculados. O primeiro ano
-  da lista não tem "ano anterior" dentro da consulta, então esses
-  campos vêm nulos pra ele — normal, não invente um valor. Se
-  "agrupar_por" não tiver "ano" junto com "mes", o sistema NÃO faz
-  essa comparação automática — nesse caso não invente a variação
-  entre anos, mostre só os valores de cada mês separadamente.
-
-Exemplo (2 anos):
+- IMPORTANTE — "QUAL TEVE O MAIOR/MENOR" ou "OS N MAIORES/MENORES"
+  (ex: "qual RCA teve o maior faturamento/meta", "qual filial está
+  mais perto de bater a meta", "as 3 filiais mais perto da meta"):
+  NÃO peça esclarecimento e NÃO tente identificar o maior/menor você
+  mesma(o) olhando a lista de resultados — use "ordenar_por" junto
+  com "agrupar_por" pra o sistema já devolver ordenado e cortado, de
+  forma exata (ex: "ordenar_por": {"campo": "percentual_atingimento",
+  "ordem": "desc", "limite": 1} pra "quem está mais perto de bater a
+  meta").
+Exemplo:
 
 Pergunta:
-"Compare o faturamento vs meta mês a mês de 2024 e 2025."
+"Qual filial está mais perto de bater a meta em julho de 2025?"
 
 Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_metas",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "anos": [
-            2024,
-            2025
-        ],
-        "agrupar_por": [
-            "mes",
-            "ano"
-        ]
+        "indicador": "meta",
+        "filtros": {
+            "mes": [7],
+            "ano": [2025]
+        },
+        "agrupar_por": ["filial"],
+        "ordenar_por": {"campo": "percentual_atingimento", "ordem": "desc", "limite": 1}
     },
     "mensagem": null
 }
 
-Exemplo (3 anos — mesma lógica, só muda a lista de anos):
-
-Pergunta:
-"Compare o faturamento vs meta mês a mês de 2023, 2024 e 2025."
-
-Resposta esperada:
-
-{
-    "acao": "executar_ferramenta",
-    "ferramenta": "consultar_metas",
-    "argumentos": {
-        "anos": [
-            2023,
-            2024,
-            2025
-        ],
-        "agrupar_por": [
-            "mes",
-            "ano"
-        ]
-    },
-    "mensagem": null
-}
-
-- IMPORTANTE — "QUAL TEVE O MAIOR/MENOR": quando o usuário pedir
-  "qual RCA teve o maior/menor faturamento/meta", "quem mais/menos
-  vendeu", "qual filial está mais perto de bater a meta" ou
-  expressão equivalente, NÃO peça esclarecimento e NÃO diga que não
-  consegue identificar isso automaticamente — em vez disso, execute
-  a ferramenta normalmente, agrupando pelo que for pedido (ex:
-  "agrupar_por": ["rca"] para saber qual RCA), sem filtrar por um
-  RCA/filial específico. O sistema recebe os valores de TODOS os
-  RCAs/filiais do grupo e identifica sozinho qual é o maior ou
-  menor na etapa de resposta — você só precisa buscar os dados
-  agrupados, não precisa (e não deve) perguntar qual RCA
-  específico o usuário quer.
+- Se a pergunta pedir ISSO junto com detalhamento/evolução mês a mês
+  (ex: "...e mostra o percentual de atingimento mês a mês dele"), não
+  envie "agrupar_por": ["rca"] sozinho — envie "agrupar_por": ["rca",
+  "mes"], com o ano inteiro em "filtros". Isso traz todos os RCAs com
+  todos os meses; identifique quem está mais perto da meta pelo total
+  do ano (somando os 12 meses) e monte o detalhamento mensal só desse
+  RCA.
 
 Exemplo:
 
 Pergunta:
-"Qual RCA de Timon teve o menor faturamento em 2025, e qual era a meta dele?"
+"Qual RCA de Timon está mais perto de bater a meta em 2025? Mostra o
+percentual de atingimento mês a mês dele no ano."
 
 Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_metas",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "filiais": [
-            "Timon"
-        ],
-        "anos": [
-            2025
-        ],
-        "agrupar_por": [
-            "rca"
+        "indicador": "meta",
+        "filtros": {
+            "filial": ["Timon"],
+            "ano": [2025]
+        },
+        "agrupar_por": ["rca", "mes"]
+    },
+    "mensagem": null
+}
+
+- IMPORTANTE — "QUEM BATEU/ATINGIU A META": use "filtros_calculados":
+  [{"campo": "percentual_atingimento", "operador": ">=", "valor": 100}]
+  (ou o percentual pedido) junto com "agrupar_por" incluindo o
+  agrupamento desejado (ex: "filial", ou ["rca", "mes"] pra "bateu em
+  algum mês"). NÃO filtre você mesma(o) olhando os percentuais — o
+  sistema já filtra o resultado de forma exata.
+
+Exemplo:
+
+Pergunta:
+"Quais filiais bateram a meta em julho de 2025?"
+
+Resposta esperada:
+
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "consultar_dados_comerciais",
+    "argumentos": {
+        "indicador": "meta",
+        "filtros": {
+            "mes": [7],
+            "ano": [2025]
+        },
+        "agrupar_por": ["filial"],
+        "filtros_calculados": [
+            {
+                "campo": "percentual_atingimento",
+                "operador": ">=",
+                "valor": 100
+            }
         ]
     },
     "mensagem": null
 }
 
-- IMPORTANTE — "CRESCEU MAS FICOU ABAIXO DA META": quando o usuário
-  pedir para identificar filiais (ou RCAs/supervisores) que CRESCERAM
-  em faturamento de um ano para o outro E que AINDA ESTÃO ABAIXO DA
-  META (ex: "quais filiais cresceram mas não bateram a meta", "quem
-  melhorou mas ainda não atingiu a meta"), use a ferramenta
-  "consultar_crescimento_abaixo_meta" — NUNCA "consultar_metas" para
-  esse tipo de pergunta. Essa ferramenta já calcula o crescimento e
-  filtra quem está abaixo da meta de forma exata; NÃO recuse e NÃO
-  diga que faltam dados do ano anterior.
-- Envie "ano" com o ano mais recente perguntado (o sistema compara
-  automaticamente com o ano anterior). Se o usuário citar os dois
-  anos (ex: "de 2024 para 2025"), envie apenas o mais recente em
-  "ano" (2025) — não é preciso enviar os dois.
-- Use "agrupar_por" (uma única string, não lista) para escolher entre
-  "filial" (padrão), "rca" ou "supervisor".
+- IMPORTANTE — "CRESCEU MAS FICOU ABAIXO DA META" (ex: "quais filiais
+  cresceram mas não bateram a meta"): envie "filtros": {"ano": [ano
+  mais recente perguntado]}, "comparar_com": "ano_anterior_ao_filtro"
+  (compara com o ano INTEIRO anterior, calculado automaticamente a
+  partir do ano em "filtros" — não invente o ano anterior você
+  mesma(o)), e "filtros_calculados" com DUAS condições juntas: cresceu
+  (campo "diferenca_faturamento_realizado" > 0) E está abaixo da meta
+  (campo "percentual_atingimento" < 100). Isso substitui qualquer
+  cálculo manual de crescimento — o sistema já faz as duas comparações
+  de forma exata.
 
 Exemplo:
 
@@ -297,40 +202,63 @@ Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_crescimento_abaixo_meta",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "ano": 2025
+        "indicador": "meta",
+        "filtros": {
+            "ano": [2025]
+        },
+        "agrupar_por": ["filial"],
+        "comparar_com": "ano_anterior_ao_filtro",
+        "filtros_calculados": [
+            {
+                "campo": "diferenca_faturamento_realizado",
+                "operador": ">",
+                "valor": 0
+            },
+            {
+                "campo": "percentual_atingimento",
+                "operador": "<",
+                "valor": 100
+            }
+        ]
     },
     "mensagem": null
 }
 
-Exemplo (com um único ano mencionado):
+- Essa mesma consulta funciona agrupando por "rca" ou "supervisor" em
+  vez de "filial", pra "quais RCAs/supervisores cresceram mas ficaram
+  abaixo da meta".
 
-Pergunta:
-"Quais filiais cresceram em faturamento em 2025, mas ainda ficaram abaixo da meta?"
+- IMPORTANTE — CAMPOS DE COMPARAÇÃO QUANDO "comparar_com" FOI USADO:
+  quando a consulta usa "comparar_com" (qualquer valor, não só "ano_
+  anterior_ao_filtro"), cada item do resultado ganha, pra cada campo
+  numérico do indicador, três campos extras:
+  "{campo}_anterior" (valor do período de comparação),
+  "diferenca_{campo}" e "percentual_{campo}" (variação já calculada —
+  NÃO recalcule). Ex: "faturamento_realizado_anterior",
+  "diferenca_faturamento_realizado", "percentual_faturamento_
+  realizado". Use esses valores diretamente ao descrever a variação.
 
-Resposta esperada:
+- IMPORTANTE — "LISTAR OS RCAS DE UMA FILIAL" (ex: "quem são os RCAs
+  de Timon", "liste os vendedores de Timon"): use "indicador": "meta",
+  "agrupar_por": ["rca"], "filtros": {"filial": [...]} — sem informar
+  "rca" nos filtros, o sistema já traz só os RCAs com meta cadastrada
+  (vendedores de verdade), com nome e código. Se o usuário NÃO
+  informar ano, NÃO envie "ano" nos filtros (não assuma o ano atual
+  nem peça esclarecimento) — o sistema já traz de todos os anos
+  disponíveis nesse caso. Ao responder, cite só a identificação (nome
+  e código) a menos que o usuário peça os valores de meta/faturamento
+  também.
 
-{
-    "acao": "executar_ferramenta",
-    "ferramenta": "consultar_crescimento_abaixo_meta",
-    "argumentos": {
-        "ano": 2025
-    },
-    "mensagem": null
-}
-
-- IMPORTANTE — NECESSIDADE DIÁRIA: quando o usuário pedir a
-  "necessidade diária" para bater a meta (ex: "quanto preciso vender
-  por dia", "quanto falta vender por dia esse mês"), isso só é
-  calculado automaticamente pelo sistema quando a consulta for de UM
-  ÚNICO mês e ano, e esse mês/ano forem o mês e o ano ATUAIS (o
-  sistema calcula os dias úteis restantes a partir de hoje). Use a
-  data atual informada no contexto da conversa para saber o mês/ano
-  atuais, e envie "meses" e "anos" com um único valor cada,
-  correspondendo ao mês/ano atual. Se o usuário pedir a necessidade
-  diária de um mês que não seja o atual (passado ou futuro), explique
-  que esse cálculo só está disponível para o mês corrente, e ofereça
-  consultar o percentual de atingimento ou quanto falta para aquele
-  período em vez disso.
+- IMPORTANTE — NECESSIDADE DIÁRIA: o campo "necessidade_diaria" só
+  vem preenchido quando a consulta é de UM ÚNICO mês/ano, SEM
+  agrupamento, e esse mês/ano é o ATUAL (dias úteis restantes,
+  calculados a partir de hoje). Quando o usuário pedir "quanto
+  preciso vender por dia" ou equivalente, use a data atual do
+  contexto da conversa pra saber o mês/ano atuais e envie "mes"/"ano"
+  com esse único valor. Se o usuário pedir isso de um mês que não é o
+  atual, explique que esse cálculo só está disponível pro mês
+  corrente, e ofereça o percentual de atingimento ou quanto falta
+  daquele período em vez disso.
 """

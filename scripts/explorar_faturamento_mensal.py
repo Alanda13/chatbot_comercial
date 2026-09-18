@@ -19,28 +19,25 @@ faturamento_julho = dados_julho["VENDA_LIQ"].sum()
 print("\n=== FATURAMENTO JULHO/2025 ===")
 print(faturamento_julho)
 
-from src.faturamento_queries import (
-    consultar_indicadores_faturamento,
-)
+from src.indicador_tools import executar_consultar_dados_comerciais
 
-resultado = consultar_indicadores_faturamento(
-    meses=[7],
-    anos=[2025],
-)
+resultado = executar_consultar_dados_comerciais({
+    "indicador": "faturamento",
+    "filtros": {"mes": [7], "ano": [2025]},
+})
 
 print("\n=== CONSULTA GENÉRICA ===")
 print(resultado)
 
-resultado_timon = consultar_indicadores_faturamento(
-    filiais=["FERRONORTE TIMON"],
-    meses=[7],
-    anos=[2025],
-)
+resultado_timon = executar_consultar_dados_comerciais({
+    "indicador": "faturamento",
+    "filtros": {"filial": ["Timon"], "mes": [7], "ano": [2025]},
+})
 
 print("\n=== FATURAMENTO TIMON JULHO/2025 ===")
 print(resultado_timon)
 
-from src.faturamento_queries import listar_filiais_faturamento
+from src.faturamento_data import listar_filiais_faturamento
 
 filiais = listar_filiais_faturamento()
 
@@ -63,20 +60,12 @@ print(
     "Santa Inês ->",
     resolver_nome_filial("Santa Inês")
 )
-from src.faturamento_tools import (
-    executar_consulta_indicadores_faturamento,
-)
 print("\n=== TESTE DA FERRAMENTA GENÉRICA ===")
 
-resultado_ferramenta = (
-    executar_consulta_indicadores_faturamento(
-        {
-            "filiais": ["Timor"],
-            "meses": [7],
-            "anos": [2025],
-        }
-    )
-)
+resultado_ferramenta = executar_consultar_dados_comerciais({
+    "indicador": "faturamento",
+    "filtros": {"filial": ["Timor"], "mes": [7], "ano": [2025]},
+})
 
 print(resultado_ferramenta)
 
@@ -84,11 +73,11 @@ print(resultado_ferramenta)
 print("\n=== ANOS DISPONÍVEIS ===")
 print(sorted(dados["ANO"].unique()))
 
-resultado_comparacao = consultar_indicadores_faturamento(
-    filiais=["FERRONORTE TIMON"],
-    anos=[2022, 2023, 2024, 2025],
-    agrupar_por=["ano"],
-)
+resultado_comparacao = executar_consultar_dados_comerciais({
+    "indicador": "faturamento",
+    "filtros": {"filial": ["Timon"], "ano": [2022, 2023, 2024, 2025]},
+    "agrupar_por": ["ano"],
+})
 
 print("\n=== COMPARAÇÃO TIMON POR ANO ===")
 print(resultado_comparacao)

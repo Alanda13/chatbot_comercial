@@ -12,6 +12,7 @@ from src.exceptions import ChatbotError
 from src.logger import obter_logger
 from src.perguntas_log import registrar_pergunta
 from src.variacao_utils import calcular_diferenca_percentual
+from src import catalogo
 
 logger = obter_logger(__name__)
 
@@ -122,24 +123,6 @@ MESES_PT = {
     9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro",
 }
 
-def _selecionar_colunas_meta_tonelada(texto_lower, colunas_disponiveis):
-    """
-    Meta de tonelada pode existir por RCA e por filial ao mesmo tempo
-    nos dados — escolhe a coluna certa conforme o que a resposta
-    menciona, em vez de mostrar as duas juntas.
-    """
-    if "rca" in texto_lower or "vendedor" in texto_lower:
-        return [c for c in ("meta_tonelada_rca",) if c in colunas_disponiveis]
-
-    if "filial" in texto_lower:
-        return [c for c in ("meta_tonelada_filial",) if c in colunas_disponiveis]
-
-    return [
-        c for c in ("meta_tonelada_rca", "meta_tonelada_filial")
-        if c in colunas_disponiveis
-    ]
-
-
 # Configuração de tabela por ferramenta — fonte única de verdade sobre
 # as colunas de valor de cada ferramenta: nome do campo, "tipo" (usado
 # pra formatação, veja FORMATADORES_POR_TIPO), rótulo de exibição, e
@@ -212,12 +195,12 @@ CONFIG_TABELA_POR_FERRAMENTA = {
             {"coluna": "diferenca", "tipo": "texto", "rotulo": "Diferença", "sempre": True},
         ],
     },
-    "consultar_meta_tonelada": {
-        "seletor": _selecionar_colunas_meta_tonelada,
-        "colunas": [
-            {"coluna": "meta_tonelada_rca", "tipo": "texto", "rotulo": "Meta Tonelada (RCA)"},
-            {"coluna": "meta_tonelada_filial", "tipo": "texto", "rotulo": "Meta Tonelada (Filial)"},
-        ],
+    # Colunas geradas a partir do catalogo.py (campo "exibicao" de cada
+    # indicador conectado) — um indicador novo não exige editar esta
+    # config à mão, só preencher "exibicao" na entrada dele em
+    # catalogo.INDICADORES.
+    "consultar_dados_comerciais": {
+        "colunas": catalogo.gerar_colunas_tabela(),
     },
 }
 
@@ -274,6 +257,9 @@ RENOMEAR_COLUNAS = {
     "codigo": "Código",
     "mes": "Mês",
     "ano": "Ano",
+    "periodo": "Período",
+    "forma_pagamento": "Forma de Pagamento",
+    "dia": "Dia",
     "percentual_mes_anterior": "Variação (mês anterior)",
     "percentual_ano_anterior": "Variação (ano anterior)",
     **{
@@ -444,33 +430,97 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
         and "mes" not in df.columns
         and df["ano"].nunique() == 2
     ):
-        anos_ordenados = sorted(df["ano"].unique())
-        ano_1, ano_2 = anos_ordenados[0], anos_ordenados[1]
-
         colunas_candidatas = selecionar_colunas_metricas(
             nome_ferramenta, texto_referencia.lower(), df.columns
         )
         coluna_valor = colunas_candidatas[0] if colunas_candidatas else None
 
-        eh_monetario = TIPO_POR_COLUNA.get(coluna_valor) == "moeda"
+        # Sem coluna de métrica reconhecida (ex: ferramenta sem config em
+        # CONFIG_TABELA_POR_FERRAMENTA), não dá pra pivotar — cai pro
+        # formato de tabela padrão mais abaixo, em vez de quebrar a
+        # resposta inteira tentando indexar uma coluna que não existe.
+        if coluna_valor is not None:
+            anos_ordenados = sorted(df["ano"].unique())
+            ano_1, ano_2 = anos_ordenados[0], anos_ordenados[1]
 
-        itens = []
-        for nome_filial in df["filial"].unique():
-            valor_1 = df[
-                (df["filial"] == nome_filial) & (df["ano"] == ano_1)
-            ][coluna_valor]
-            valor_2 = df[
-                (df["filial"] == nome_filial) & (df["ano"] == ano_2)
-            ][coluna_valor]
+            eh_monetario = TIPO_POR_COLUNA.get(coluna_valor) == "moeda"
 
-            valor_1 = valor_1.iloc[0] if len(valor_1) else None
-            valor_2 = valor_2.iloc[0] if len(valor_2) else None
+            itens = []
+            for nome_filial in df["filial"].unique():
+                valor_1 = df[
+                    (df["filial"] == nome_filial) & (df["ano"] == ano_1)
+                ][coluna_valor]
+                valor_2 = df[
+                    (df["filial"] == nome_filial) & (df["ano"] == ano_2)
+                ][coluna_valor]
 
-            itens.append((nome_filial, valor_1, valor_2))
+                valor_1 = valor_1.iloc[0] if len(valor_1) else None
+                valor_2 = valor_2.iloc[0] if len(valor_2) else None
 
-        return _montar_tabela_comparacao_dois_anos(
-            "Filial", itens, ano_1, ano_2, eh_monetario
+                itens.append((nome_filial, valor_1, valor_2))
+
+            return _montar_tabela_comparacao_dois_anos(
+                "Filial", itens, ano_1, ano_2, eh_monetario
+            )
+
+    # Formato especial: comparação entre EXATAMENTE 2 períodos (ex:
+    # "compare o faturamento por forma de pagamento entre julho e
+    # agosto de 2025") — mesmo espírito do pivô "Filial x 2 anos"
+    # acima, só que usando "periodo" em vez de "ano". Sem isso, a
+    # tabela empilhava um período inteiro e depois o outro (formato
+    # comprido), obrigando a rolar a tela pra comparar a mesma forma
+    # de pagamento/filial/RCA entre os dois períodos.
+    if "periodo" in df.columns and df["periodo"].nunique() == 2:
+        coluna_identidade = next(
+            (
+                coluna
+                for coluna in ("forma_pagamento", "filial", "rca_nome", "rca")
+                if coluna in df.columns
+            ),
+            None,
         )
+
+        if coluna_identidade:
+            # NÃO ordena alfabeticamente — rótulos como "Julho de
+            # 2025"/"Agosto de 2025" ficariam fora de ordem
+            # cronológica ("Agosto" vem antes de "Julho" no
+            # alfabeto). A ordem de primeira aparição já é a ordem
+            # cronológica, porque os períodos são combinados na mesma
+            # ordem em que foram pedidos.
+            periodos_ordenados = list(df["periodo"].unique())
+            periodo_1, periodo_2 = periodos_ordenados[0], periodos_ordenados[1]
+
+            colunas_candidatas = selecionar_colunas_metricas(
+                nome_ferramenta, texto_referencia.lower(), df.columns
+            )
+            coluna_valor = colunas_candidatas[0] if colunas_candidatas else None
+
+            if coluna_valor:
+                eh_monetario = TIPO_POR_COLUNA.get(coluna_valor) == "moeda"
+
+                itens = []
+                for identidade in df[coluna_identidade].unique():
+                    valor_1 = df[
+                        (df[coluna_identidade] == identidade)
+                        & (df["periodo"] == periodo_1)
+                    ][coluna_valor]
+                    valor_2 = df[
+                        (df[coluna_identidade] == identidade)
+                        & (df["periodo"] == periodo_2)
+                    ][coluna_valor]
+
+                    valor_1 = valor_1.iloc[0] if len(valor_1) else None
+                    valor_2 = valor_2.iloc[0] if len(valor_2) else None
+
+                    itens.append((identidade, valor_1, valor_2))
+
+                rotulo_identidade = RENOMEAR_COLUNAS.get(
+                    coluna_identidade, coluna_identidade
+                )
+
+                return _montar_tabela_comparacao_dois_anos(
+                    rotulo_identidade, itens, periodo_1, periodo_2, eh_monetario
+                )
 
     # Se a resposta em texto só menciona ALGUMAS das filiais que vieram
     # na consulta (ex: "qual filial teve o maior NPS" — a IA já filtrou
@@ -513,9 +563,75 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
         if rcas_na_resposta and len(rcas_na_resposta) < df["rca_nome"].nunique():
             df = df[df["rca_nome"].isin(rcas_na_resposta)]
 
+    # Formato especial: uma métrica só, várias linhas de um mesmo
+    # RCA/filial ao longo dos meses de UM ANO — melhor em formato
+    # largo (uma linha por RCA/filial, uma coluna por mês, e uma
+    # coluna final com o total do ano) do que repetir o nome em cada
+    # linha (formato comprido). Só pivota quando há uma métrica só
+    # (senão não dá pra decidir o que vai em cada célula) e um único
+    # ano (senão o mesmo mês apareceria repetido pra anos diferentes).
+    coluna_grupo_pivot = next(
+        (c for c in ("rca_nome", "filial", "rca", "codigo") if c in df.columns),
+        None,
+    )
+    ano_unico = "ano" not in df.columns or df["ano"].nunique() <= 1
+
+    if (
+        coluna_grupo_pivot
+        and "mes" in df.columns
+        and df["mes"].nunique() > 1
+        and ano_unico
+    ):
+        colunas_metricas_pivot = selecionar_colunas_metricas(
+            nome_ferramenta, texto_referencia.lower(), df.columns
+        )
+
+        if len(colunas_metricas_pivot) == 1:
+            coluna_valor = colunas_metricas_pivot[0]
+            eh_monetario = TIPO_POR_COLUNA.get(coluna_valor) == "moeda"
+            rotulo_grupo = RENOMEAR_COLUNAS.get(
+                coluna_grupo_pivot, coluna_grupo_pivot
+            )
+            rotulo_valor = RENOMEAR_COLUNAS.get(coluna_valor, coluna_valor)
+            meses_presentes = sorted(df["mes"].unique())
+
+            def _formatar_valor_pivot(valor):
+                if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+                    return "sem dados"
+                return formatar_moeda(valor) if eh_monetario else valor
+
+            linhas = []
+            for grupo, subtabela in df.groupby(coluna_grupo_pivot, sort=False):
+                linha = {rotulo_grupo: grupo}
+                total = 0
+                tem_valor = False
+
+                for mes in meses_presentes:
+                    valores_mes = subtabela.loc[
+                        subtabela["mes"] == mes, coluna_valor
+                    ]
+                    valor_mes = valores_mes.iloc[0] if len(valores_mes) else None
+                    linha[MESES_PT.get(mes, mes)] = _formatar_valor_pivot(valor_mes)
+
+                    if valor_mes is not None and not (
+                        isinstance(valor_mes, float) and pd.isna(valor_mes)
+                    ):
+                        total += valor_mes
+                        tem_valor = True
+
+                linha[rotulo_valor] = _formatar_valor_pivot(
+                    round(total, 2) if tem_valor else None
+                )
+                linhas.append(linha)
+
+            return pd.DataFrame(linhas)
+
     colunas_base = [
         coluna
-        for coluna in ("filial", "rca_nome", "rca", "codigo", "ano", "mes")
+        for coluna in (
+            "filial", "rca_nome", "rca", "codigo", "ano", "mes",
+            "periodo", "forma_pagamento", "dia",
+        )
         if coluna in df.columns
     ]
 
@@ -624,6 +740,7 @@ def descrever_periodo(dados_tabela, texto_referencia):
 
 COLUNAS_DE_IDENTIFICACAO = {
     "Filial", "RCA", "Código", "Código RCA", "Ano", "Mês",
+    "Período", "Forma de Pagamento", "Dia",
 }
 
 

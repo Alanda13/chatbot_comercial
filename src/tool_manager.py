@@ -11,20 +11,10 @@ from src.nps_tools import (
     executar_consulta_indicadores_nps,
     executar_consultar_evolucao_nps,
 )
-from src.faturamento_tools import (
-    executar_consulta_indicadores_faturamento,
-    executar_verificar_rca,
-)
-from src.faturamento_diario_tools import (
-    executar_consulta_indicadores_faturamento_diario,
-)
-from src.metas_tools import (
-    executar_consultar_metas,
-    executar_consultar_crescimento_abaixo_meta,
-    executar_listar_rcas_filial,
-)
-from src.meta_tonelada_tools import executar_consultar_meta_tonelada
+from src.faturamento_tools import executar_verificar_rca
 from src.filiais_tools import executar_listar_filiais
+from src.indicador_tools import executar_consultar_dados_comerciais
+from src.catalogo import gerar_descricao_indicadores
 from src.exceptions import FerramentaError
 
 FERRAMENTAS_DISPONIVEIS = {
@@ -98,38 +88,6 @@ FERRAMENTAS_DISPONIVEIS = {
         "funcao": executar_consultar_evolucao_nps,
     },
 
-    "consultar_indicadores_faturamento": {
-        "descricao": (
-            "Ferramenta genérica para consultar indicadores de faturamento "
-            "por mês e/ou ano (rotina 8280). "
-            "Pode consultar a empresa inteira, uma ou várias filiais, "
-            "um ou vários RCAs, meses e anos. "
-            "Use esta ferramenta para consultas de faturamento, venda bruta, "
-            "valor de desconto, peso líquido/toneladas e quantidade de "
-            "notas, sempre que a pergunta for por mês(es) e/ou ano(s) — nunca por "
-            "um dia específico ou período de dias. "
-            "O faturamento é baseado na coluna VENDA_LIQ da rotina 8280. "
-            "Quando agrupar_por incluir 'rca' e o usuário não especificar "
-            "RCAs, por padrão o sistema já filtra para trazer só os RCAs "
-            "com meta cadastrada na filial (vendedores de verdade, não "
-            "contas genéricas/contábeis). Só use "
-            "'apenas_rcas_com_meta': false quando o usuário pedir "
-            "explicitamente TODOS que venderam, mesmo sem meta cadastrada "
-            "(ex: 'todos que venderam', 'mesmo sem meta', 'qualquer "
-            "código que vendeu') — nesses casos o filtro é desativado."
-        ),
-        "argumentos_obrigatorios": [],
-        "argumentos_opcionais": [
-            "filiais",
-            "rcas",
-            "meses",
-            "anos",
-            "agrupar_por",
-            "apenas_rcas_com_meta",
-        ],
-        "funcao": executar_consulta_indicadores_faturamento,
-    },
-
     "verificar_rca": {
         "descricao": (
             "Ferramenta para confirmar se um RCA (vendedor) existe, "
@@ -145,122 +103,56 @@ FERRAMENTAS_DISPONIVEIS = {
         "funcao": executar_verificar_rca,
     },
 
-    "consultar_metas": {
+    "consultar_dados_comerciais": {
         "descricao": (
-            "Ferramenta genérica para consultar indicadores de metas "
-            "de faturamento (R$) por mês e/ou ano, usando os dados de "
-            "meta e realizado da rotina 8280. Pode consultar a empresa "
-            "inteira, uma ou várias filiais, um ou vários RCAs, um ou "
-            "vários supervisores. Use esta ferramenta para valor da "
-            "meta de faturamento, faturamento realizado, percentual "
-            "de atingimento, quanto falta para bater a meta, "
-            "necessidade diária de venda e comparações com "
-            "meses/anos anteriores. NÃO use esta ferramenta para meta "
-            "de tonelada/peso — veja 'consultar_meta_tonelada'. "
-            "Quando agrupar_por incluir 'rca' e o usuário não "
-            "especificar RCAs, por padrão o sistema já filtra para "
-            "trazer só os RCAs com meta cadastrada na filial "
-            "(vendedores de verdade, não contas genéricas/contábeis). "
-            "Só use 'apenas_rcas_com_meta': false quando o usuário "
-            "pedir explicitamente TODOS os códigos, mesmo sem meta "
-            "cadastrada."
+            "Ferramenta GENÉRICA de consulta a indicadores comerciais — "
+            "prefira esta ferramenta em vez das ferramentas específicas "
+            "acima quando o indicador pedido estiver na lista abaixo. "
+            "Recebe: 'indicador' (obrigatório, um dos listados abaixo); "
+            "'periodo' (um de: hoje, ontem, semana_atual, mes_atual, "
+            "ano_atual, mes_anterior, mesmo_mes_ano_anterior, "
+            "personalizado); 'periodo_personalizado' (obrigatório só "
+            "quando periodo='personalizado' — {\"meses\": [...], "
+            "\"anos\": [...]} para indicadores de período mensal, ou "
+            "{\"data_inicial\": \"AAAA-MM-DD\", \"data_final\": "
+            "\"AAAA-MM-DD\"} para indicadores de período diário); "
+            "'filtros' ({dimensao: valor(es)}, ex: {\"filial\": "
+            "[\"Timon\"]}); 'agrupar_por' (lista de dimensões, ex: "
+            "[\"filial\", \"mes\"]); 'comparar_com' (outro período, "
+            "pra calcular crescimento em relação a ele — o resultado "
+            "já vem com a diferença e o percentual calculados, NÃO "
+            "calcule você mesma(o)); 'filtros_calculados' (filtro "
+            "sobre a métrica já calculada, ex: [{\"campo\": "
+            "\"percentual_atingimento\", \"operador\": \">=\", "
+            "\"valor\": 100}] pra 'quem bateu a meta' — o filtro é "
+            "exato, aplicado pelo sistema); 'ordenar_por' "
+            "({\"campo\": ..., \"ordem\": \"desc\"|\"asc\" (padrão "
+            "\"desc\"), \"limite\": N}) — use SEMPRE que a pergunta "
+            "pedir 'o maior/menor', 'quem mais/menos', ou 'os N "
+            "maiores/menores' de um grupo (ex: \"agrupar_por\": "
+            "[\"filial\"] junto com \"ordenar_por\": {\"campo\": "
+            "\"faturamento\", \"limite\": 1} pra 'qual filial teve o "
+            "maior faturamento'). O sistema ordena e corta de forma "
+            "EXATA — NUNCA tente identificar o maior/menor você "
+            "mesma(o) olhando uma lista grande de resultados, "
+            "PEÇA pro sistema já ordenado e cortado. "
+            "Indicadores disponíveis nesta ferramenta:\n"
+            f"{gerar_descricao_indicadores()}\n"
+            "Para indicadores que NÃO estão nessa lista (nps e "
+            "qualquer outro), use a ferramenta "
+            "específica correspondente, não esta."
         ),
-        "argumentos_obrigatorios": [],
+        "argumentos_obrigatorios": ["indicador"],
         "argumentos_opcionais": [
-            "filiais",
-            "rcas",
-            "supervisores",
-            "meses",
-            "anos",
+            "periodo",
+            "periodo_personalizado",
+            "filtros",
             "agrupar_por",
-            "apenas_rcas_com_meta",
+            "comparar_com",
+            "filtros_calculados",
+            "ordenar_por",
         ],
-        "funcao": executar_consultar_metas,
-    },
-
-    "consultar_crescimento_abaixo_meta": {
-        "descricao": (
-            "Ferramenta para identificar quais filiais (ou RCAs/"
-            "supervisores) CRESCERAM em faturamento em relação ao ano "
-            "anterior e AINDA ESTÃO ABAIXO DA META no ano informado "
-            "(ex: 'quais filiais cresceram mas ficaram abaixo da "
-            "meta'). O cálculo de crescimento e o filtro de quem está "
-            "abaixo da meta são feitos de forma exata pelo sistema, "
-            "não pela IA. Use SEMPRE esta ferramenta para esse tipo "
-            "de pergunta, em vez de 'consultar_metas' — não tente "
-            "calcular esse filtro sozinho a partir dos dados de "
-            "'consultar_metas'."
-        ),
-        "argumentos_obrigatorios": ["ano"],
-        "argumentos_opcionais": [
-            "filiais",
-            "rcas",
-            "supervisores",
-            "agrupar_por",
-        ],
-        "funcao": executar_consultar_crescimento_abaixo_meta,
-    },
-
-    "consultar_meta_tonelada": {
-        "descricao": (
-            "Ferramenta para consultar a META de tonelada/peso (o "
-            "alvo/objetivo definido, NÃO o volume vendido de "
-            "verdade), usando dados exportados do TARGIT. Pode "
-            "consultar por filial e/ou RCA (por nome) e período. "
-            "Essa ferramenta NÃO tem o volume REALIZADO em toneladas "
-            "— para o volume vendido de fato, use "
-            "'consultar_indicadores_faturamento' (campo 'toneladas')."
-        ),
-        "argumentos_obrigatorios": [],
-        "argumentos_opcionais": [
-            "filiais",
-            "rcas",
-            "meses",
-            "anos",
-            "agrupar_por",
-        ],
-        "funcao": executar_consultar_meta_tonelada,
-    },
-
-    "listar_rcas_filial": {
-        "descricao": (
-            "Ferramenta para listar os RCAs (vendedores) de uma ou "
-            "mais filiais — um RCA pertence a uma filial quando tem "
-            "meta cadastrada naquela filial. Use esta ferramenta "
-            "SEMPRE que o usuário pedir para 'listar os RCAs', "
-            "'quais são os vendedores', ou similar, de uma filial — "
-            "em vez de tentar montar essa lista a partir de "
-            "'consultar_indicadores_faturamento' ou "
-            "'consultar_metas', que trazem RCAs genéricos/contábeis "
-            "que não são vendedores de verdade. Se o usuário não "
-            "informar ano, traz de todos os anos disponíveis."
-        ),
-        "argumentos_obrigatorios": ["filiais"],
-        "argumentos_opcionais": ["anos"],
-        "funcao": executar_listar_rcas_filial,
-    },
-
-    "consultar_indicadores_faturamento_diario": {
-        "descricao": (
-            "Ferramenta para consultar indicadores de faturamento com "
-            "granularidade diária (rotina 8302). "
-            "Use esta ferramenta sempre que o usuário pedir o faturamento "
-            "de um dia específico ou de um período de dias — por exemplo: "
-            "hoje, ontem, esta semana, semana passada, ou um intervalo de "
-            "datas. Também é a ferramenta correta para faturamento "
-            "agrupado por forma de pagamento — nesse caso os dados só "
-            "estão disponíveis para o período de 2024 a 2025. "
-            "Para perguntas por mês(es) ou ano(s) inteiros, sem exigir "
-            "detalhamento por dia, use a ferramenta "
-            "'consultar_indicadores_faturamento' no lugar desta."
-        ),
-        "argumentos_obrigatorios": ["periodos"],
-        "argumentos_opcionais": [
-            "filiais",
-            "rcas",
-            "agrupar_por",
-        ],
-        "funcao": executar_consulta_indicadores_faturamento_diario,
+        "funcao": executar_consultar_dados_comerciais,
     },
 }
 def gerar_catalogo_ferramentas() -> str:

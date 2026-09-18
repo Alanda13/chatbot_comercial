@@ -76,6 +76,58 @@ def carregar_faturamento_8302_cobranca() -> pd.DataFrame:
     return _carregar_csv_8302(ARQUIVO_8302_COBRANCA)
 
 
+def listar_filiais_faturamento_diario() -> list[str]:
+    """
+    Retorna os nomes das filiais existentes
+    na base da rotina 8302.
+    """
+
+    dados = carregar_faturamento_8302()
+
+    filiais = (
+        dados["FILIAL"]
+        .dropna()
+        .astype(str)
+        .str.strip()
+        .unique()
+        .tolist()
+    )
+
+    filiais.sort()
+
+    return filiais
+
+
+def resolver_nome_filial_diario(nome_informado: str) -> str:
+    """
+    Encontra o nome correto da filial na base de faturamento diário.
+    """
+
+    filiais = listar_filiais_faturamento_diario()
+
+    if not filiais:
+        raise ValueError(
+            "Nenhuma filial foi encontrada "
+            "na base de faturamento diário."
+        )
+
+    nome_procurado = normalizar_nome_filial(
+        nome_informado
+    )
+
+    filial_encontrada = encontrar_filial_mais_proxima(
+        nome_procurado,
+        filiais,
+    )
+
+    if filial_encontrada is None:
+        raise ValueError(
+            f"A filial '{nome_informado}' não foi encontrada."
+        )
+
+    return filial_encontrada
+
+
 def construir_mapa_rca_nome() -> dict[int, str]:
     """
     Constrói um mapa de código do RCA para o nome do vendedor.

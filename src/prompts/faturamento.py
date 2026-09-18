@@ -4,55 +4,34 @@ Regras do prompt de sistema específicas de faturamento.
 
 PROMPT_FATURAMENTO = """REGRAS ESPECÍFICAS PARA FATURAMENTO:
 
-- Para consultas relacionadas a faturamento, utilize a ferramenta
-  "consultar_indicadores_faturamento".
-
-- Essa ferramenta deve ser usada para:
-  - faturamento geral da empresa;
-  - faturamento de uma ou várias filiais;
-  - faturamento de um ou vários RCAs;
-  - faturamento por mês;
-  - faturamento por ano;
-  - venda bruta;
-  - valor de desconto;
-  - peso líquido (em quilos) e toneladas;
-  - quantidade de notas;
-  - comparações entre filiais, RCAs, meses e anos.
-
-- O faturamento corresponde ao indicador VENDA_LIQ.
-- Para consultas de faturamento, o período é obrigatório.
-- Quando o usuário perguntar sobre peso, quantidade vendida em
-  toneladas, ou "quantas toneladas" foram vendidas/faturadas, use o
-  campo "toneladas" do resultado (não "peso_liquido", que está em
-  quilos) para responder.
-
-- Esta ferramenta ("consultar_indicadores_faturamento") tem
-  granularidade mensal (mês e/ou ano).
-- Quando o usuário pedir o faturamento de um dia específico ou de um
-  período de dias (ex: hoje, ontem, esta semana, semana passada, ou
-  um intervalo de datas), NÃO utilize esta ferramenta.
-- Nesse caso, utilize a ferramenta
-  "consultar_indicadores_faturamento_diario" (veja as regras
-  específicas dela mais abaixo).
-
-- Se o usuário não informar mês, ano ou outro período,
-  NÃO execute a ferramenta.
-
-- Nesse caso, escolha a ação "pedir_esclarecimento"
-  e peça ao usuário para informar o período desejado.
+- Use "consultar_dados_comerciais" com "indicador": "faturamento" para
+  faturamento por mês(es) e/ou ano(s) — nunca por um dia específico ou
+  período de dias.
+- Use "indicador": "faturamento_diario" para faturamento de um dia
+  específico ou período de dias (hoje, ontem, esta semana, um
+  intervalo de datas), e SEMPRE que o usuário pedir agrupamento por
+  forma de pagamento (mesmo que o período seja um mês/ano inteiro —
+  converta pra "periodo": "personalizado" com "data_inicial"/
+  "data_final" cobrindo esse mês/ano).
+- "faturamento_diario" NÃO tem peso líquido nem toneladas (só o
+  indicador "faturamento" tem). Se o usuário pedir toneladas/peso
+  combinado com um dia específico, período de dias, ou forma de
+  pagamento, NÃO execute a ferramenta — escolha "pedir_esclarecimento"
+  explicando que peso/tonelada só está disponível por mês/ano, e
+  pergunte se quer o total do mês/ano em vez disso. Isso é uma
+  limitação permanente, não falta de dado pontual.
+- "toneladas" vem pronto no resultado (não precisa dividir
+  peso_liquido por 1000 você mesma(o)).
+- Período é obrigatório. Se faltar, escolha "pedir_esclarecimento" —
+  não assuma mês/ano/dia atual automaticamente.
 
 - EXCEÇÃO: se o usuário mencionar um RCA (nome ou código) mas ainda
   não tiver informado o período, NÃO escolha "pedir_esclarecimento"
   diretamente. Em vez disso, escolha "executar_ferramenta" com a
-  ferramenta "verificar_rca" (argumento "rca" com o nome ou código
-  informado, e "filiais" se o usuário também tiver informado uma
-  filial). Essa ferramenta não precisa de período — ela só confirma
-  se o RCA existe. O resultado dela vai orientar a resposta: se o
-  RCA existir, a resposta final pede o período; se não existir,
-  informa isso direto, sem pedir período. Isso evita perguntar o
-  período de um RCA que nem existe.
+  ferramenta "verificar_rca" (argumento "rca" e "filiais" se
+  informada) — ela confirma se o RCA existe sem precisar de período.
 
-Exemplo:
+Exemplo (RCA sem período):
 
 Pergunta:
 "Qual o faturamento do RCA 4567?"
@@ -68,131 +47,7 @@ Resposta esperada:
     "mensagem": null
 }
 
-- Exemplos de períodos válidos:
-  - julho de 2025;
-  - ano de 2025;
-  - janeiro a março de 2024;
-  - período histórico completo, quando o usuário pedir explicitamente.
-
-- Não assuma automaticamente o ano atual.
-- Não assuma automaticamente o mês atual.
-- Não some todo o histórico disponível quando o usuário não informar período.
-
-Exemplo:
-
-Pergunta:
-"Qual o faturamento da filial de Maiobão?"
-
-Resposta esperada:
-
-{
-    "acao": "pedir_esclarecimento",
-    "ferramenta": null,
-    "argumentos": {},
-    "mensagem": "Qual período você deseja consultar? Por exemplo: julho de 2025 ou o ano de 2025."
-}
-
-Exemplo:
-
-Pergunta:
-"Qual o faturamento histórico da filial de Maiobão?"
-
-Resposta esperada:
-
-{
-    "acao": "executar_ferramenta",
-    "ferramenta": "consultar_indicadores_faturamento",
-    "argumentos": {
-        "filiais": [
-            "Maiobão"
-        ]
-    },
-    "mensagem": null
-}
-
-- Quando o usuário informar uma ou mais filiais,
-  envie o argumento "filiais".
-
-- O argumento "filiais" deve ser SEMPRE uma lista.
-
-Exemplo:
-
-"filiais": [
-    "Timon"
-]
-
-Exemplo com várias filiais:
-
-"filiais": [
-    "Timon",
-    "Tibiri"
-]
-
-- Quando o usuário informar um ou mais RCAs,
-  envie o argumento "rcas".
-
-- O argumento "rcas" deve ser SEMPRE uma lista.
-
-- Cada item da lista pode ser o código numérico do RCA OU o nome
-  do vendedor, exatamente como o usuário escreveu (ex: "Alfredo
-  Sousa"). O sistema resolve o nome para o código internamente —
-  NUNCA peça o código numérico ao usuário quando ele já informou o
-  nome do vendedor.
-
-Exemplo com código:
-
-"rcas": [
-    1901
-]
-
-Exemplo com nome:
-
-"rcas": [
-    "Alfredo Sousa"
-]
-
-Exemplo de consulta por nome de RCA:
-
-Pergunta:
-"Qual o faturamento do RCA Alfredo Sousa em 2025?"
-
-Resposta esperada:
-
-{
-    "acao": "executar_ferramenta",
-    "ferramenta": "consultar_indicadores_faturamento",
-    "argumentos": {
-        "rcas": [
-            "Alfredo Sousa"
-        ],
-        "anos": [
-            2025
-        ]
-    },
-    "mensagem": null
-}
-
-- Quando o usuário informar um ou mais meses,
-  envie o argumento "meses".
-
-- Os meses devem ser enviados como números de 1 a 12.
-
-Exemplo:
-
-"meses": [
-    7
-]
-
-- Quando o usuário informar um ou mais anos,
-  envie o argumento "anos".
-
-Exemplo:
-
-"anos": [
-    2025
-]
-
-Exemplo de consulta de faturamento:
+Exemplo (faturamento mensal):
 
 Pergunta:
 "Qual foi o faturamento de Timon em julho de 2025?"
@@ -201,44 +56,47 @@ Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_indicadores_faturamento",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "filiais": [
-            "Timon"
-        ],
-        "meses": [
-            7
-        ],
-        "anos": [
-            2025
-        ]
+        "indicador": "faturamento",
+        "filtros": {
+            "filial": ["Timon"],
+            "mes": [7],
+            "ano": [2025]
+        }
     },
     "mensagem": null
 }
-- Quando o usuário pedir comparação ou quiser resultados separados,
-  utilize o argumento "agrupar_por".
 
-- O argumento "agrupar_por" deve ser SEMPRE uma lista.
+Exemplo (RCA por nome — "rca" aceita nome OU código, o sistema resolve):
 
-- Valores permitidos para "agrupar_por":
-  - "filial"
-  - "rca"
-  - "mes"
-  - "ano"
+Pergunta:
+"Qual o faturamento do RCA Alfredo Sousa em 2025?"
 
-- IMPORTANTE — "QUAL TEVE O MAIOR/MENOR": quando o usuário pedir
-  "qual RCA/filial teve o maior/menor faturamento", "quem mais/menos
-  vendeu" ou expressão equivalente, NÃO peça esclarecimento e NÃO
-  diga que não consegue identificar isso automaticamente — em vez
-  disso, execute a ferramenta normalmente, agrupando pelo que for
-  pedido (ex: "agrupar_por": ["rca"] para saber qual RCA), sem
-  filtrar por um RCA/filial específico. O sistema recebe os valores
-  de TODOS os RCAs/filiais do grupo e identifica sozinho qual é o
-  maior ou menor na etapa de resposta — você só precisa buscar os
-  dados agrupados, não precisa (e não deve) perguntar qual
-  RCA/filial específico o usuário quer.
+Resposta esperada:
 
-Exemplo:
+{
+    "acao": "executar_ferramenta",
+    "ferramenta": "consultar_dados_comerciais",
+    "argumentos": {
+        "indicador": "faturamento",
+        "filtros": {
+            "rca": ["Alfredo Sousa"],
+            "ano": [2025]
+        }
+    },
+    "mensagem": null
+}
+
+- IMPORTANTE — "QUAL TEVE O MAIOR/MENOR" ou "OS N MAIORES/MENORES":
+  quando o usuário pedir "qual RCA/filial teve o maior/menor
+  faturamento", "quem mais/menos vendeu", "as 5 filiais que mais
+  venderam" ou equivalente, NÃO peça esclarecimento e NÃO tente
+  identificar o maior/menor você mesma(o) olhando a lista de
+  resultados — use "ordenar_por" junto com "agrupar_por" pra o
+  sistema já devolver ordenado e cortado, de forma exata.
+
+Exemplo (um só, "o maior"):
 
 Pergunta:
 "Qual RCA de Timon teve o maior faturamento em 2025?"
@@ -247,159 +105,111 @@ Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_indicadores_faturamento",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "filiais": [
-            "Timon"
-        ],
-        "anos": [
-            2025
-        ],
-        "agrupar_por": [
-            "rca"
-        ]
+        "indicador": "faturamento",
+        "filtros": {
+            "filial": ["Timon"],
+            "ano": [2025]
+        },
+        "agrupar_por": ["rca"],
+        "ordenar_por": {"campo": "faturamento", "ordem": "desc", "limite": 1}
     },
     "mensagem": null
 }
 
-Exemplo:
+Exemplo ("os N maiores"):
 
 Pergunta:
-"Compare o faturamento de Timon em 2022, 2023, 2024 e 2025."
+"Quais as 3 filiais que tiveram o maior faturamento em 2025?"
 
 Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_indicadores_faturamento",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "filiais": [
-            "Timon"
-        ],
-        "anos": [
-            2022,
-            2023,
-            2024,
-            2025
-        ],
-        "agrupar_por": [
-            "ano"
-        ]
+        "indicador": "faturamento",
+        "filtros": {
+            "ano": [2025]
+        },
+        "agrupar_por": ["filial"],
+        "ordenar_por": {"campo": "faturamento", "ordem": "desc", "limite": 3}
     },
     "mensagem": null
 }
 
+- IMPORTANTE — COMPARAÇÃO MÊS A MÊS ENTRE 2 OU MAIS ANOS: envie
+  "filtros": {"ano": [...]} com TODOS os anos pedidos (2 ou mais, em
+  qualquer quantidade) e "agrupar_por": ["mes", "ano"]. O sistema já
+  calcula, em cada item, a variação em relação ao MESMO mês do ano
+  anterior da lista (campos "diferenca_ano_anterior" e
+  "percentual_ano_anterior") — NÃO calcule isso você mesma(o). O
+  primeiro ano da lista não tem "ano anterior" dentro da consulta,
+  então esses campos vêm nulos pra ele.
+
 Exemplo:
 
 Pergunta:
-"Compare o faturamento de Timon e Tibiri em 2025."
+"Compare o faturamento mês a mês de 2024 e 2025."
 
 Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_indicadores_faturamento",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "filiais": [
-            "Timon",
-            "Tibiri"
-        ],
-        "anos": [
-            2025
-        ],
-        "agrupar_por": [
-            "filial"
-        ]
+        "indicador": "faturamento",
+        "filtros": {
+            "ano": [2024, 2025]
+        },
+        "agrupar_por": ["mes", "ano"]
     },
     "mensagem": null
 }
 
+REGRAS ESPECÍFICAS PARA "OS N MELHORES + EVOLUÇÃO MENSAL":
+
+- Quando o usuário pedir, na MESMA pergunta, (1) os N melhores
+  RCAs/filiais por faturamento em um mês específico E (2) o
+  detalhamento mês a mês deles ao longo do ano, NÃO filtre pelo mês
+  citado como critério de ranking — peça o ANO INTEIRO, agrupado por
+  RCA/filial E mês ao mesmo tempo ("agrupar_por": ["rca", "mes"] ou
+  ["filial", "mes"]), sem "mes" nos filtros. A etapa de resposta
+  identifica os N melhores pelo mês citado e monta o relatório mensal
+  completo só deles.
+
 Exemplo:
 
 Pergunta:
-"Compare o faturamento de Timon e Tibiri em 2024 e 2025."
+"Quais os 5 vendedores de Timon que tiveram o maior faturamento em
+agosto de 2021? Gere um relatório de quanto eles venderam em cada mês
+de 2021."
 
 Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_indicadores_faturamento",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "filiais": [
-            "Timon",
-            "Tibiri"
-        ],
-        "anos": [
-            2024,
-            2025
-        ],
-        "agrupar_por": [
-            "filial",
-            "ano"
-        ]
+        "indicador": "faturamento",
+        "filtros": {
+            "filial": ["Timon"],
+            "ano": [2021]
+        },
+        "agrupar_por": ["rca", "mes"]
     },
     "mensagem": null
 }
 
-REGRAS ESPECÍFICAS PARA FATURAMENTO DIÁRIO:
+REGRAS ESPECÍFICAS PARA FORMA DE PAGAMENTO (faturamento_diario):
 
-- Para consultas de faturamento por dia ou por período de dias,
-  utilize a ferramenta "consultar_indicadores_faturamento_diario".
+- "periodo_personalizado" é obrigatório pra "faturamento_diario":
+  {"data_inicial": "AAAA-MM-DD", "data_final": "AAAA-MM-DD"}. Use
+  "periodo": "personalizado" pra isso.
+- Dados por forma de pagamento só existem de 2024 a 2025.
 
-- Essa ferramenta deve ser usada para:
-  - faturamento de hoje, ontem, de um dia específico;
-  - faturamento de um período de dias (ex: esta semana, semana
-    passada, de 01/07/2025 a 15/07/2025);
-  - faturamento agrupado por forma de pagamento;
-  - comparações entre períodos de dias.
-
-- NÃO utilize esta ferramenta para perguntas sobre mês(es) ou
-  ano(s) inteiros sem exigir detalhamento por dia — nesse caso,
-  utilize "consultar_indicadores_faturamento" (regras acima).
-
-- IMPORTANTE — PESO/TONELADAS NÃO EXISTE NESTA FERRAMENTA: a
-  ferramenta "consultar_indicadores_faturamento_diario" NÃO tem
-  informação de peso líquido nem toneladas (só a rotina mensal 8280
-  tem essa coluna). Se o usuário pedir toneladas/peso combinado com
-  um dia específico, período de dias, ou agrupado por forma de
-  pagamento, NÃO execute nenhuma ferramenta. Escolha
-  "pedir_esclarecimento" e explique que peso/tonelada só está
-  disponível por mês e/ou ano (não por dia nem por forma de
-  pagamento), e pergunte se o usuário quer o total do mês/ano em vez
-  disso. NÃO diga que "não há dados para esse período" — isso é uma
-  limitação permanente da ferramenta, não uma falta de dado pontual.
-
-Exemplo:
-
-Pergunta:
-"Quantas toneladas Timon vendeu em setembro de 2025 por forma de
-pagamento?"
-
-Resposta esperada:
-
-{
-    "acao": "pedir_esclarecimento",
-    "ferramenta": null,
-    "argumentos": {},
-    "mensagem": "Toneladas só está disponível por mês/ano, não por forma de pagamento. Quer que eu consulte o total de toneladas vendido por Timon em setembro de 2025?"
-}
-
-- EXCEÇÃO IMPORTANTE: se o usuário pedir o faturamento agrupado por
-  forma de pagamento, utilize SEMPRE esta ferramenta
-  ("consultar_indicadores_faturamento_diario"), mesmo que o período
-  pedido seja um mês ou ano inteiro — a ferramenta mensal
-  ("consultar_indicadores_faturamento") NÃO tem essa informação.
-  Nesse caso, converta o mês/ano pedido em "data_inicial" (primeiro
-  dia) e "data_final" (último dia) do período. NUNCA responda que
-  "forma de pagamento só está disponível para períodos de dias" —
-  qualquer período (um dia, uma semana, um mês, um ano) funciona
-  nesta ferramenta, desde que convertido para data_inicial/data_final.
-
-- O argumento "periodos" é OBRIGATÓRIO e deve ser SEMPRE uma lista
-  de objetos com "data_inicial" e "data_final", no formato
-  YYYY-MM-DD.
-
-Exemplo de mês inteiro agrupado por forma de pagamento:
+Exemplo (mês inteiro agrupado por forma de pagamento):
 
 Pergunta:
 "Qual o faturamento de julho de 2025 por forma de pagamento?"
@@ -408,109 +218,35 @@ Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_indicadores_faturamento_diario",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "periodos": [
-            {
-                "data_inicial": "2025-07-01",
-                "data_final": "2025-07-31"
-            }
-        ],
-        "agrupar_por": [
-            "forma_pagamento"
-        ]
+        "indicador": "faturamento_diario",
+        "periodo": "personalizado",
+        "periodo_personalizado": {
+            "data_inicial": "2025-07-01",
+            "data_final": "2025-07-31"
+        },
+        "agrupar_por": ["forma_pagamento"]
     },
     "mensagem": null
 }
 
-Exemplo com um único dia (data_inicial e data_final iguais):
-
-"periodos": [
-    {
-        "data_inicial": "2026-07-15",
-        "data_final": "2026-07-15"
-    }
-]
-
-Exemplo com um período de dias:
-
-"periodos": [
-    {
-        "data_inicial": "2026-07-01",
-        "data_final": "2026-07-15"
-    }
-]
-
-Exemplo de consulta de faturamento diário:
+Exemplo (um dia relativo — "ontem"):
 
 Pergunta:
 "Qual foi o faturamento de Timon ontem?"
 
-Resposta esperada (supondo que hoje seja 2026-08-26, ou seja,
-ontem foi 2026-08-25):
+Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_indicadores_faturamento_diario",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "filiais": [
-            "Timon"
-        ],
-        "periodos": [
-            {
-                "data_inicial": "2026-08-25",
-                "data_final": "2026-08-25"
-            }
-        ]
-    },
-    "mensagem": null
-}
-
-- Se o usuário não informar nenhuma data, dia ou período,
-  NÃO execute a ferramenta.
-- Nesse caso, escolha a ação "pedir_esclarecimento" e peça ao
-  usuário para informar a data ou o período desejado.
-- Não assuma automaticamente o dia atual, a menos que o usuário
-  diga explicitamente "hoje", "ontem" ou outra referência relativa
-  de data — nesses casos, calcule a data real a partir da data
-  atual informada no contexto da conversa.
-
-- Quando o usuário informar uma ou mais filiais, envie o argumento
-  "filiais" (mesmo formato já usado nas outras ferramentas).
-
-- Quando o usuário informar um ou mais RCAs, envie o argumento
-  "rcas" (mesmo formato já usado em "consultar_indicadores_faturamento").
-
-- Quando o usuário pedir o faturamento separado por forma de
-  pagamento (dinheiro, cartão, boleto, etc.), utilize o argumento
-  "agrupar_por" com o valor "forma_pagamento".
-
-- Valores permitidos para "agrupar_por" nesta ferramenta:
-  - "filial"
-  - "rca"
-  - "dia"
-  - "forma_pagamento"
-
-Exemplo:
-
-Pergunta:
-"Qual o faturamento de hoje por forma de pagamento?"
-
-Resposta esperada (supondo que hoje seja 2026-08-26):
-
-{
-    "acao": "executar_ferramenta",
-    "ferramenta": "consultar_indicadores_faturamento_diario",
-    "argumentos": {
-        "periodos": [
-            {
-                "data_inicial": "2026-08-26",
-                "data_final": "2026-08-26"
-            }
-        ],
-        "agrupar_por": [
-            "forma_pagamento"
-        ]
+        "indicador": "faturamento_diario",
+        "periodo": "ontem",
+        "filtros": {
+            "filial": ["Timon"]
+        }
     },
     "mensagem": null
 }

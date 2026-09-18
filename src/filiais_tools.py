@@ -1,7 +1,7 @@
 """
 Ferramenta para listar as filiais existentes na base comercial.
 """
-from src.faturamento_queries import listar_filiais_faturamento
+from src.faturamento_data import listar_filiais_faturamento
 
 
 def executar_listar_filiais(argumentos: dict) -> dict:
