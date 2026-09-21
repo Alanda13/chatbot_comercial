@@ -140,9 +140,8 @@ Exemplo (pergunta repetida — errado seria usar o histórico):
 Histórico (mensagem anterior do assistente, já responde exatamente
 essa pergunta):
 "As 5 filiais que tiveram os menores faturamentos em 2024 foram:
-FERRONORTE CD THE: -R$ 66.780,00; METALURGICA FERRONORTE CD:
--R$ 5.711,45; FN ADMINISTRACAO: R$ 0,00; FERRONORTE ARAGUAINAV:
-R$ 165.992,73; ESQUADRIA FERRONORTE: R$ 3.793.294,96."
+PARNAIBA: R$ 4.100.000,00; INOX E ALUMINIO: R$ 5.200.000,00; PICOS:
+R$ 6.300.000,00; LOURIVAL: R$ 7.400.000,00; ARAGUAÍNA: R$ 8.500.000,00."
 
 Pergunta:
 "Mostre as 5 filiais que tiveram os menores faturamentos em 2024"

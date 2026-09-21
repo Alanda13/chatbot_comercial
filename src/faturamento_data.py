@@ -5,6 +5,8 @@ exportados da rotina 8280 (Faturamento por RCA/Filial/Mes/Ano) do Winthor.
 from pathlib import Path
 import pandas as pd
 
+from src.filiais import padronizar_filiais
+
 RAIZ_PROJETO = Path(__file__).resolve().parent.parent
 
 ARQUIVO_8280 = (
@@ -31,26 +33,4 @@ def carregar_faturamento_8280() -> pd.DataFrame:
         :,
         ~dados.columns.str.startswith("Unnamed")
     ]
-    return dados
-
-
-def listar_filiais_faturamento() -> list[str]:
-    """
-    Retorna os nomes das filiais existentes
-    na base da rotina 8280.
-    """
-
-    dados = carregar_faturamento_8280()
-
-    filiais = (
-        dados["FILIAL"]
-        .dropna()
-        .astype(str)
-        .str.strip()
-        .unique()
-        .tolist()
-    )
-
-    filiais.sort()
-
-    return filiais
+    return padronizar_filiais(dados, dados["CODFILIAL"])

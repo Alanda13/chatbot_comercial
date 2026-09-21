@@ -42,9 +42,8 @@ IA  (formata a resposta em texto — e futuramente a tabela do app.py)
 ```
 
 Uma ferramenta genérica (`consultar_dados_comerciais`) substitui o que seriam
-várias ferramentas específicas — mas **não substitui tudo**: NPS continua
-com ferramenta própria de propósito, porque a fonte de dado dele é
-estruturalmente diferente (SQL agregado via cursor, não CSV/pandas).
+várias ferramentas específicas — hoje ela cobre todos os indicadores que
+têm fonte de dado conectada, inclusive o NPS (que vem de SQL, não de CSV).
 
 ## As peças, uma por uma
 
@@ -78,6 +77,7 @@ estruturalmente diferente (SQL agregado via cursor, não CSV/pandas).
 | `faturamento` (mensal/anual) | CSV rotina 8280 | ✅ conectado, com `toneladas` calculado |
 | `faturamento_diario` | CSV rotina 8302 | ✅ conectado |
 | `meta` (faturamento) | mesmo CSV 8280 | ✅ conectado, com `%atingimento`, `falta_para_meta` e `necessidade_diaria` (mês atual) calculados |
+| `nps` | Azure SQL (85 mil respostas, carregadas inteiras pro pandas) | ✅ conectado — ver seção "NPS no motor genérico" |
 | `meta_tonelada` | CSV do TARGIT | ✅ conectado — motor genérico ganhou suporte a "campo único por combinação de colunas" (`unico_por`), que resolve a duplicação da meta por filial sem hackear nada específico desse indicador |
 
 Capacidades do motor genérico validadas contra dado real (comparando com o
@@ -186,23 +186,240 @@ Com isso, `metas_tools.py` e `metas_queries.py` ficaram **inteiramente
 órfãos** e foram apagados — `metas_data.py` continua (o catálogo usa
 `resolver_codigos_supervisor` direto de lá).
 
-## O que continua com ferramenta antiga, e por quê
+## NPS no motor genérico
 
-| Indicador | Motivo de não estar no motor genérico ainda |
+Era o último indicador com ferramentas próprias (`consultar_indicadores_nps` e
+`consultar_evolucao_nps`, com `queries.py` de ~1.000 linhas e uma consulta
+SQL por filial por mês). Agora:
+- `src/nps_data.py` carrega a tabela inteira de uma vez (1,4 s, ~85 mil
+  linhas, uma por resposta) com colunas de promotor/neutro/detrator; guarda
+  a leitura por 5 minutos (o dado é "ao vivo" e uma comparação de períodos
+  carregaria duas vezes). Filial tem resolvedor próprio: os nomes do NPS
+  diferem dos outros (`FERROLESTE INOX & ALUMÍNIO` × `FERROLESTE INOX E
+  ALUMINI`).
+- No catálogo, o indicador soma respostas/promotores/neutros/detratores e o
+  NPS e os percentuais são fórmulas em cima das SOMAS (nunca média de NPS).
+- Validado contra as ferramentas antigas em 11 combinações reais (empresa,
+  filial, período, ranking por filial, por ano, mês a mês com variação,
+  dois anos, evolução entre anos) antes de apagá-las — todas batendo — e
+  depois conferido de forma independente, direto do banco.
+- Apagados: `queries.py`, `nps_tools.py`, seus testes e o script de
+  exploração que só chamava essas funções (~1.700 linhas), mais o código
+  do `app.py` que só existia pros formatos de resultado do NPS antigo e as
+  configurações de tabela das ferramentas já removidas (~100 linhas).
+
+**Mudanças genéricas no motor que o NPS exigiu** (valem pra todos os
+indicadores):
+- As fórmulas derivadas (NPS, % de atingimento) passaram a ser calculadas
+  em cada período ANTES de comparar — então `comparar_com`, `ordenar_por`
+  e a variação mês a mês funcionam também sobre campos calculados
+  (`diferenca_nps`, etc.).
+- `comparar_com: "personalizado"` + `comparar_com_personalizado`: comparar
+  com qualquer período (ex: 2023 × 2025), não só o ano anterior.
+- Períodos por data ganharam `mes_anterior` e `mesmo_mes_ano_anterior`, e
+  `periodo_personalizado` aceita `meses`/`anos` também nesses indicadores.
+  Um período que geraria filtro numa dimensão que o indicador não tem agora
+  dá erro claro, em vez de ser ignorado em silêncio.
+- `variacao_utils.calcular_diferenca_percentual`: com o valor anterior zero
+  (ex: NPS que foi de 0 a 75) a diferença agora existe (só o percentual fica
+  vazio); antes as duas sumiam e a filial era descartada do ranking.
+- Contagens (notas, respostas) continuam inteiras no resultado ("534" em
+  vez de "534.0").
+- A tabela do `app.py` ganhou automaticamente as colunas de comparação
+  (anterior, diferença, variação) do campo principal de cada indicador — a
+  antiga tabela de "evolução de NPS" e a de "cresceram mas abaixo da meta"
+  mostravam isso e tinham ficado só com o valor atual.
+
+**Achados testando o NPS na tela (você mandou as conversas):**
+- Bug antigo do motor, que o NPS expôs: a variação mês a mês (e a
+  necessidade diária da meta) só olhavam os `filtros` da consulta; quando o
+  mês/ano vinha por `periodo`/`periodo_personalizado` (ex: "primeiro
+  semestre de 2024 e 2025", ou "mês atual"), a variação sumia em silêncio.
+  Agora existe um único lugar que calcula os "filtros efetivos" (filtros +
+  período resolvido) e as três coisas usam ele. Coberto por teste.
+- NPS de amostra pequena: "maior piora" deu Guajaras Logística 100 → 62,80,
+  mas o 100 de 2024 vinha de 12 respostas (contra 250 em 2025); o "NPS de
+  hoje" era 100,00 com 12 respostas. A conta está certa, mas enganosa sem o
+  tamanho da amostra. Regra nova no prompt de resposta (`ai_service.py`):
+  com menos de 30 respostas a IA cita a quantidade ("com base em apenas 12
+  respostas"), e em comparação avisa se o período de comparação é frágil;
+  com 30 ou mais não menciona. A coluna "Respostas" passou a aparecer
+  sempre nas tabelas de NPS.
+
+## Só as 18 lojas da planilha: uma lista única de filiais (`src/filiais.py`)
+
+O chatbot responde **somente** sobre as lojas da planilha `Filiais.xlsx`
+(18 lojas; a planilha tem 19 linhas porque a loja 30, ARAGUAINAV, é somada à
+ARAGUAÍNA, 24). Ficam de fora: FN Atacado, Telanorte, Esquadria, os CDs, o
+depósito, a administração e as 3 filiais "Logística" do NPS.
+
+- `src/filiais.py` guarda a lista (código → nome, estado) e é a única fonte.
+  Todo carregador (`carregar_faturamento_8280`, `_carregar_csv_8302`,
+  `carregar_meta_tonelada`, `carregar_avaliacoes_nps`) passa o resultado por
+  `padronizar_filiais`, que descarta as outras lojas e grava `FILIAL` (nome da
+  planilha, ex: "TIMON"), `CODFILIAL` e `ESTADO`. Nenhum indicador, ranking ou
+  total enxerga as demais.
+- O código de cada base vem de onde já existia: `CODFILIAL` (faturamento,
+  meta), o "-F09-" dentro do nome (meta de tonelada) e
+  `dbo.Filiais.IdFilialFerronorte` (NPS). Como as quatro bases passam a ter o
+  mesmo nome e o mesmo código, cruzar indicadores por filial vira um
+  casamento exato, sem comparar nomes.
+- Um único resolvedor de nome (`resolver_nome_filial`, com correspondência
+  aproximada) substituiu os quatro que existiam (faturamento, diário, meta
+  de tonelada, NPS), e `listar_filiais` lista as 18.
+- **Pergunta por código de filial** ("filial 9", "codfilial 30") funciona: o
+  resolvedor aceita nome ou código, e o código 30 responde como ARAGUAÍNA
+  (24 + 30 somados). Pra IA não adivinhar o código pelo nome (ela trocou
+  Guajajaras e Areinha num teste), toda consulta agrupada por filial devolve
+  `codigo_filial` em cada linha, e o prompt de resposta tem uma regra: só
+  citar código que veio no resultado e mostrar "ARAGUAÍNA (códigos 24 e 30
+  somados)" quando perguntarem por qualquer um dos dois.
+- Nova dimensão **`estado`** (PI, MA, TO, BA, PA) em todos os indicadores,
+  aceita por sigla ou por nome (`resolver_estado`): "faturamento do Maranhão",
+  "NPS do Piauí × Maranhão".
+- Efeito nos números: o "total da empresa" agora é o total das 18 lojas (em
+  2025, 11,6% do faturamento líquido — sobretudo o FN Atacado — ficou de
+  fora). Conferido contra o CSV e o banco: Araguaína 2025 = 24 + 30, total das
+  lojas, estado MA, meta de Araguaína e NPS de Timon batem ao centavo.
+
+## Cruzamento de indicadores (`cruzar_com`)
+
+Perguntas que combinam indicadores ("qual filial teve o maior NPS **e**
+bateu a meta") viram **uma consulta só**: `{"indicador": "nps",
+"cruzar_com": ["meta"], "agrupar_por": ["filial"], "filtros_calculados":
+[...], "ordenar_por": {...}}`.
+
+Como funciona (`orquestrador.py`, `_consultar_indicadores`):
+1. Cada indicador é consultado separado, com os mesmos filtros e período
+   (o período é traduzido pra cada um: o NPS é diário, a meta é mensal) e
+   com as próprias fórmulas (NPS, % de atingimento).
+2. Os resultados são juntados pela chave do agrupamento (filial, estado,
+   mês, ano) — casamento exato, porque as quatro bases têm o mesmo nome e
+   código de filial (ver "Só as 18 lojas"). Quem existe só num lado (ex:
+   Marituba, sem NPS; novembro, sem respostas) fica com os campos do outro
+   indicador vazios (`None`), e o resultado sai ordenado pela chave.
+3. Depois da junção tudo que já existia funciona sobre a tabela junta, sem
+   código novo: `filtros_calculados`, `ordenar_por` (com campos de qualquer
+   um dos indicadores) e `comparar_com`. A tabela usa as colunas do
+   catálogo (`exibicao`) dos dois indicadores — nenhum formato novo.
+
+Proteções (erro claro em vez de resposta errada em silêncio): só cruza
+agrupando por filial/estado/mês/ano (RCA tem código num indicador e nome no
+outro, a junção sairia vazia); indicadores com campo de mesmo nome
+(`faturamento` e `faturamento_diario`) são recusados; um filtro que um dos
+indicadores não tem é erro, não é ignorado; indicador repetido ou
+inexistente é erro.
+
+**Fórmulas que dependem de dois indicadores** ficam em `catalogo.CRUZAMENTOS`
+(uma entrada por par de indicadores, com os derivados e o `exibicao` da
+tabela). O orquestrador as calcula depois da junção, só quando a consulta
+cruza todos os indicadores do par. Hoje há uma: **faturamento × meta de
+tonelada** gera `percentual_atingimento_tonelada` (toneladas vendidas ÷ meta
+de tonelada da filial, reaproveitando `calcular_atingimento_meta`) e
+`falta_para_meta_tonelada`. É o que responde "quais filiais bateram a meta de
+tonelada" — antes a IA recusava e ainda dava um motivo errado (dizia que não
+havia toneladas realizadas, mas o faturamento tem). A descrição desses campos
+vai pra IA automaticamente (`gerar_descricao_cruzamentos`). Uma fórmula nova
+entre dois indicadores é uma entrada nessa lista, não código novo.
+`calcular_atingimento_meta` passou a devolver `None` quando o realizado é
+vazio (no cruzamento um dos lados pode faltar).
+
+Limite conhecido: a variação mês a mês e a necessidade diária (que são do
+indicador principal) não entram em consulta cruzada; `comparar_com` entra.
+
+Validação: NPS × meta por filial em 2025 confere com as duas consultas
+separadas (18 filiais) e com a junção refeita em pandas a partir do CSV;
+"top 3 NPS entre quem bateu a meta" confere com o filtro manual; o
+atingimento de tonelada (2024: 16 filiais, 2025: 18) confere com a conta feita
+direto dos CSVs, inclusive a lista e a ordem de quem bateu a meta; 17 testes
+em `tests/test_cruzamento.py`.
+
+## Tabela da tela: uma regra só, sem formato por pergunta
+
+Antes, `preparar_tabela` (app.py) tinha três "pivôs" de casos especiais
+(filial × 2 anos, 2 períodos, uma métrica por mês) e mostrava todas as colunas
+marcadas "sempre" no catálogo — por isso "NPS e atingimento" saía com Meta,
+Faturamento, Respostas etc. Agora:
+
+1. **Colunas:** a IA informa `colunas` na consulta (só o que a pergunta pediu,
+   ex: `["nps", "percentual_atingimento"]`). O motor valida os nomes contra o
+   catálogo e devolve `tabela`: as linhas recortadas em identificação + essas
+   colunas + a comparação delas (anterior/diferença/variação). O resultado
+   completo continua indo pra IA (que precisa, por exemplo, do nº de respostas
+   pra avisar de amostra pequena); a `tabela` é removida antes de chegar nela
+   (`chatbot.py`). As linhas levam `_colunas_pedidas` pra tela saber que a
+   escolha já foi feita. Sem `colunas`, vale o padrão do catálogo (`sempre` ou
+   palavra na resposta) — nada quebra. "Respostas" e "Meta Tonelada (RCA)"
+   deixaram de ser "sempre".
+2. **Formatação pelo tipo:** moeda, percentual e, novo, números em português
+   ("96,28"; contagens sem casa decimal, "1.058" — antes saíam "96.28" e
+   "1058.0"); vazio = "sem dados".
+3. **Layout (`_pivotar`), a mesma regra pra qualquer indicador:** quando sobram
+   duas ou mais dimensões que variam, a de MENOS valores distintos vira colunas
+   (empate: a de tempo) e o resto fica nas linhas. 2 filiais × 6 meses:
+   `Mês | LOURIVAL | LOURIVAL — Variação (mês anterior) | TIMON | ...`; filiais ×
+   2 anos: `Filial | 2024 | 2025 | 2025 — Variação (ano anterior)`. As colunas
+   ficam agrupadas por **métrica**: o valor dos itens comparados sempre lado a
+   lado (`LOURIVAL — NPS | SANTA INÊS — NPS`), depois Respostas, depois a
+   variação — antes ficavam agrupadas por filial e o NPS de uma ficava longe do
+   da outra. Coluna toda vazia some (a variação do primeiro ano). Passando de 12 colunas, ou com só uma
+   dimensão que varia, a tabela fica comprida (uma linha por combinação).
+   Comparação com `comparar_com` já é larga (`NPS | NPS (anterior) | Diferença |
+   Variação`) e não precisa de pivô.
+4. **Variação entre anos:** o motor passou a calcular `percentual_ano_anterior`
+   também quando o agrupamento tem `ano` sem `mes` (antes só com mês; quem
+   fazia isso era o pivô "Filial × 2 anos" do app.py, agora removido).
+
+O `app.py` ficou ~140 linhas menor (3 pivôs, `_montar_tabela_comparacao_dois_anos`
+e `ocultar_repeticoes_consecutivas`, que ninguém chamava, saíram).
+
+## Comparar dois itens entre si (`comparar_filtros`)
+
+"Compare o NPS de Lourival e Santa Inês mês a mês" é uma comparação **entre as
+duas filiais** em cada mês — não a evolução de cada uma no tempo (o que o
+chatbot fazia antes: agrupava por filial e mês e mostrava a variação mês a mês
+de cada uma). A consulta agora é:
+`{"indicador": "nps", "filtros": {"filial": ["Lourival"], "ano": [2025]},
+"comparar_filtros": {"filial": ["Santa Inês"]}, "agrupar_por": ["mes"]}`.
+
+Reaproveita o `comparar_com` (que compara dois PERÍODOS): o motor roda a
+consulta de novo com os filtros de `comparar_filtros` no lugar e junta linha a
+linha pela chave que sobrou (o mês), com o mesmo cálculo de diferença e
+percentual (`_combinar_comparacao`). O 1º item citado é o valor ("A"), o 2º é o
+`_anterior` ("B"), a diferença é A − B. O resultado traz `comparacao_entre` (os
+nomes dos dois lados e "como_ler", pra IA não confundir "anterior" com tempo) e
+a tabela recebe `_rotulos`, que trocam os títulos das colunas pelos nomes:
+`Mês | LOURIVAL | SANTA INÊS | Diferença (LOURIVAL − SANTA INÊS) | Diferença %`.
+
+Funciona pra qualquer indicador e dimensão (filial × filial, estado × estado,
+RCA × RCA), mês a mês, ano a ano ou sem agrupar (total do período). Um mês em
+que só um dos lados tem dado não some (o outro lado fica "sem dados") e o
+resultado sai ordenado. Não calcula a variação mês a mês de cada item.
+Regras: só dois itens de cada vez (3 ou mais: `agrupar_por` e a tabela lado a
+lado, sem diferença); a dimensão comparada não pode estar em `agrupar_por`; sem
+`colunas`, a tabela usa o campo principal. Se a IA mandar `comparar_com` (período
+contra período) e `comparar_filtros` juntos — ex: "Timon e Lourival, 1º semestre de
+2025 contra o de 2024" —, o motor lê como cada item, período contra período
+(`_normalizar_comparacoes`: junta os itens nos filtros, agrupa pela dimensão e fica
+só com `comparar_com`), em vez de devolver erro ao usuário.
+
+## O que continua sem fonte, e por quê
+
+| Indicador | Situação |
 |---|---|
-| `nps` | Vem de Azure SQL via cursor manual, não de um DataFrame pandas — precisa de um loader novo antes de caber no motor genérico. |
 | `desconto`, `inadimplencia`, `clientes` | Registrados no catálogo (documentando o que o sistema deveria ter), mas sem nenhuma fonte de dado real conectada ainda. **Atenção `desconto`:** cheguei a cogitar usar `VENDA_BRUTA`/`VENDA_LIQ`/`VALORDESC` da base de faturamento, mas conferi contra dado real e a diferença entre `VENDA_BRUTA − VENDA_LIQ` e `VALORDESC` chega a R$ 1,16 milhão em algumas linhas — não é a mesma fórmula do documento ("Fat. Tabela − Fat. Líquido"). Fica pendente até a definição exata ser confirmada. |
 
 ## Ferramentas registradas: antes x depois
 
 - Antes da migração: 10 ferramentas.
-- Hoje: **5** — `consultar_dados_comerciais`, `consultar_indicadores_nps`,
-  `consultar_evolucao_nps`, `verificar_rca`, `listar_filiais`.
+- Hoje: **3** — `consultar_dados_comerciais`, `verificar_rca`,
+  `listar_filiais`.
 - Removidas por serem 100% cobertas pela ferramenta nova (confirmado com
   dado real E com a IA escolhendo a ferramenta certa, não só "deveria
   funcionar"): `consultar_indicadores_faturamento`,
   `consultar_indicadores_faturamento_diario`, `consultar_metas`,
   `consultar_meta_tonelada`, `consultar_crescimento_abaixo_meta`,
+  `consultar_indicadores_nps`, `consultar_evolucao_nps`,
   `listar_rcas_filial`.
 - **Mantida de propósito**: `verificar_rca` — confirma se um RCA existe
   SEM período (a ferramenta genérica sempre espera algum filtro/período
@@ -230,10 +447,9 @@ Depois da limpeza acima, `faturamento_queries.py` e
 função de listagem de filiais cada. E `faturamento_diario_tools.py` só
 tinha a resolução de nome de filial. Nenhum dos três fazia mais sentido
 como arquivo próprio, então:
-- `listar_filiais_faturamento` foi pra dentro de `faturamento_data.py`.
-- `listar_filiais_faturamento_diario` e `resolver_nome_filial_diario` foram
-  pra dentro de `faturamento_diario_data.py` (que já tinha as outras
-  resoluções, de RCA).
+- A listagem e a resolução do nome da filial foram pra dentro dos
+  `*_data.py` e, depois, todas substituídas pela lista única de
+  `filiais.py` (ver "Só as 18 lojas").
 - `faturamento_queries.py`, `faturamento_diario_queries.py` e
   `faturamento_diario_tools.py` foram **apagados**.
 
@@ -296,17 +512,18 @@ erraram antes — todas corretas agora, incluindo a que tinha errado.
 
 ## O que falta (gaps conhecidos, não é feature futura vaga)
 
-1. **Perguntas que cruzam indicadores de verdade não funcionam ainda** (ex:
-   "qual filial teve o maior NPS e também bateu a meta"). O pipeline hoje
-   (`src/chatbot.py`) só permite a IA chamar UMA ferramenta por pergunta. O
-   plano original previa a IA poder chamar a ferramenta mais de uma vez antes
-   da resposta final — essa parte ainda não foi implementada.
+1. **6 testes antigos de `tests/test_chatbot.py`** seguem falhando: esperam
+   que `processar_pergunta` devolva só o texto, mas ela devolve
+   `(texto, tabela, ferramenta)` desde o botão de tabela, e dois ainda usam
+   nomes de ferramentas apagadas. É teste desatualizado, não bug do chatbot.
 
 ## Testes
 
 `tests/test_motor_metricas.py`, `tests/test_orquestrador.py` (motor
 genérico) e `tests/test_app.py` (regressão da tabela) — testes novos, todos
-passando. Suíte completa: 131 passando, 9 falhas pré-existentes (não
-relacionadas a essa migração — confirmado rodando a suíte no `main` antes
-de qualquer mudança). O total de testes oscila porque os das funções
-mortas são removidos junto com elas — não é perda de cobertura.
+passando (mais `test_nps_data.py` e `test_variacao_utils.py`). Suíte
+completa: 192 passando, 6 falhando (as do `test_chatbot.py`, ver "o que
+falta" — já existiam antes da migração). As 3 falhas antigas de NPS foram
+consertadas antes de migrar o NPS (testes que ainda usavam `ano=` em vez de
+`anos=[...]`). O total de testes oscila porque os das funções mortas são
+removidos junto com elas — não é perda de cobertura.

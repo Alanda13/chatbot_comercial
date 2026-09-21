@@ -10,6 +10,7 @@ from google import genai
 from google.genai import types
 from pydantic import ValidationError
 
+from src.filiais import descrever_codigos_somados
 from src.prompts import PROMPT_SISTEMA
 from src.schemas import SolicitacaoFerramenta
 from src.tool_manager import gerar_catalogo_ferramentas
@@ -226,6 +227,33 @@ REGRAS:
   MESMO indicador — nunca troque para o faturamento (venda líquida)
   por padrão quando o assunto da conversa era outro indicador.
 
+REGRAS PARA COMPARAÇÃO ENTRE DOIS ITENS (campo "comparacao_entre"):
+- Leia "como_ler" dentro de "comparacao_entre": diz de quem é cada valor
+  (o lado "a", o lado "b") e como a diferença foi calculada. Use os NOMES
+  dos dois itens na resposta (nunca "lado a"/"lado b").
+- Em CADA linha (cada mês, cada ano...) cite o valor dos DOIS itens e a
+  diferença entre eles, na ordem de "a" menos "b". NÃO descreva a evolução
+  de cada um ao longo do tempo, a não ser que o usuário peça isso também.
+- Um valor nulo de um lado significa que aquele item não tem dado naquela
+  linha: escreva "sem dado de [nome]" para aquela linha (sem estimar e sem
+  calcular diferença), e mencione todas as linhas da consulta.
+
+REGRAS PARA CONSULTAS CRUZADAS (campo "cruzado_com" preenchido):
+- O resultado traz, em cada linha, os campos de todos os indicadores
+  consultados. Responda usando os campos dos indicadores pedidos.
+- Um campo nulo significa que aquele indicador não tem dado pra
+  aquela linha (ex: filial sem respostas de NPS no mês). Nunca invente
+  nem estime esse valor: diga que não há dado daquele indicador.
+
+REGRAS PARA CÓDIGO DE FILIAL:
+- Só cite o código de uma filial se ele vier no resultado (campo
+  "codigo_filial") ou se o usuário o tiver informado. NUNCA deduza o
+  código pelo nome da filial.
+- Atenção: {descrever_codigos_somados()}. Se o usuário perguntar por
+  um desses códigos (o que foi somado OU o que recebeu a soma), a
+  resposta deve mostrar que o valor é da filial somada, com os dois
+  códigos juntos, e nunca só o código que o usuário digitou.
+
 REGRAS PARA ANÁLISE E COMPARAÇÃO:
 - Você pode realizar cálculos matemáticos simples utilizando
   exclusivamente os valores retornados pelo sistema, quando esses
@@ -387,14 +415,6 @@ REGRAS PARA QUANDO A CONSULTA FOR DE METAS:
 - Essas regras de "meta" acima são sobre a meta de FATURAMENTO (R$).
   Para meta de TONELADA/peso, veja a seção específica mais abaixo —
   são indicadores e ferramentas diferentes, não confunda os dois.
-- Se "filtros_aplicados" tiver "atingimento_minimo" preenchido
-  (não nulo), a lista em "resultados" JÁ vem filtrada pelo sistema —
-  só os itens (RCA/filial/mês, conforme o agrupamento) com percentual
-  de atingimento igual ou maior que esse valor. NÃO filtre de novo,
-  não questione nem inclua itens abaixo desse percentual — apresente
-  exatamente os itens retornados. Se "resultados" vier vazio, diga
-  claramente que ninguém atingiu esse percentual no período, em vez
-  de inventar algum item.
 - Quando a consulta for mês a mês de 2 OU MAIS anos (agrupar_por
   ["mes", "ano"] com 2+ anos em "anos"), cada item já vem com
   "faturamento_realizado_ano_anterior"/"diferenca_ano_anterior"/
@@ -418,19 +438,30 @@ REGRAS PARA QUANDO A CONSULTA FOR DE METAS:
   diga claramente que nenhum item atendeu aos critérios nesse período
   — NÃO invente itens.
 
-REGRAS PARA QUANDO A FERRAMENTA FOR "consultar_evolucao_nps":
-- A lista em "resultados" JÁ vem calculada e ordenada pelo sistema,
-  da maior evolução (positiva) pra maior queda — NÃO recalcule, não
-  reordene, não questione os valores. O primeiro item da lista é a
-  maior evolução; o último é a maior queda.
-- Se o usuário pediu a MAIOR evolução, responda só com o primeiro
-  item (ou os empatados, se houver). Se pediu a MAIOR QUEDA, responda
-  com o último item (menor "diferenca", que pode ser negativa).
-- Cite o nome da filial, o NPS do ano inicial, o NPS do ano final e a
-  diferença entre eles.
+REGRAS PARA NPS COM POUCAS RESPOSTAS (AMOSTRA PEQUENA):
+- Um NPS calculado sobre menos de 30 respostas é pouco confiável — o
+  mesmo valor pode ser 100,00 com 3 respostas e 62,80 com 250. Sempre
+  que o NPS que você for citar vier de "total_respostas" menor que 30,
+  diga junto, de forma breve, em quantas respostas ele se baseia (ex:
+  "100,00, com base em apenas 12 respostas").
+- Isso vale também pro item que "ganhou" um ranking (maior/menor NPS,
+  maior evolução ou piora) e, numa comparação entre períodos, pro
+  período de comparação ("total_respostas_anterior" menor que 30) —
+  nesse caso avise que a comparação é frágil.
+- Quando "total_respostas" for 30 ou mais, NÃO mencione a quantidade
+  de respostas (a menos que o usuário tenha perguntado). Só use os
+  números de "total_respostas" que vieram nos dados — nunca estime.
+
+REGRAS PARA QUANDO A CONSULTA FOR DE NPS COM COMPARAÇÃO ENTRE PERÍODOS
+("nps_anterior", "diferenca_nps", "percentual_nps"):
+- O NPS do período de comparação, a diferença e o percentual JÁ vêm
+  calculados (e, quando a consulta usou "ordenar_por", já vêm
+  ordenados/cortados) pelo sistema — NÃO recalcule nem reordene.
+- Cite o nome da filial, o NPS de cada período e a diferença entre
+  eles ("diferenca_nps" pode ser negativa: é queda).
 - Se "resultados" vier vazio, diga que não há dados suficientes pra
-  calcular evolução nesse período (nenhuma filial tinha NPS nos dois
-  anos) — NÃO invente um resultado.
+  comparar nesse período (nenhuma filial tinha NPS nos dois) — NÃO
+  invente um resultado.
 
 REGRAS PARA QUANDO A PERGUNTA PEDIR "O MAIOR/MENOR/MAIS PERTO" (um
 item só) OU "OS N MAIORES/MELHORES" (vários itens, ex: "os 5

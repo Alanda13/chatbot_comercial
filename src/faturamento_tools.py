@@ -4,41 +4,8 @@ Ferramentas do módulo de faturamento.
 Este arquivo faz a ponte entre os nomes informados pela IA
 e as consultas de faturamento.
 """
-from src.faturamento_data import listar_filiais_faturamento
 from src.faturamento_diario_data import verificar_rca
-from src.filial_utils import (
-    encontrar_filial_mais_proxima,
-    normalizar_nome_filial,
-)
-
-def resolver_nome_filial(nome_informado: str) -> str:
-    """
-    Encontra o nome correto da filial na base de faturamento.
-    """
-
-    filiais = listar_filiais_faturamento()
-
-    if not filiais:
-        raise ValueError(
-            "Nenhuma filial foi encontrada "
-            "na base de faturamento."
-        )
-
-    nome_procurado = normalizar_nome_filial(
-        nome_informado
-    )
-
-    filial_encontrada = encontrar_filial_mais_proxima(
-        nome_procurado,
-        filiais,
-    )
-
-    if filial_encontrada is None:
-        raise ValueError(
-            f"A filial '{nome_informado}' não foi encontrada."
-        )
-
-    return filial_encontrada
+from src.filiais import resolver_nome_filial
 
 
 def executar_verificar_rca(argumentos: dict) -> dict:

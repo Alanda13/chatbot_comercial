@@ -48,3 +48,172 @@ def test_tabela_filial_x_2_anos_ferramenta_sem_config_nao_quebra():
     # (uma linha por filial/ano, sem coluna de valor) — não quebra.
     assert "Filial" in tabela.columns
     assert len(tabela) == 4
+
+
+def test_tabela_de_evolucao_mostra_anterior_diferenca_e_variacao():
+    """
+    Consultas com "comparar_com" ganham colunas de comparação do campo
+    principal do indicador, geradas a partir do catálogo.
+    """
+    dados = [
+        {
+            "filial": "FERRONORTE IMPERATRIZ", "nps": 84.83,
+            "nps_anterior": 68.56, "diferenca_nps": 16.27,
+            "percentual_nps": 23.73,
+        },
+        {
+            "filial": "FERRONORTE TIMON", "nps": 96.28,
+            "nps_anterior": 90.11, "diferenca_nps": 6.17,
+            "percentual_nps": 6.85,
+        },
+    ]
+
+    tabela = preparar_tabela(
+        dados, "maior evolução de NPS", "consultar_dados_comerciais"
+    )
+
+    assert list(tabela.columns) == [
+        "Filial", "NPS", "NPS (anterior)", "Diferença NPS", "Variação NPS",
+    ]
+    assert tabela.iloc[0]["Variação NPS"] == "+23,73%"
+
+
+def _nps_mensal(filiais, meses):
+    dados = []
+    for filial in filiais:
+        for mes in meses:
+            dados.append(
+                {
+                    "filial": filial, "mes": mes, "nps": 90.5 + mes,
+                    "total_respostas": 100 + mes,
+                    "percentual_mes_anterior": None if mes == meses[0] else 1.5,
+                }
+            )
+    return dados
+
+
+def test_duas_filiais_mes_a_mes_viram_colunas_por_filial_com_a_variacao_ao_lado():
+    """A dimensão com menos valores (filial) vira colunas; o mês fica nas linhas."""
+    tabela = preparar_tabela(
+        _nps_mensal(["LOURIVAL", "TIMON"], [1, 2, 3]),
+        "comparação do NPS", "consultar_dados_comerciais",
+    )
+
+    # o NPS das duas filiais lado a lado, depois a variação de cada uma
+    assert list(tabela.columns) == [
+        "Mês", "LOURIVAL", "TIMON",
+        "LOURIVAL — Variação (mês anterior)", "TIMON — Variação (mês anterior)",
+    ]
+    assert list(tabela["Mês"]) == ["Janeiro", "Fevereiro", "Março"]
+    assert list(tabela["TIMON"]) == ["91,50", "92,50", "93,50"]
+    assert tabela.iloc[0]["TIMON — Variação (mês anterior)"] == "sem dados"
+    assert tabela.iloc[1]["TIMON — Variação (mês anterior)"] == "+1,50%"
+
+
+def test_filial_por_ano_vira_colunas_por_ano_e_o_primeiro_ano_nao_tem_variacao():
+    dados = [
+        {"filial": "TIMON", "ano": 2024, "faturamento": 100.0, "percentual_ano_anterior": None},
+        {"filial": "TIMON", "ano": 2025, "faturamento": 150.0, "percentual_ano_anterior": 50.0},
+        {"filial": "PICOS", "ano": 2024, "faturamento": 80.0, "percentual_ano_anterior": None},
+        {"filial": "PICOS", "ano": 2025, "faturamento": 72.0, "percentual_ano_anterior": -10.0},
+    ]
+
+    tabela = preparar_tabela(dados, "faturamento", "consultar_dados_comerciais")
+
+    assert list(tabela.columns) == [
+        "Filial", "2024", "2025", "2025 — Variação (ano anterior)",
+    ]
+    assert tabela.iloc[0]["2025 — Variação (ano anterior)"] == "+50,00%"
+
+
+def test_pivo_que_passaria_do_limite_de_colunas_continua_comprido():
+    """18 filiais x 12 meses: a menor dimensão (12 meses) cabe, mas com
+    2 métricas passaria de 12 colunas — não pivota."""
+    dados = _nps_mensal([f"FILIAL {i}" for i in range(18)], list(range(1, 13)))
+
+    tabela = preparar_tabela(dados, "NPS e respostas", "consultar_dados_comerciais")
+
+    assert "Filial" in tabela.columns and "Mês" in tabela.columns
+    assert len(tabela) == 18 * 12
+
+
+def test_uma_filial_so_mes_a_mes_continua_com_uma_linha_por_mes():
+    """Só há uma dimensão que varia (o mês): nada a pivotar."""
+    tabela = preparar_tabela(
+        _nps_mensal(["TIMON"], [1, 2, 3]), "NPS", "consultar_dados_comerciais"
+    )
+
+    assert len(tabela) == 3
+    assert list(tabela["Mês"]) == ["Janeiro", "Fevereiro", "Março"]
+
+
+def test_colunas_pedidas_limitam_a_tabela_ao_que_foi_pedido():
+    """Sem isso a tabela trazia Meta, Faturamento e Respostas que ninguém pediu."""
+    dados = [
+        {
+            "filial": "TIMON", "nps": 96.28, "total_respostas": 5049,
+            "percentual_atingimento": 114.99, "valor_meta": 97.5,
+            "_colunas_pedidas": ["nps", "percentual_atingimento"],
+        },
+        {
+            "filial": "PICOS", "nps": 97.86, "total_respostas": 4113,
+            "percentual_atingimento": 93.62, "valor_meta": 50.4,
+            "_colunas_pedidas": ["nps", "percentual_atingimento"],
+        },
+    ]
+
+    tabela = preparar_tabela(dados, "NPS e atingimento", "consultar_dados_comerciais")
+
+    assert list(tabela.columns) == ["Filial", "NPS", "Atingimento"]
+    assert list(tabela["NPS"]) == ["96,28", "97,86"]
+    assert list(tabela["Atingimento"]) == ["114,99%", "93,62%"]
+
+
+def test_colunas_pedidas_trazem_a_comparacao_do_campo_pedido():
+    dados = [
+        {
+            "filial": "TIMON", "nps": 95.78, "nps_anterior": 83.07,
+            "diferenca_nps": 12.71, "percentual_nps": 15.3, "total_respostas": 2960,
+            "_colunas_pedidas": ["nps"],
+        },
+        {
+            "filial": "LOURIVAL", "nps": 75.24, "nps_anterior": 66.41,
+            "diferenca_nps": 8.83, "percentual_nps": 13.3, "total_respostas": 832,
+            "_colunas_pedidas": ["nps"],
+        },
+    ]
+
+    tabela = preparar_tabela(dados, "NPS do semestre", "consultar_dados_comerciais")
+
+    assert list(tabela.columns) == [
+        "Filial", "NPS", "NPS (anterior)", "Diferença NPS", "Variação NPS",
+    ]
+
+
+def test_numeros_saem_em_portugues_e_contagens_sem_casa_decimal():
+    """Antes saíam "96.28" e "1058.0" (a coluna virava decimal por causa
+    de uma filial sem dado)."""
+    dados = [
+        {"filial": "TIMON", "nps": 96.28, "total_respostas": 1058.0},
+        {"filial": "MARITUBA", "nps": None, "total_respostas": None},
+    ]
+
+    tabela = preparar_tabela(dados, "NPS e respostas", "consultar_dados_comerciais")
+
+    assert list(tabela["NPS"]) == ["96,28", "sem dados"]
+    assert list(tabela["Respostas"]) == ["1.058", "sem dados"]
+
+
+def test_nps_das_filiais_comparadas_fica_lado_a_lado_antes_das_outras_colunas():
+    """Regressão: com Respostas e Variação junto, o NPS de uma filial ficava
+    separado do NPS da outra por essas colunas, e a comparação se perdia."""
+    dados = _nps_mensal(["LOURIVAL", "SANTA INÊS"], [1, 2, 3])
+
+    tabela = preparar_tabela(
+        dados, "NPS com base em 100 respostas", "consultar_dados_comerciais"
+    )
+
+    assert list(tabela.columns)[:5] == [
+        "Mês", "LOURIVAL — NPS", "SANTA INÊS — NPS",
+        "LOURIVAL — Respostas", "SANTA INÊS — Respostas",
+    ]

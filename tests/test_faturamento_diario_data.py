@@ -4,41 +4,6 @@ import pytest
 from src import faturamento_diario_data as fdd
 
 
-def test_listar_filiais_faturamento_diario(monkeypatch):
-    df = pd.DataFrame(
-        [
-            {"FILIAL": "FERRONORTE TIMON"},
-            {"FILIAL": "FERRONORTE PICOS"},
-        ]
-    )
-    monkeypatch.setattr(fdd, "carregar_faturamento_8302", lambda: df)
-
-    filiais = fdd.listar_filiais_faturamento_diario()
-
-    assert filiais == ["FERRONORTE PICOS", "FERRONORTE TIMON"]
-
-
-def test_resolver_nome_filial_diario_encontra_por_aproximacao(monkeypatch):
-    monkeypatch.setattr(
-        fdd,
-        "listar_filiais_faturamento_diario",
-        lambda: ["FERRONORTE TIMON", "FERRONORTE PICOS"],
-    )
-
-    assert fdd.resolver_nome_filial_diario("Timon") == "FERRONORTE TIMON"
-
-
-def test_resolver_nome_filial_diario_nao_encontrada(monkeypatch):
-    monkeypatch.setattr(
-        fdd,
-        "listar_filiais_faturamento_diario",
-        lambda: ["FERRONORTE TIMON"],
-    )
-
-    with pytest.raises(ValueError):
-        fdd.resolver_nome_filial_diario("Filial Que Nao Existe")
-
-
 def test_construir_mapa_rca_nome(monkeypatch):
     df = pd.DataFrame(
         [

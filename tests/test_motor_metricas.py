@@ -35,6 +35,20 @@ def test_calcular_crescimento_sem_anterior_retorna_none():
     assert mm.calcular_crescimento(atual=110, anterior=None) is None
 
 
+def test_calcular_nps():
+    # 60 promotores, 30 neutros, 10 detratores, em 100 respostas.
+    assert mm.calcular_nps(60, 10, 100) == 50.0
+
+
+def test_calcular_nps_pode_ser_negativo():
+    assert mm.calcular_nps(10, 30, 100) == -20.0
+
+
+def test_calcular_nps_sem_respostas_retorna_none():
+    assert mm.calcular_nps(0, 0, 0) is None
+    assert mm.calcular_nps(0, 0, None) is None
+
+
 def test_calcular_valor_faltante():
     assert mm.calcular_valor_faltante(meta=100000, realizado=80000) == 20000.0
 
@@ -93,3 +107,10 @@ def test_formulas_registradas_batem_com_as_funcoes():
         is mm.calcular_necessidade_diaria
     )
     assert mm.FORMULAS["calcular_participacao"] is mm.calcular_participacao
+
+
+def test_calcular_atingimento_meta_com_valor_vazio_devolve_none():
+    """No cruzamento de indicadores um dos lados pode faltar."""
+    assert mm.calcular_atingimento_meta(None, 100.0) is None
+    assert mm.calcular_atingimento_meta(50.0, None) is None
+    assert mm.calcular_atingimento_meta(50.0, 0) is None

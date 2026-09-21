@@ -47,7 +47,7 @@ def calcular_atingimento_meta(
     faturamento: Optional[float], meta: Optional[float]
 ) -> Optional[float]:
     """% Meta = Faturamento / Meta"""
-    if not meta:
+    if not meta or faturamento is None:
         return None
     return round((faturamento / meta) * 100, 2)
 
@@ -99,6 +99,17 @@ def calcular_necessidade_diaria(
     return round(valor_faltante / dias_restantes, 2)
 
 
+def calcular_nps(
+    promotores: Optional[float],
+    detratores: Optional[float],
+    total_respostas: Optional[float],
+) -> Optional[float]:
+    """NPS = % de promotores − % de detratores (sobre o total de respostas)."""
+    if not total_respostas:
+        return None
+    return round((promotores - detratores) / total_respostas * 100, 2)
+
+
 def calcular_toneladas(peso_liquido: Optional[float]) -> Optional[float]:
     """Converte peso líquido (quilos) para toneladas."""
     if peso_liquido is None:
@@ -138,4 +149,5 @@ FORMULAS = {
     "calcular_necessidade_diaria": calcular_necessidade_diaria,
     "calcular_participacao": calcular_participacao,
     "calcular_toneladas": calcular_toneladas,
+    "calcular_nps": calcular_nps,
 }

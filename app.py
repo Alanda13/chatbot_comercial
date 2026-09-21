@@ -11,7 +11,6 @@ from src.chatbot import processar_pergunta
 from src.exceptions import ChatbotError
 from src.logger import obter_logger
 from src.perguntas_log import registrar_pergunta
-from src.variacao_utils import calcular_diferenca_percentual
 from src import catalogo
 
 logger = obter_logger(__name__)
@@ -124,11 +123,11 @@ MESES_PT = {
 }
 
 # Configuração de tabela por ferramenta — fonte única de verdade sobre
-# as colunas de valor de cada ferramenta: nome do campo, "tipo" (usado
-# pra formatação, veja FORMATADORES_POR_TIPO), rótulo de exibição, e
-# quando a coluna deve aparecer. Uma ferramenta nova só precisa de uma
-# entrada aqui — a lógica de montagem da tabela (preparar_tabela, mais
-# abaixo) nunca precisa saber o nome dela.
+# as colunas de valor: nome do campo, "tipo" (usado pra formatação,
+# veja FORMATADORES_POR_TIPO), rótulo de exibição, e quando a coluna
+# deve aparecer. Hoje só existe "consultar_dados_comerciais", e as
+# colunas dela vêm do catalogo.py (campo "exibicao" de cada indicador)
+# — um indicador novo não exige editar nada aqui.
 #
 # Cada coluna tem "sempre": True (aparece sempre que presente, usado
 # quando os números sempre andam juntos, ex: meta/realizado/
@@ -137,68 +136,8 @@ MESES_PT = {
 #
 # "rotulo" pode usar "{ano}" e/ou "{ano_anterior}" como placeholder —
 # preparar_tabela troca pelo ano de verdade quando esses campos vêm
-# nos dados (ex: "Faturamento {ano}" vira "Faturamento 2025"). Assim
-# nenhuma ferramenta nova precisa de código especial só pra mostrar o
-# ano certo no cabeçalho.
-#
-# "seletor" é um escape hatch pra ferramentas cuja escolha de coluna
-# não é um simples "sempre" ou "por palavra" (ex: meta de tonelada,
-# que escolhe entre duas colunas mutuamente exclusivas).
+# nos dados.
 CONFIG_TABELA_POR_FERRAMENTA = {
-    "consultar_indicadores_faturamento": {
-        "colunas": [
-            {"coluna": "faturamento", "tipo": "moeda", "rotulo": "Faturamento", "palavras": ["fatur"]},
-            {"coluna": "venda_bruta", "tipo": "moeda", "rotulo": "Venda Bruta", "palavras": ["venda bruta"]},
-            {"coluna": "valor_desconto", "tipo": "moeda", "rotulo": "Desconto", "palavras": ["descont"]},
-            {"coluna": "toneladas", "tipo": "texto", "rotulo": "Toneladas", "palavras": ["tonelada"]},
-            {"coluna": "peso_liquido", "tipo": "texto", "rotulo": "Peso Líquido", "palavras": ["peso"]},
-            {"coluna": "quantidade_notas", "tipo": "texto", "rotulo": "Qtd. Notas", "palavras": ["nota"]},
-        ],
-    },
-    "consultar_indicadores_faturamento_diario": {
-        "colunas": [
-            {"coluna": "faturamento", "tipo": "moeda", "rotulo": "Faturamento", "palavras": ["fatur"]},
-            {"coluna": "venda_bruta", "tipo": "moeda", "rotulo": "Venda Bruta", "palavras": ["venda bruta"]},
-            {"coluna": "valor_desconto", "tipo": "moeda", "rotulo": "Desconto", "palavras": ["descont"]},
-            {"coluna": "quantidade_notas", "tipo": "texto", "rotulo": "Qtd. Notas", "palavras": ["nota"]},
-        ],
-    },
-    "consultar_indicadores_nps": {
-        "colunas": [
-            {"coluna": "nps", "tipo": "texto", "rotulo": "NPS", "palavras": ["nps"]},
-        ],
-    },
-    "consultar_metas": {
-        "colunas": [
-            {"coluna": "valor_meta", "tipo": "moeda", "rotulo": "Meta", "sempre": True},
-            {"coluna": "faturamento_realizado", "tipo": "moeda", "rotulo": "Faturamento Realizado", "sempre": True},
-            {"coluna": "percentual_atingimento", "tipo": "percentual", "rotulo": "Atingimento", "sempre": True},
-            {"coluna": "falta_para_meta", "tipo": "moeda", "rotulo": "Falta para Meta", "palavras": ["falta"]},
-        ],
-    },
-    "consultar_crescimento_abaixo_meta": {
-        "colunas": [
-            {"coluna": "faturamento_realizado_ano_anterior", "tipo": "moeda", "rotulo": "Faturamento {ano_anterior}", "sempre": True},
-            {"coluna": "faturamento_realizado", "tipo": "moeda", "rotulo": "Faturamento {ano}", "sempre": True},
-            {"coluna": "crescimento_valor", "tipo": "moeda", "rotulo": "Crescimento (R$)", "sempre": True},
-            {"coluna": "crescimento_percentual", "tipo": "percentual", "rotulo": "Crescimento (%)", "sempre": True},
-            {"coluna": "valor_meta", "tipo": "moeda", "rotulo": "Meta", "sempre": True},
-            {"coluna": "percentual_atingimento", "tipo": "percentual", "rotulo": "Atingimento", "sempre": True},
-        ],
-    },
-    "consultar_evolucao_nps": {
-        "colunas": [
-            {"coluna": "ano_inicial", "tipo": "texto", "rotulo": "Ano Inicial", "sempre": True},
-            {"coluna": "nps_inicial", "tipo": "texto", "rotulo": "NPS Inicial", "sempre": True},
-            {"coluna": "ano_final", "tipo": "texto", "rotulo": "Ano Final", "sempre": True},
-            {"coluna": "nps_final", "tipo": "texto", "rotulo": "NPS Final", "sempre": True},
-            {"coluna": "diferenca", "tipo": "texto", "rotulo": "Diferença", "sempre": True},
-        ],
-    },
-    # Colunas geradas a partir do catalogo.py (campo "exibicao" de cada
-    # indicador conectado) — um indicador novo não exige editar esta
-    # config à mão, só preencher "exibicao" na entrada dele em
-    # catalogo.INDICADORES.
     "consultar_dados_comerciais": {
         "colunas": catalogo.gerar_colunas_tabela(),
     },
@@ -214,9 +153,6 @@ def selecionar_colunas_metricas(nome_ferramenta, texto_lower, colunas_disponivei
     colunas de identificação.
     """
     config = CONFIG_TABELA_POR_FERRAMENTA.get(nome_ferramenta, {})
-
-    if "seletor" in config:
-        return config["seletor"](texto_lower, colunas_disponiveis)
 
     colunas = []
 
@@ -252,6 +188,7 @@ TIPO_POR_COLUNA["percentual_ano_anterior"] = "percentual_com_sinal"
 
 RENOMEAR_COLUNAS = {
     "filial": "Filial",
+    "estado": "Estado",
     "rca_nome": "RCA",
     "rca": "Código RCA",
     "codigo": "Código",
@@ -273,7 +210,7 @@ RENOMEAR_COLUNAS = {
 def formatar_moeda(valor):
     """Formata um número no padrão R$ 91.783.909,07."""
     if valor is None or (isinstance(valor, float) and pd.isna(valor)):
-        return ""
+        return "sem dados"
 
     texto = f"{valor:,.2f}"
     texto = texto.replace(",", "X").replace(".", ",").replace("X", ".")
@@ -297,6 +234,15 @@ def formatar_percentual_atingimento(valor):
     return f"{valor:.2f}%".replace(".", ",")
 
 
+def formatar_numero_com_sinal(valor):
+    """Diferença entre dois números, com sinal explícito (ex: +4,43)."""
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return "sem dados"
+
+    texto = f"{valor:+,.2f}"
+    return texto.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 # Formatador de cada "tipo" declarado em CONFIG_TABELA_POR_FERRAMENTA.
 # Colunas do tipo "texto" (ou sem tipo registrado) não passam por
 # nenhum formatador — ficam com o valor cru.
@@ -304,85 +250,124 @@ FORMATADORES_POR_TIPO = {
     "moeda": formatar_moeda,
     "percentual": formatar_percentual_atingimento,
     "percentual_com_sinal": formatar_percentual_com_sinal,
+    "numero_com_sinal": formatar_numero_com_sinal,
 }
 
 
-def ocultar_repeticoes_consecutivas(df, coluna):
+def formatar_coluna_numerica(serie):
     """
-    Deixa em branco as repetições consecutivas de uma coluna (ex: o
-    nome da filial repetido em toda linha) — só mostra o valor na
-    primeira linha de cada grupo, evitando poluição visual.
+    Números em português (vírgula decimal, ponto de milhar) pra colunas de
+    tipo "texto": sem casas decimais quando todos os valores são inteiros
+    (contagens), com 2 casas nos demais. Vazio vira "sem dados".
     """
-    if coluna not in df.columns or len(df) <= 1:
-        return df
+    validos = serie.dropna()
+    casas = 0 if (validos % 1 == 0).all() else 2
 
-    valores = df[coluna].tolist()
-    novos_valores = []
-    valor_anterior = object()  # sentinela, nunca é igual a nada real
-
-    for valor in valores:
-        if valor == valor_anterior:
-            novos_valores.append("")
-        else:
-            novos_valores.append(valor)
-            valor_anterior = valor
-
-    df[coluna] = novos_valores
-    return df
-
-
-def _montar_tabela_comparacao_dois_anos(
-    rotulo_coluna_grupo, itens, ano_1, ano_2, eh_monetario
-):
-    """
-    Monta a tabela padrão de comparação entre 2 anos — usada tanto pra
-    "Mês x 2 anos" quanto "Filial x 2 anos" (e qualquer indicador novo
-    que precisar do mesmo formato): uma linha por grupo (mês, filial,
-    RCA...), com o valor de cada ano lado a lado e a variação
-    percentual entre eles.
-
-    `itens` é uma lista de tuplas (rotulo_do_grupo, valor_ano_1,
-    valor_ano_2) — quem chama já resolveu qual valor pertence a cada
-    ano; essa função só formata e calcula a variação.
-    """
     def formatar(valor):
-        if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        if pd.isna(valor):
             return "sem dados"
-        return formatar_moeda(valor) if eh_monetario else valor
 
-    linhas = []
+        texto = f"{valor:,.{casas}f}"
+        return texto.replace(",", "X").replace(".", ",").replace("X", ".")
 
-    for rotulo_grupo, valor_1, valor_2 in itens:
-        valor_1_valido = None if pd.isna(valor_1) else valor_1
-        valor_2_valido = None if pd.isna(valor_2) else valor_2
+    return serie.map(formatar)
 
-        _, percentual = calcular_diferenca_percentual(
-            valor_1_valido, valor_2_valido
-        )
 
-        linhas.append({
-            rotulo_coluna_grupo: rotulo_grupo,
-            str(ano_1): formatar(valor_1),
-            str(ano_2): formatar(valor_2),
-            "Variação": (
-                formatar_percentual_com_sinal(percentual)
-                if percentual is not None
-                else "sem dados"
-            ),
-        })
+# Colunas que identificam a linha (em vez de medir alguma coisa).
+DIMENSOES_DA_TABELA = (
+    "estado", "filial", "rca_nome", "rca", "codigo", "ano", "mes",
+    "periodo", "forma_pagamento", "dia",
+)
+DIMENSOES_DE_TEMPO = ("ano", "mes", "dia", "periodo")
 
-    return pd.DataFrame(linhas)
+# Um pivô que gerasse mais colunas que isso ficaria ilegível — nesse caso
+# a tabela continua comprida (uma linha por combinação).
+LIMITE_COLUNAS_PIVO = 12
+
+
+def _pivotar(tabela, dimensoes, metricas, metrica_sem_prefixo=None):
+    """
+    Regra ÚNICA de layout, valha pra qual pergunta for: quando sobram duas
+    ou mais dimensões que variam (ex: filial e mês), a que tem MENOS valores
+    distintos vira colunas (empate: a de tempo) e as outras ficam nas linhas
+    — 2 filiais x 6 meses vira "Mês | FILIAL A | FILIAL B", 18 filiais x
+    2 anos vira "Filial | 2024 | 2025". Com mais de uma métrica, cada coluna
+    fica "VALOR — Métrica" (a `metrica_sem_prefixo`, quando há, fica só
+    "VALOR" e a variação vem ao lado). As colunas ficam agrupadas por
+    MÉTRICA — o valor de todos os itens comparados lado a lado primeiro
+    (LOURIVAL | SANTA INÊS), depois as demais métricas — pra comparar sem
+    pular colunas. Coluna toda vazia (ex: variação do primeiro ano) some.
+    Se passar de LIMITE_COLUNAS_PIVO colunas, não pivota.
+    """
+    variaveis = [d for d in dimensoes if tabela[d].nunique() > 1]
+
+    if len(variaveis) < 2 or not metricas:
+        return tabela
+
+    pivo = min(
+        variaveis,
+        key=lambda d: (tabela[d].nunique(), d not in {RENOMEAR_COLUNAS[c] for c in DIMENSOES_DE_TEMPO}),
+    )
+
+    if tabela[pivo].nunique() * len(metricas) > LIMITE_COLUNAS_PIVO:
+        return tabela
+
+    dimensoes_linha = [d for d in dimensoes if d != pivo]
+
+    def nome_da_coluna(valor, metrica):
+        if len(metricas) == 1 or metrica == metrica_sem_prefixo:
+            return str(valor)
+
+        return f"{valor} — {metrica}"
+
+    linhas: dict = {}
+
+    for _, item in tabela.iterrows():
+        chave = tuple(item[d] for d in dimensoes_linha)
+        linha = linhas.setdefault(chave, dict(zip(dimensoes_linha, chave)))
+
+        for metrica in metricas:
+            linha[nome_da_coluna(item[pivo], metrica)] = (
+                item[metrica] if item[metrica] != "" else "sem dados"
+            )
+
+    ordem = [
+        nome_da_coluna(valor, metrica)
+        for metrica in metricas
+        for valor in tabela[pivo].unique()
+    ]
+    resultado = pd.DataFrame(list(linhas.values())).fillna("sem dados")
+    resultado = resultado[dimensoes_linha + ordem]
+    vazias = [
+        c for c in ordem if (resultado[c] == "sem dados").all()
+    ]
+
+    return resultado.drop(columns=vazias)
 
 
 def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
     """
-    Monta a tabela pronta pra exibição: escolhe as colunas de valor
-    certas pra ferramenta que gerou o dado (veja
-    CONFIG_TABELA_POR_FERRAMENTA), troca número do mês pelo nome,
-    formata moeda e renomeia os títulos das colunas pra português
-    legível.
+    Monta a tabela pronta pra exibição, com uma regra só pra qualquer
+    pergunta:
+    1. Colunas de valor: as que a consulta pediu ("_colunas_pedidas",
+       recortadas pelo motor — veja orquestrador._linhas_da_tabela) e a
+       comparação delas; sem isso, o padrão do catálogo (CONFIG_TABELA_
+       POR_FERRAMENTA: "sempre" ou por palavra na resposta).
+    2. Formatação pelo tipo da coluna (moeda, percentual, número).
+    3. Layout: veja _pivotar.
     """
     df = pd.DataFrame(dados_tabela)
+
+    pedidas = None
+    rotulos = {}
+
+    if "_colunas_pedidas" in df.columns:
+        pedidas = df["_colunas_pedidas"].iloc[0]
+        df = df.drop(columns="_colunas_pedidas")
+
+    if "_rotulos" in df.columns:
+        rotulos = df["_rotulos"].iloc[0]
+        df = df.drop(columns="_rotulos")
 
     # Valores pra preencher os placeholders "{ano}"/"{ano_anterior}"
     # que um "rotulo" de CONFIG_TABELA_POR_FERRAMENTA pode usar —
@@ -392,135 +377,6 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
     for campo in ("ano", "ano_anterior"):
         if campo in df.columns and df[campo].nunique() == 1:
             valores_para_rotulo[campo] = df[campo].iloc[0]
-
-    # Formato especial: comparação entre exatamente 2 anos, já vem
-    # com valor_ano_1/valor_ano_2/diferenca/percentual prontos do
-    # queries.py — monta a tabela com os anos como nome de coluna.
-    if "valor_ano_1" in df.columns and "valor_ano_2" in df.columns:
-        ano_1 = df["ano_1"].iloc[0]
-        ano_2 = df["ano_2"].iloc[0]
-
-        df["mes"] = df["mes"].map(MESES_PT).fillna(df["mes"])
-
-        eh_monetario = any(
-            palavra in texto_referencia.lower()
-            for palavra in ("faturamento", "venda bruta", "desconto")
-        )
-
-        itens = list(zip(df["mes"], df["valor_ano_1"], df["valor_ano_2"]))
-
-        return _montar_tabela_comparacao_dois_anos(
-            "Mês", itens, ano_1, ano_2, eh_monetario
-        )
-
-    # Se não tem coluna "ano" pronta mas tem "data_inicial" (formato
-    # YYYY-MM-DD), extrai o ano de lá — usado em consultas por
-    # filial+período que não passam pelo agrupamento mês a mês. Isso
-    # precisa vir ANTES da checagem de pivô Filial x Ano logo abaixo,
-    # senão o pivô nunca detecta os 2 anos nesse formato de dado.
-    if "ano" not in df.columns and "data_inicial" in df.columns:
-        df["ano"] = df["data_inicial"].str.slice(0, 4)
-
-    # Formato especial: filiais comparadas entre EXATAMENTE 2 anos
-    # (sem ser mês a mês) — pivota pra Filial | ano_1 | ano_2 | Variação,
-    # no mesmo espírito da comparação mensal acima.
-    if (
-        "filial" in df.columns
-        and "ano" in df.columns
-        and "mes" not in df.columns
-        and df["ano"].nunique() == 2
-    ):
-        colunas_candidatas = selecionar_colunas_metricas(
-            nome_ferramenta, texto_referencia.lower(), df.columns
-        )
-        coluna_valor = colunas_candidatas[0] if colunas_candidatas else None
-
-        # Sem coluna de métrica reconhecida (ex: ferramenta sem config em
-        # CONFIG_TABELA_POR_FERRAMENTA), não dá pra pivotar — cai pro
-        # formato de tabela padrão mais abaixo, em vez de quebrar a
-        # resposta inteira tentando indexar uma coluna que não existe.
-        if coluna_valor is not None:
-            anos_ordenados = sorted(df["ano"].unique())
-            ano_1, ano_2 = anos_ordenados[0], anos_ordenados[1]
-
-            eh_monetario = TIPO_POR_COLUNA.get(coluna_valor) == "moeda"
-
-            itens = []
-            for nome_filial in df["filial"].unique():
-                valor_1 = df[
-                    (df["filial"] == nome_filial) & (df["ano"] == ano_1)
-                ][coluna_valor]
-                valor_2 = df[
-                    (df["filial"] == nome_filial) & (df["ano"] == ano_2)
-                ][coluna_valor]
-
-                valor_1 = valor_1.iloc[0] if len(valor_1) else None
-                valor_2 = valor_2.iloc[0] if len(valor_2) else None
-
-                itens.append((nome_filial, valor_1, valor_2))
-
-            return _montar_tabela_comparacao_dois_anos(
-                "Filial", itens, ano_1, ano_2, eh_monetario
-            )
-
-    # Formato especial: comparação entre EXATAMENTE 2 períodos (ex:
-    # "compare o faturamento por forma de pagamento entre julho e
-    # agosto de 2025") — mesmo espírito do pivô "Filial x 2 anos"
-    # acima, só que usando "periodo" em vez de "ano". Sem isso, a
-    # tabela empilhava um período inteiro e depois o outro (formato
-    # comprido), obrigando a rolar a tela pra comparar a mesma forma
-    # de pagamento/filial/RCA entre os dois períodos.
-    if "periodo" in df.columns and df["periodo"].nunique() == 2:
-        coluna_identidade = next(
-            (
-                coluna
-                for coluna in ("forma_pagamento", "filial", "rca_nome", "rca")
-                if coluna in df.columns
-            ),
-            None,
-        )
-
-        if coluna_identidade:
-            # NÃO ordena alfabeticamente — rótulos como "Julho de
-            # 2025"/"Agosto de 2025" ficariam fora de ordem
-            # cronológica ("Agosto" vem antes de "Julho" no
-            # alfabeto). A ordem de primeira aparição já é a ordem
-            # cronológica, porque os períodos são combinados na mesma
-            # ordem em que foram pedidos.
-            periodos_ordenados = list(df["periodo"].unique())
-            periodo_1, periodo_2 = periodos_ordenados[0], periodos_ordenados[1]
-
-            colunas_candidatas = selecionar_colunas_metricas(
-                nome_ferramenta, texto_referencia.lower(), df.columns
-            )
-            coluna_valor = colunas_candidatas[0] if colunas_candidatas else None
-
-            if coluna_valor:
-                eh_monetario = TIPO_POR_COLUNA.get(coluna_valor) == "moeda"
-
-                itens = []
-                for identidade in df[coluna_identidade].unique():
-                    valor_1 = df[
-                        (df[coluna_identidade] == identidade)
-                        & (df["periodo"] == periodo_1)
-                    ][coluna_valor]
-                    valor_2 = df[
-                        (df[coluna_identidade] == identidade)
-                        & (df["periodo"] == periodo_2)
-                    ][coluna_valor]
-
-                    valor_1 = valor_1.iloc[0] if len(valor_1) else None
-                    valor_2 = valor_2.iloc[0] if len(valor_2) else None
-
-                    itens.append((identidade, valor_1, valor_2))
-
-                rotulo_identidade = RENOMEAR_COLUNAS.get(
-                    coluna_identidade, coluna_identidade
-                )
-
-                return _montar_tabela_comparacao_dois_anos(
-                    rotulo_identidade, itens, periodo_1, periodo_2, eh_monetario
-                )
 
     # Se a resposta em texto só menciona ALGUMAS das filiais que vieram
     # na consulta (ex: "qual filial teve o maior NPS" — a IA já filtrou
@@ -563,76 +419,8 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
         if rcas_na_resposta and len(rcas_na_resposta) < df["rca_nome"].nunique():
             df = df[df["rca_nome"].isin(rcas_na_resposta)]
 
-    # Formato especial: uma métrica só, várias linhas de um mesmo
-    # RCA/filial ao longo dos meses de UM ANO — melhor em formato
-    # largo (uma linha por RCA/filial, uma coluna por mês, e uma
-    # coluna final com o total do ano) do que repetir o nome em cada
-    # linha (formato comprido). Só pivota quando há uma métrica só
-    # (senão não dá pra decidir o que vai em cada célula) e um único
-    # ano (senão o mesmo mês apareceria repetido pra anos diferentes).
-    coluna_grupo_pivot = next(
-        (c for c in ("rca_nome", "filial", "rca", "codigo") if c in df.columns),
-        None,
-    )
-    ano_unico = "ano" not in df.columns or df["ano"].nunique() <= 1
-
-    if (
-        coluna_grupo_pivot
-        and "mes" in df.columns
-        and df["mes"].nunique() > 1
-        and ano_unico
-    ):
-        colunas_metricas_pivot = selecionar_colunas_metricas(
-            nome_ferramenta, texto_referencia.lower(), df.columns
-        )
-
-        if len(colunas_metricas_pivot) == 1:
-            coluna_valor = colunas_metricas_pivot[0]
-            eh_monetario = TIPO_POR_COLUNA.get(coluna_valor) == "moeda"
-            rotulo_grupo = RENOMEAR_COLUNAS.get(
-                coluna_grupo_pivot, coluna_grupo_pivot
-            )
-            rotulo_valor = RENOMEAR_COLUNAS.get(coluna_valor, coluna_valor)
-            meses_presentes = sorted(df["mes"].unique())
-
-            def _formatar_valor_pivot(valor):
-                if valor is None or (isinstance(valor, float) and pd.isna(valor)):
-                    return "sem dados"
-                return formatar_moeda(valor) if eh_monetario else valor
-
-            linhas = []
-            for grupo, subtabela in df.groupby(coluna_grupo_pivot, sort=False):
-                linha = {rotulo_grupo: grupo}
-                total = 0
-                tem_valor = False
-
-                for mes in meses_presentes:
-                    valores_mes = subtabela.loc[
-                        subtabela["mes"] == mes, coluna_valor
-                    ]
-                    valor_mes = valores_mes.iloc[0] if len(valores_mes) else None
-                    linha[MESES_PT.get(mes, mes)] = _formatar_valor_pivot(valor_mes)
-
-                    if valor_mes is not None and not (
-                        isinstance(valor_mes, float) and pd.isna(valor_mes)
-                    ):
-                        total += valor_mes
-                        tem_valor = True
-
-                linha[rotulo_valor] = _formatar_valor_pivot(
-                    round(total, 2) if tem_valor else None
-                )
-                linhas.append(linha)
-
-            return pd.DataFrame(linhas)
-
     colunas_base = [
-        coluna
-        for coluna in (
-            "filial", "rca_nome", "rca", "codigo", "ano", "mes",
-            "periodo", "forma_pagamento", "dia",
-        )
-        if coluna in df.columns
+        coluna for coluna in DIMENSOES_DA_TABELA if coluna in df.columns
     ]
 
     # Se já tem o nome do RCA (rca_nome), não precisa mostrar também o
@@ -647,35 +435,40 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
         colunas_base.remove("ano")
 
     texto_lower = texto_referencia.lower()
-    colunas_metricas = selecionar_colunas_metricas(
-        nome_ferramenta, texto_lower, df.columns
-    )
 
-    # "Faturamento" às vezes aparece no texto só como nome genérico do
-    # indicador (ex: "faturamento em toneladas"), não significando que
-    # o valor em R$ também foi pedido. Só mantém a coluna de R$ junto
-    # com toneladas/peso se "reais" ou "r$" também aparecer no texto.
-    pediu_toneladas = "toneladas" in colunas_metricas or "peso_liquido" in colunas_metricas
-    mencionou_reais = "real" in texto_lower or "r$" in texto_lower
-
-    if pediu_toneladas and not mencionou_reais and "faturamento" in colunas_metricas:
-        colunas_metricas.remove("faturamento")
-
-    # Se nenhuma palavra bateu com nenhuma métrica conhecida, mostra
-    # só as colunas de IDENTIFICAÇÃO (nome, código, filial, período) —
-    # nunca despeja valores/métricas que ninguém pediu. Isso cobre
-    # perguntas tipo "liste os RCAs", que não pedem nenhum número.
-    if not colunas_metricas:
+    if pedidas is not None:
         colunas_metricas = []
+
+        for coluna in pedidas:
+            for nome in (
+                coluna, f"{coluna}_anterior", f"diferenca_{coluna}",
+                f"percentual_{coluna}",
+            ):
+                if nome in df.columns and nome not in colunas_metricas:
+                    colunas_metricas.append(nome)
+    else:
+        colunas_metricas = selecionar_colunas_metricas(
+            nome_ferramenta, texto_lower, df.columns
+        )
+
+        # "Faturamento" às vezes aparece no texto só como nome genérico do
+        # indicador (ex: "faturamento em toneladas"), não significando que
+        # o valor em R$ também foi pedido. Só mantém a coluna de R$ junto
+        # com toneladas/peso se "reais" ou "r$" também aparecer no texto.
+        pediu_toneladas = (
+            "toneladas" in colunas_metricas or "peso_liquido" in colunas_metricas
+        )
+        mencionou_reais = "real" in texto_lower or "r$" in texto_lower
+
+        if pediu_toneladas and not mencionou_reais and "faturamento" in colunas_metricas:
+            colunas_metricas.remove("faturamento")
 
     # Se os dados trazem a variação em relação ao mês/ano anterior,
     # inclui essa coluna automaticamente — é sempre relevante quando
     # presente, não depende de palavra-chave na pergunta.
-    if "percentual_mes_anterior" in df.columns and "percentual_mes_anterior" not in colunas_metricas:
-        colunas_metricas.append("percentual_mes_anterior")
-
-    if "percentual_ano_anterior" in df.columns and "percentual_ano_anterior" not in colunas_metricas:
-        colunas_metricas.append("percentual_ano_anterior")
+    for nome in ("percentual_mes_anterior", "percentual_ano_anterior"):
+        if nome in df.columns and nome not in colunas_metricas:
+            colunas_metricas.append(nome)
 
     df = df[colunas_base + colunas_metricas].copy()
 
@@ -684,12 +477,11 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
 
     for coluna in colunas_metricas:
         formatador = FORMATADORES_POR_TIPO.get(TIPO_POR_COLUNA.get(coluna))
+
         if formatador:
             df[coluna] = df[coluna].apply(formatador)
-
-    # Troca valores vazios (None/NaN) por um texto claro, pra não
-    # aparecer "None" nem um traço confuso de se enxergar na tela.
-    df = df.fillna("sem dados")
+        elif pd.api.types.is_numeric_dtype(df[coluna]):
+            df[coluna] = formatar_coluna_numerica(df[coluna])
 
     def _resolver_rotulo(rotulo):
         if "{" not in rotulo:
@@ -703,9 +495,23 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
         coluna: _resolver_rotulo(rotulo)
         for coluna, rotulo in RENOMEAR_COLUNAS.items()
     }
-    df = df.rename(columns=mapa_renomear)
+    mapa_renomear.update(rotulos)
+    df = df.fillna("sem dados").rename(columns=mapa_renomear)
 
-    return df
+    # Uma métrica só + as variações ao lado: o valor fica com o nome puro
+    # da coluna ("2024 | 2025 | 2025 — Variação"), sem repetir a métrica.
+    metricas_de_valor = [
+        c for c in colunas_metricas
+        if c not in ("percentual_mes_anterior", "percentual_ano_anterior")
+    ]
+
+    return _pivotar(
+        df,
+        [mapa_renomear.get(c, c) for c in colunas_base],
+        [mapa_renomear.get(c, c) for c in colunas_metricas],
+        mapa_renomear.get(metricas_de_valor[0], metricas_de_valor[0])
+        if len(metricas_de_valor) == 1 else None,
+    )
 
 
 def descrever_periodo(dados_tabela, texto_referencia):
@@ -714,11 +520,6 @@ def descrever_periodo(dados_tabela, texto_referencia):
     acima da tabela — primeiro olhando os próprios dados, depois como
     último recurso procurando um ano escrito na pergunta.
     """
-    if dados_tabela and "ano_1" in dados_tabela[0]:
-        ano_1 = dados_tabela[0]["ano_1"]
-        ano_2 = dados_tabela[0]["ano_2"]
-        return f"Comparando: {ano_1} vs {ano_2}"
-
     anos_nos_dados = sorted({
         item.get("ano")
         for item in dados_tabela
@@ -739,7 +540,7 @@ def descrever_periodo(dados_tabela, texto_referencia):
 
 
 COLUNAS_DE_IDENTIFICACAO = {
-    "Filial", "RCA", "Código", "Código RCA", "Ano", "Mês",
+    "Estado", "Filial", "RCA", "Código", "Código RCA", "Ano", "Mês",
     "Período", "Forma de Pagamento", "Dia",
 }
 

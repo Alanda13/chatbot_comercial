@@ -11,13 +11,19 @@ dois.
 def calcular_diferenca_percentual(valor_anterior, valor_atual):
     """
     Diferença e percentual de variação de `valor_anterior` pra
-    `valor_atual`. (None, None) quando falta um dos dois valores, ou o
-    anterior é zero (não dá pra tirar percentual em cima de zero).
+    `valor_atual`. (None, None) quando falta um dos dois valores. Se o
+    anterior é zero, a diferença existe mas o percentual não (não dá
+    pra tirar percentual em cima de zero) — ex: um NPS que foi de 0
+    a 75 subiu 75 pontos.
     """
-    if valor_anterior is None or valor_atual is None or valor_anterior == 0:
+    if valor_anterior is None or valor_atual is None:
         return None, None
 
     diferenca = round(valor_atual - valor_anterior, 2)
+
+    if valor_anterior == 0:
+        return diferenca, None
+
     percentual = round(
         (valor_atual - valor_anterior) / abs(valor_anterior) * 100, 2
     )

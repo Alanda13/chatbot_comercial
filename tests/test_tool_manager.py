@@ -6,7 +6,6 @@ from src.exceptions import FerramentaError
 
 def test_ferramenta_existe():
     assert tool_manager.ferramenta_existe("listar_filiais") is True
-    assert tool_manager.ferramenta_existe("consultar_indicadores_nps") is True
     assert (
         tool_manager.ferramenta_existe("consultar_dados_comerciais") is True
     )
@@ -30,6 +29,8 @@ def test_ferramenta_existe():
         is False
     )
     assert tool_manager.ferramenta_existe("listar_rcas_filial") is False
+    assert tool_manager.ferramenta_existe("consultar_indicadores_nps") is False
+    assert tool_manager.ferramenta_existe("consultar_evolucao_nps") is False
     assert tool_manager.ferramenta_existe("nao_existe") is False
 
 
@@ -38,23 +39,6 @@ def test_consultar_dados_comerciais_exige_indicador_como_obrigatorio():
         "consultar_dados_comerciais"
     )
     assert argumentos == ["indicador"]
-
-
-def test_consultar_indicadores_nps_aceita_agrupar_por_filial():
-    ferramenta = tool_manager.FERRAMENTAS_DISPONIVEIS[
-        "consultar_indicadores_nps"
-    ]
-    assert "agrupar_por_filial" in ferramenta["argumentos_opcionais"]
-    assert "agrupar_por_ano" in ferramenta["argumentos_opcionais"]
-    assert "agrupar_por_mes" in ferramenta["argumentos_opcionais"]
-
-
-def test_consultar_evolucao_nps_registrada():
-    assert tool_manager.ferramenta_existe("consultar_evolucao_nps")
-    argumentos = tool_manager.obter_argumentos_obrigatorios(
-        "consultar_evolucao_nps"
-    )
-    assert argumentos == ["ano_inicial", "ano_final"]
 
 
 def test_verificar_rca_exige_rca_como_obrigatorio_e_nao_exige_periodo():

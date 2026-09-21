@@ -15,6 +15,7 @@ arquivo de queries por indicador — um indicador novo com fonte real
 só precisa de uma entrada em catalogo.py, não de um arquivo de
 queries dedicado.
 """
+import calendar
 import operator
 from datetime import date, timedelta
 
@@ -22,12 +23,19 @@ import pandas as pd
 
 from src import catalogo, motor_metricas
 from src.exceptions import ConsultaInvalida
+from src.filiais import CODIGO_POR_NOME
 from src.variacao_utils import (
     calcular_diferenca_percentual,
     calcular_variacao_sequencial,
 )
 
 _ORDEM_RESOLUCAO_DIMENSOES = ("filial", "rca", "supervisor")
+
+# Dimensões em que os indicadores usam o MESMO valor nas bases (o nome
+# padrão da filial, o mês, o ano) — só por elas dá pra juntar dois
+# indicadores. "rca" fica de fora: faturamento usa o código e a meta de
+# tonelada usa o nome, então a junção sairia vazia sem avisar.
+_DIMENSOES_DE_CRUZAMENTO = ("filial", "estado", "mes", "ano")
 
 _OPERADORES = {
     ">=": operator.ge,
@@ -45,25 +53,34 @@ def validar_consulta(consulta: dict) -> None:
     levantando ConsultaInvalida com uma mensagem clara.
     """
     indicador = consulta.get("indicador")
+    cruzar_com = consulta.get("cruzar_com") or []
+    indicadores = [indicador, *cruzar_com]
 
-    if not catalogo.indicador_existe(indicador):
-        raise ConsultaInvalida(
-            f"O indicador '{indicador}' não existe no catálogo."
-        )
-
-    for dimensao in consulta.get("agrupar_por") or []:
-        if not catalogo.dimensao_permitida(indicador, dimensao):
+    for nome in indicadores:
+        if not catalogo.indicador_existe(nome):
             raise ConsultaInvalida(
-                f"A dimensão '{dimensao}' não é permitida para o "
-                f"indicador '{indicador}'."
+                f"O indicador '{nome}' não existe no catálogo."
             )
 
-    for dimensao in (consulta.get("filtros") or {}):
-        if not catalogo.dimensao_permitida(indicador, dimensao):
-            raise ConsultaInvalida(
-                f"O filtro '{dimensao}' não é permitido para o "
-                f"indicador '{indicador}'."
-            )
+    if cruzar_com:
+        _validar_cruzamento(indicadores, consulta.get("agrupar_por") or [])
+
+    # Cada indicador da consulta precisa aceitar todas as dimensões e
+    # filtros — um filtro que um deles não tem seria ignorado em silêncio.
+    for nome in indicadores:
+        for dimensao in consulta.get("agrupar_por") or []:
+            if not catalogo.dimensao_permitida(nome, dimensao):
+                raise ConsultaInvalida(
+                    f"A dimensão '{dimensao}' não é permitida para o "
+                    f"indicador '{nome}'."
+                )
+
+        for dimensao in (consulta.get("filtros") or {}):
+            if not catalogo.dimensao_permitida(nome, dimensao):
+                raise ConsultaInvalida(
+                    f"O filtro '{dimensao}' não é permitido para o "
+                    f"indicador '{nome}'."
+                )
 
     for campo_periodo in ("periodo", "comparar_com"):
         valor_periodo = consulta.get(campo_periodo)
@@ -73,14 +90,46 @@ def validar_consulta(consulta: dict) -> None:
                 f"O período '{valor_periodo}' não é reconhecido."
             )
 
+    comparar_filtros = consulta.get("comparar_filtros")
+
+    if comparar_filtros:
+        if not isinstance(comparar_filtros, dict):
+            raise ConsultaInvalida("'comparar_filtros' deve ser um dicionário.")
+
+        for dimensao in comparar_filtros:
+            if dimensao in (consulta.get("agrupar_por") or []):
+                raise ConsultaInvalida(
+                    f"A dimensão '{dimensao}' está em 'comparar_filtros' e "
+                    "também em 'agrupar_por' — os dois lados não se casariam. "
+                    "Tire-a do agrupamento."
+                )
+
+            for nome in indicadores:
+                if not catalogo.dimensao_permitida(nome, dimensao):
+                    raise ConsultaInvalida(
+                        f"O filtro '{dimensao}' não é permitido para o "
+                        f"indicador '{nome}'."
+                    )
+
+    colunas = consulta.get("colunas")
+
+    if colunas:
+        invalidas = [
+            coluna for coluna in colunas
+            if coluna not in _campos_da_consulta(indicadores)
+            and coluna != "necessidade_diaria"
+        ]
+
+        if invalidas:
+            raise ConsultaInvalida(
+                f"A(s) coluna(s) {', '.join(map(str, invalidas))} não "
+                "existe(m) para essa consulta."
+            )
+
     ordenar_por = consulta.get("ordenar_por")
 
     if ordenar_por:
-        indicador_def = catalogo.INDICADORES[indicador]
-        campos_base = set(indicador_def.get("campos", {}))
-        campos_validos = campos_base | {
-            derivado["nome"] for derivado in indicador_def.get("derivados", [])
-        }
+        campos_validos = set(_campos_da_consulta(indicadores))
 
         # "comparar_com" cria, em tempo de execução, 3 campos extras
         # por campo base ("{campo}_anterior", "diferenca_{campo}",
@@ -88,7 +137,7 @@ def validar_consulta(consulta: dict) -> None:
         # também, senão "ordenar_por" nunca consegue ordenar pelo
         # crescimento calculado.
         if consulta.get("comparar_com"):
-            for campo in campos_base:
+            for campo in list(campos_validos):
                 campos_validos |= {
                     f"{campo}_anterior",
                     f"diferenca_{campo}",
@@ -102,6 +151,167 @@ def validar_consulta(consulta: dict) -> None:
                 f"O campo '{campo_ordenacao}' não pode ser usado em "
                 f"'ordenar_por' para o indicador '{indicador}'."
             )
+
+
+def _campos_do_indicador(indicador_def: dict) -> list[str]:
+    """Campos somados + campos calculados (derivados) de um indicador."""
+    return [
+        *indicador_def["campos"],
+        *(derivado["nome"] for derivado in indicador_def.get("derivados", [])),
+    ]
+
+
+def _derivados_do_cruzamento(indicadores: list[str]) -> list[dict]:
+    """Derivados que dependem de dois indicadores (catalogo.CRUZAMENTOS)
+    e cujos indicadores estão TODOS na consulta."""
+    return [
+        derivado
+        for cruzamento in catalogo.CRUZAMENTOS
+        if set(cruzamento["indicadores"]) <= set(indicadores)
+        for derivado in cruzamento["derivados"]
+    ]
+
+
+def _campos_da_consulta(indicadores: list[str]) -> list[str]:
+    """Todos os campos que a consulta produz: os de cada indicador mais
+    os derivados do cruzamento."""
+    return [
+        *(
+            campo
+            for nome in indicadores
+            for campo in _campos_do_indicador(catalogo.INDICADORES[nome])
+        ),
+        *(derivado["nome"] for derivado in _derivados_do_cruzamento(indicadores)),
+    ]
+
+
+def _linhas_da_tabela(
+    resultado: list[dict], colunas: list[str], rotulos: dict | None = None
+) -> list[dict]:
+    """
+    As linhas que vão pra tabela da tela: só a identificação (filial, mês,
+    ...), os campos que a pergunta pediu ("colunas") e a comparação deles
+    (anterior/diferença/variação). O resultado completo continua indo pra
+    IA; só a TABELA é enxuta. "_colunas_pedidas" avisa a tela de que a
+    escolha foi feita aqui (veja app.preparar_tabela); "_rotulos", quando
+    há, troca o título de colunas (ex: os nomes das duas filiais).
+    """
+    comparacoes = {
+        nome
+        for coluna in colunas
+        for nome in (
+            f"{coluna}_anterior", f"diferenca_{coluna}", f"percentual_{coluna}"
+        )
+    }
+    fixas = {*catalogo.DIMENSOES_VALIDAS, "rca_nome"}
+
+    def manter(chave: str) -> bool:
+        return (
+            chave in fixas
+            or chave in colunas
+            or chave in comparacoes
+            or chave.endswith(("_mes_anterior", "_ano_anterior"))
+        )
+
+    return [
+        {
+            **{chave: valor for chave, valor in linha.items() if manter(chave)},
+            "_colunas_pedidas": colunas,
+            **({"_rotulos": rotulos} if rotulos else {}),
+        }
+        for linha in resultado
+    ]
+
+
+def _nome_do_lado(indicador_def: dict, filtros: dict, dimensoes: list[str]) -> str:
+    """Nome legível de um lado da comparação entre itens (ex: "TIMON")."""
+    partes = []
+
+    for dimensao in dimensoes:
+        valores = filtros.get(dimensao)
+
+        if not valores:
+            partes.append("GERAL")
+            continue
+
+        resolvedor = indicador_def.get("resolver_dimensao", {}).get(dimensao)
+
+        for valor in valores if isinstance(valores, list) else [valores]:
+            try:
+                nome = (
+                    resolvedor(valor)
+                    if resolvedor and dimensao in ("filial", "estado")
+                    else valor
+                )
+            except ValueError:
+                nome = valor
+
+            partes.append(str(nome))
+
+    return " + ".join(partes)
+
+
+def _normalizar_comparacoes(consulta: dict) -> dict:
+    """
+    "comparar_com" (período contra período) e "comparar_filtros" (item
+    contra item) juntos têm uma leitura só: cada item, período contra
+    período — ex: "Timon e Lourival, 1º semestre de 2025 contra o de
+    2024". Vira uma consulta agrupada por aquela dimensão (com os dois
+    itens nos filtros) e só "comparar_com". Assim um deslize da IA em
+    misturar os dois não vira um erro pro usuário.
+    """
+    comparar_filtros = consulta.get("comparar_filtros")
+
+    if not (comparar_filtros and consulta.get("comparar_com")):
+        return consulta
+
+    filtros = dict(consulta.get("filtros") or {})
+    agrupar_por = list(consulta.get("agrupar_por") or [])
+
+    for dimensao, valores in comparar_filtros.items():
+        if dimensao in filtros:
+            juntos = [
+                *(filtros[dimensao] if isinstance(filtros[dimensao], list) else [filtros[dimensao]]),
+                *(valores if isinstance(valores, list) else [valores]),
+            ]
+            filtros[dimensao] = list(dict.fromkeys(juntos))
+
+        if dimensao not in agrupar_por:
+            agrupar_por.append(dimensao)
+
+    return {
+        **consulta, "filtros": filtros, "agrupar_por": agrupar_por,
+        "comparar_filtros": None,
+    }
+
+
+def _validar_cruzamento(indicadores: list[str], agrupar_por: list[str]) -> None:
+    if len(set(indicadores)) != len(indicadores):
+        raise ConsultaInvalida(
+            "'cruzar_com' não pode repetir o indicador da consulta."
+        )
+
+    for dimensao in agrupar_por:
+        if dimensao not in _DIMENSOES_DE_CRUZAMENTO:
+            raise ConsultaInvalida(
+                "Só é possível cruzar indicadores agrupando por "
+                f"{', '.join(_DIMENSOES_DE_CRUZAMENTO)} — a dimensão "
+                f"'{dimensao}' não tem o mesmo valor em todas as bases."
+            )
+
+    vistos: set[str] = set()
+
+    for nome in indicadores:
+        campos = set(_campos_do_indicador(catalogo.INDICADORES[nome]))
+        repetidos = vistos & campos
+
+        if repetidos:
+            raise ConsultaInvalida(
+                "Os indicadores cruzados têm campos com o mesmo nome "
+                f"({', '.join(sorted(repetidos))}) — não dá pra separar."
+            )
+
+        vistos |= campos
 
 
 def resolver_periodo(
@@ -124,23 +334,31 @@ def resolver_periodo(
                 "periodo='personalizado'."
             )
 
-        if granularidade == "mensal":
-            filtro = {}
-
-            if personalizado.get("meses"):
-                filtro["mes"] = personalizado["meses"]
-
-            if personalizado.get("anos"):
-                filtro["ano"] = personalizado["anos"]
-
-            return filtro
-
-        return {
-            "dia": {
-                "data_inicial": personalizado["data_inicial"],
-                "data_final": personalizado["data_final"],
+        if granularidade == "diaria" and personalizado.get("data_inicial"):
+            return {
+                "dia": {
+                    "data_inicial": personalizado["data_inicial"],
+                    "data_final": personalizado.get(
+                        "data_final", personalizado["data_inicial"]
+                    ),
+                }
             }
-        }
+
+        filtro = {}
+
+        if personalizado.get("meses"):
+            filtro["mes"] = personalizado["meses"]
+
+        if personalizado.get("anos"):
+            filtro["ano"] = personalizado["anos"]
+
+        if not filtro:
+            raise ConsultaInvalida(
+                "periodo_personalizado precisa de 'meses'/'anos' (ou "
+                "'data_inicial'/'data_final' em indicadores por data)."
+            )
+
+        return filtro
 
     if granularidade == "mensal":
         if periodo == "mes_atual":
@@ -206,9 +424,26 @@ def resolver_periodo(
             }
         }
 
+    if periodo == "mes_anterior":
+        mes = hoje.month - 1 or 12
+        ano = hoje.year if hoje.month > 1 else hoje.year - 1
+        return {"dia": _intervalo_do_mes(ano, mes)}
+
+    if periodo == "mesmo_mes_ano_anterior":
+        return {"dia": _intervalo_do_mes(hoje.year - 1, hoje.month)}
+
     raise ConsultaInvalida(
         f"O período '{periodo}' não é suportado para indicadores diários."
     )
+
+
+def _intervalo_do_mes(ano: int, mes: int) -> dict:
+    ultimo_dia = calendar.monthrange(ano, mes)[1]
+
+    return {
+        "data_inicial": date(ano, mes, 1).isoformat(),
+        "data_final": date(ano, mes, ultimo_dia).isoformat(),
+    }
 
 
 def _aplicar_filtros(
@@ -386,6 +621,27 @@ def _particionar_campos_por_dedup(campos: dict) -> list[tuple[tuple | None, dict
     return list(grupos.items())
 
 
+def _campos_de_contagem(dados: pd.DataFrame, campos: dict) -> set[str]:
+    """
+    Campos somados cuja coluna de origem é inteira (ex: quantidade de
+    notas, respostas de NPS) — continuam inteiros no resultado, em vez
+    de virar "534.0".
+    """
+    contagens = set()
+
+    for nome_campo, especificacao in campos.items():
+        coluna, agregacao, _ = _desempacotar_campo(especificacao)
+
+        if agregacao == "sum" and pd.api.types.is_integer_dtype(dados[coluna]):
+            contagens.add(nome_campo)
+
+    return contagens
+
+
+def _numero(valor, inteiro: bool):
+    return int(round(float(valor))) if inteiro else round(float(valor), 2)
+
+
 def _aplicar_agrupamento(
     dados: pd.DataFrame, indicador_def: dict, agrupar_por: list[str]
 ) -> list[dict]:
@@ -398,6 +654,7 @@ def _aplicar_agrupamento(
     """
     campos = indicador_def["campos"]
     grupos_de_campos = _particionar_campos_por_dedup(campos)
+    inteiros = _campos_de_contagem(dados, campos)
 
     if not agrupar_por:
         item = {}
@@ -410,7 +667,7 @@ def _aplicar_agrupamento(
 
             for nome_campo, (coluna, agregacao) in campos_do_grupo.items():
                 valor = getattr(dados_do_grupo[coluna], agregacao)()
-                item[nome_campo] = round(float(valor), 2)
+                item[nome_campo] = _numero(valor, nome_campo in inteiros)
 
         return [item]
 
@@ -477,7 +734,7 @@ def _aplicar_agrupamento(
             item[dimensao] = valor
 
         for nome_campo in campos:
-            item[nome_campo] = round(float(linha[nome_campo]), 2)
+            item[nome_campo] = _numero(linha[nome_campo], nome_campo in inteiros)
 
         resultados.append(item)
 
@@ -492,14 +749,20 @@ def _aplicar_agrupamento(
     return resultados
 
 
-def _consultar_periodo(
+def _filtros_efetivos(
     indicador_def: dict,
     consulta: dict,
     periodo: str | None,
     periodo_personalizado: dict | None,
-    agrupar_por: list[str],
-    rcas_validos: set[int] | None = None,
-) -> tuple[list[dict], set[int] | None]:
+) -> dict:
+    """
+    Os filtros que valem de verdade pra um período: os "filtros" da
+    consulta mais o que o período resolve (ex: "mes_atual" vira
+    mes/ano). Quem precisa saber "qual ano/mês foi consultado" (variação
+    mês a mês, necessidade diária) tem que olhar AQUI, não só pros
+    "filtros" — o período pode ter vindo por "periodo"/
+    "periodo_personalizado".
+    """
     filtros = dict(consulta.get("filtros") or {})
 
     if periodo == "ano_anterior_ao_filtro":
@@ -517,13 +780,37 @@ def _consultar_periodo(
 
         filtros = {**filtros, "ano": [ano - 1 for ano in anos_atuais]}
     elif periodo:
-        filtros.update(
-            resolver_periodo(
-                periodo,
-                periodo_personalizado,
-                indicador_def["granularidade_periodo"],
-            )
+        filtros_do_periodo = resolver_periodo(
+            periodo,
+            periodo_personalizado,
+            indicador_def["granularidade_periodo"],
         )
+
+        # Um período nunca pode ser ignorado em silêncio: se ele gera
+        # um filtro numa dimensão que o indicador não tem, é erro.
+        for dimensao in filtros_do_periodo:
+            if dimensao not in indicador_def["dimensoes"]:
+                raise ConsultaInvalida(
+                    f"O período '{periodo}' não é compatível com esse "
+                    "indicador (ele não filtra por essa dimensão)."
+                )
+
+        filtros.update(filtros_do_periodo)
+
+    return filtros
+
+
+def _consultar_periodo(
+    indicador_def: dict,
+    consulta: dict,
+    periodo: str | None,
+    periodo_personalizado: dict | None,
+    agrupar_por: list[str],
+    rcas_validos: set[int] | None = None,
+) -> tuple[list[dict], set[int] | None]:
+    filtros = _filtros_efetivos(
+        indicador_def, consulta, periodo, periodo_personalizado
+    )
 
     dados, rcas_validos = buscar_dados_brutos(
         indicador_def, agrupar_por, filtros, rcas_validos
@@ -532,25 +819,115 @@ def _consultar_periodo(
     if dados.empty:
         return [], rcas_validos
 
-    return _aplicar_agrupamento(dados, indicador_def, agrupar_por), rcas_validos
+    # As fórmulas derivadas (ex: NPS, % de atingimento) são calculadas
+    # AQUI, em cada período, antes de qualquer comparação — assim
+    # "comparar_com" e a variação mês a mês conseguem comparar
+    # também os campos calculados, não só os somados.
+    resultado = _aplicar_derivados(
+        _aplicar_agrupamento(dados, indicador_def, agrupar_por), indicador_def
+    )
+
+    # Quem pergunta por código de filial precisa ver o código de cada
+    # linha — sem ele a IA adivinha o código pelo nome e erra.
+    if "filial" in agrupar_por:
+        for linha in resultado:
+            linha["codigo_filial"] = CODIGO_POR_NOME.get(linha["filial"])
+
+    return resultado, rcas_validos
+
+
+def _juntar_indicadores(
+    resultado: list[dict],
+    outro: list[dict],
+    agrupar_por: list[str],
+    campos_resultado: list[str],
+    campos_outro: list[str],
+) -> list[dict]:
+    """
+    Junta o resultado de dois indicadores pela chave do agrupamento
+    (filial, mês, ano...). Quem existe só num dos lados fica com os
+    campos do outro vazios (None) — os filtros e a ordenação já ignoram
+    vazios, e a IA avisa que faltou dado.
+    """
+    def chave(linha):
+        return tuple(linha[dimensao] for dimensao in agrupar_por)
+
+    juntas = {
+        chave(linha): {**dict.fromkeys(campos_outro), **linha}
+        for linha in resultado
+    }
+
+    for linha in outro:
+        base = juntas.setdefault(chave(linha), dict.fromkeys(campos_resultado))
+        base.update(linha)
+
+    return [juntas[chave_] for chave_ in sorted(juntas)]
+
+
+def _consultar_indicadores(
+    indicadores: list[str],
+    consulta: dict,
+    periodo: str | None,
+    periodo_personalizado: dict | None,
+    agrupar_por: list[str],
+    rcas_validos: set[int] | None = None,
+) -> tuple[list[dict], set[int] | None]:
+    """
+    Consulta o indicador principal e, se a consulta tiver "cruzar_com",
+    cada indicador extra (mesmos filtros e período, cada um com as suas
+    fórmulas), juntando tudo numa tabela só.
+    """
+    definicoes = [catalogo.INDICADORES[nome] for nome in indicadores]
+
+    resultado, rcas_validos = _consultar_periodo(
+        definicoes[0], consulta, periodo, periodo_personalizado,
+        agrupar_por, rcas_validos,
+    )
+    campos_resultado = _campos_do_indicador(definicoes[0])
+
+    for definicao in definicoes[1:]:
+        outro, _ = _consultar_periodo(
+            definicao, consulta, periodo, periodo_personalizado, agrupar_por
+        )
+        campos_outro = _campos_do_indicador(definicao)
+        resultado = _juntar_indicadores(
+            resultado, outro, agrupar_por, campos_resultado, campos_outro
+        )
+        campos_resultado = campos_resultado + campos_outro
+
+    resultado = _aplicar_derivados(
+        resultado, {"derivados": _derivados_do_cruzamento(indicadores)}
+    )
+
+    return resultado, rcas_validos
 
 
 def _combinar_comparacao(
-    atual: list[dict], anterior: list[dict], agrupar_por, campos
+    atual: list[dict],
+    anterior: list[dict],
+    agrupar_por,
+    campos,
+    incluir_so_do_outro_lado: bool = False,
 ) -> list[dict]:
     """
-    Junta o resultado do período atual com o do período de comparação
-    (mesma chave de agrupamento), calculando diferença e percentual de
-    cada campo numérico — mesma fórmula usada em toda variação
-    "anterior" do projeto (variacao_utils.calcular_diferenca_percentual).
-    """
-    if not agrupar_por:
-        if not atual:
-            return []
+    Junta o resultado atual com o de comparação (mesma chave de
+    agrupamento), calculando diferença e percentual de cada campo
+    numérico — mesma fórmula usada em toda variação "anterior" do
+    projeto (variacao_utils.calcular_diferenca_percentual).
 
-        item_atual = atual[0]
-        item_anterior = anterior[0] if anterior else {}
-        combinado = dict(item_atual)
+    Numa comparação de PERÍODOS, só interessa o que existe no período
+    atual. Numa comparação entre ITENS (`incluir_so_do_outro_lado`), um
+    mês em que só o outro lado tem dado também entra (com o lado vazio
+    como None) e o resultado sai ordenado pela chave.
+    """
+    def chave(item):
+        return tuple(item[dimensao] for dimensao in agrupar_por)
+
+    mapa_anterior = {chave(item): item for item in anterior}
+    resultados = []
+
+    def combinar(item_atual, item_anterior, base):
+        combinado = dict(base)
 
         for campo in campos:
             diferenca, percentual = calcular_diferenca_percentual(
@@ -560,29 +937,24 @@ def _combinar_comparacao(
             combinado[f"diferenca_{campo}"] = diferenca
             combinado[f"percentual_{campo}"] = percentual
 
-        return [combinado]
-
-    mapa_anterior = {
-        tuple(item[dimensao] for dimensao in agrupar_por): item
-        for item in anterior
-    }
-
-    resultados = []
+        return combinado
 
     for item in atual:
-        chave = tuple(item[dimensao] for dimensao in agrupar_por)
-        item_anterior = mapa_anterior.get(chave, {})
-        combinado = dict(item)
+        resultados.append(combinar(item, mapa_anterior.get(chave(item), {}), item))
 
-        for campo in campos:
-            diferenca, percentual = calcular_diferenca_percentual(
-                item_anterior.get(campo), item.get(campo)
-            )
-            combinado[f"{campo}_anterior"] = item_anterior.get(campo)
-            combinado[f"diferenca_{campo}"] = diferenca
-            combinado[f"percentual_{campo}"] = percentual
+    if incluir_so_do_outro_lado:
+        vistas = {chave(item) for item in atual}
 
-        resultados.append(combinado)
+        for chave_outra, item_anterior in mapa_anterior.items():
+            if chave_outra not in vistas:
+                base = {
+                    dimensao: item_anterior[dimensao] for dimensao in agrupar_por
+                }
+                resultados.append(
+                    combinar({}, item_anterior, {**dict.fromkeys(campos), **base})
+                )
+
+        resultados.sort(key=chave)
 
     return resultados
 
@@ -594,12 +966,13 @@ def _aplicar_variacao_temporal(
     filtros: dict,
 ) -> list[dict]:
     """
-    Quando a consulta agrupa por "mes" (com ou sem "ano"), preenche
+    Quando a consulta agrupa por "mes" e/ou "ano", preenche
     automaticamente a variação em relação ao período anterior — mesmo
     padrão já usado por NPS e Metas antes deste motor existir (veja
     variacao_utils.calcular_variacao_sequencial):
-    - "mes" + "ano" agrupados, com 2+ anos filtrados: compara cada mês
-      com o MESMO mês do ano anterior da lista (campos
+    - "ano" agrupado, com 2+ anos filtrados: compara cada ano com o
+      ano anterior da lista — e, se "mes" também estiver agrupado, cada
+      mês com o MESMO mês do ano anterior (campos
       "{campo}_ano_anterior", "diferenca_ano_anterior",
       "percentual_ano_anterior").
     - só "mes" agrupado, com exatamente 1 ano filtrado: compara cada
@@ -613,7 +986,7 @@ def _aplicar_variacao_temporal(
     """
     campo = indicador_def.get("campo_principal")
 
-    if not campo or not resultado or "mes" not in agrupar_por:
+    if not campo or not resultado or not {"mes", "ano"} & set(agrupar_por):
         return resultado
 
     dimensoes_extras = [
@@ -626,24 +999,25 @@ def _aplicar_variacao_temporal(
     if "ano" in agrupar_por and anos and len(anos) >= 2:
         posicao_do_ano = {ano: indice for indice, ano in enumerate(anos)}
 
+        def grupo(item):
+            return (
+                tuple(item[dimensao] for dimensao in dimensoes_extras),
+                item["mes"] if "mes" in agrupar_por else None,
+            )
+
         calcular_variacao_sequencial(
             resultado,
             campo_valor=campo,
             sufixo="ano_anterior",
-            chave_grupo=lambda item: (
-                tuple(item[dimensao] for dimensao in dimensoes_extras),
-                item["mes"],
-            ),
+            chave_grupo=grupo,
             chave_ordem=lambda item: (
-                tuple(item[dimensao] for dimensao in dimensoes_extras),
-                item["mes"],
-                posicao_do_ano.get(item["ano"], len(anos)),
+                grupo(item), posicao_do_ano.get(item["ano"], len(anos)),
             ),
             incluir_valor_anterior_como=f"{campo}_ano_anterior",
         )
         return resultado
 
-    if "ano" not in agrupar_por and anos and len(anos) == 1:
+    if "mes" in agrupar_por and "ano" not in agrupar_por and anos and len(anos) == 1:
         calcular_variacao_sequencial(
             resultado,
             campo_valor=campo,
@@ -791,20 +1165,33 @@ def executar_consulta(consulta: dict) -> dict:
     - filtros_calculados (opcional): lista de
       {"campo": ..., "operador": ">="|"<="|">"|"<"|"=="|"!=", "valor": ...}
       aplicada sobre o resultado já agregado (ex: só quem bateu a meta).
+    - colunas (opcional): campos que a TABELA deve mostrar (só o que a
+      pergunta pediu); o resultado completo segue indo pra IA.
+    - comparar_filtros (opcional): compara DOIS ITENS da mesma dimensão
+      (ex: filial A x filial B): a consulta é rodada de novo com esses
+      filtros no lugar dos originais e o resultado ganha
+      campo_anterior/diferenca_campo/percentual_campo (A menos B). A
+      dimensão comparada não pode estar em agrupar_por.
+    - cruzar_com (opcional): lista de outros indicadores, consultados
+      com os mesmos filtros/período e juntados por filial/estado/mês/ano
+      (ex: NPS cruzado com meta, pra "maior NPS que bateu a meta").
     - ordenar_por (opcional): {"campo": ..., "ordem": "desc"|"asc"
       (padrão "desc"), "limite": N} — ordena o resultado por um campo
       e corta pros N primeiros, de forma exata. Use pra "os N
       maiores/menores" em vez de confiar na IA pra comparar uma lista
       grande de itens "de olho".
     """
+    consulta = _normalizar_comparacoes(consulta)
     validar_consulta(consulta)
 
     indicador = consulta["indicador"]
     indicador_def = catalogo.INDICADORES[indicador]
     agrupar_por = consulta.get("agrupar_por") or []
+    cruzar_com = consulta.get("cruzar_com") or []
+    indicadores = [indicador, *cruzar_com]
 
-    resultado, rcas_validos = _consultar_periodo(
-        indicador_def,
+    resultado, rcas_validos = _consultar_indicadores(
+        indicadores,
         consulta,
         consulta.get("periodo"),
         consulta.get("periodo_personalizado"),
@@ -812,30 +1199,53 @@ def executar_consulta(consulta: dict) -> dict:
     )
 
     comparar_com = consulta.get("comparar_com")
+    comparar_filtros = consulta.get("comparar_filtros")
 
     if comparar_com:
         # Reaproveita o MESMO conjunto de RCAs válidos calculado pro
         # período principal — ver docstring de buscar_dados_brutos.
-        resultado_comparacao, _ = _consultar_periodo(
-            indicador_def, consulta, comparar_com, None, agrupar_por,
+        resultado_comparacao, _ = _consultar_indicadores(
+            indicadores, consulta, comparar_com,
+            consulta.get("comparar_com_personalizado"), agrupar_por,
             rcas_validos=rcas_validos,
         )
+        campos_comparaveis = _campos_da_consulta(indicadores)
         resultado = _combinar_comparacao(
-            resultado,
-            resultado_comparacao,
+            resultado, resultado_comparacao, agrupar_por, campos_comparaveis,
+        )
+    elif comparar_filtros:
+        # Comparação ENTRE ITENS (ex: filial A x filial B, mês a mês): a
+        # mesma consulta rodada de novo com os filtros trocados. O lado A
+        # vira o valor, o lado B o "_anterior".
+        filtros_b = {**(consulta.get("filtros") or {}), **comparar_filtros}
+        resultado_b, _ = _consultar_indicadores(
+            indicadores, {**consulta, "filtros": filtros_b},
+            consulta.get("periodo"), consulta.get("periodo_personalizado"),
             agrupar_por,
-            list(indicador_def["campos"]),
         )
-    else:
+        campos_comparaveis = _campos_da_consulta(indicadores)
+        resultado = _combinar_comparacao(
+            resultado, resultado_b, agrupar_por, campos_comparaveis,
+            incluir_so_do_outro_lado=True,
+        )
+        lado_a = _nome_do_lado(
+            indicador_def, consulta.get("filtros") or {}, list(comparar_filtros)
+        )
+        lado_b = _nome_do_lado(indicador_def, filtros_b, list(comparar_filtros))
+    elif not cruzar_com:
+        # (variação mês a mês e necessidade diária são do indicador
+        # principal — numa consulta cruzada ficariam ambíguas)
+        filtros_efetivos = _filtros_efetivos(
+            indicador_def,
+            consulta,
+            consulta.get("periodo"),
+            consulta.get("periodo_personalizado"),
+        )
         resultado = _aplicar_variacao_temporal(
-            resultado, agrupar_por, indicador_def, consulta.get("filtros") or {}
+            resultado, agrupar_por, indicador_def, filtros_efetivos
         )
-
-    resultado = _aplicar_derivados(resultado, indicador_def)
-
-    if not comparar_com:
         resultado = _aplicar_necessidade_diaria(
-            resultado, agrupar_por, indicador_def, consulta.get("filtros") or {}
+            resultado, agrupar_por, indicador_def, filtros_efetivos
         )
 
     for filtro_calculado in consulta.get("filtros_calculados") or []:
@@ -843,10 +1253,46 @@ def executar_consulta(consulta: dict) -> dict:
 
     resultado = _aplicar_ordenacao(resultado, consulta.get("ordenar_por"))
 
-    return {
+    resposta = {
         "encontrado": bool(resultado),
         "indicador": indicador,
+        "cruzado_com": cruzar_com or None,
         "filtros_aplicados": consulta.get("filtros"),
         "agrupar_por": agrupar_por or None,
         "resultados": resultado,
     }
+
+    if comparar_filtros:
+        resposta["comparacao_entre"] = {
+            "a": lado_a,
+            "b": lado_b,
+            "como_ler": (
+                f"Em cada campo, o valor do campo é de {lado_a}; "
+                f"'{{campo}}_anterior' é de {lado_b}; "
+                f"'diferenca_{{campo}}' = {lado_a} menos {lado_b}; "
+                f"'percentual_{{campo}}' = essa diferença em % sobre {lado_b}."
+            ),
+        }
+
+    # Comparação entre itens sempre tem tabela: sem "colunas", só o campo
+    # principal (as colunas de comparação vêm junto).
+    colunas = consulta.get("colunas") or (
+        [indicador_def["campo_principal"]]
+        if comparar_filtros and indicador_def.get("campo_principal") else None
+    )
+
+    if colunas:
+        rotulos = None
+
+        if comparar_filtros:
+            rotulos = {}
+
+            for coluna in colunas:
+                rotulos[coluna] = lado_a
+                rotulos[f"{coluna}_anterior"] = lado_b
+                rotulos[f"diferenca_{coluna}"] = f"Diferença ({lado_a} − {lado_b})"
+                rotulos[f"percentual_{coluna}"] = f"Diferença % ({lado_a} vs {lado_b})"
+
+        resposta["tabela"] = _linhas_da_tabela(resultado, colunas, rotulos)
+
+    return resposta

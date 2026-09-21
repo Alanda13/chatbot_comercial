@@ -13,7 +13,7 @@ def _dados_faturamento():
     return pd.DataFrame(
         [
             {
-                "FILIAL": "FERRONORTE TIMON",
+                "FILIAL": "TIMON",
                 "COD_RCA": 8403,
                 "MES": 7,
                 "ANO": 2025,
@@ -24,7 +24,7 @@ def _dados_faturamento():
                 "QT_NOTAS": 5,
             },
             {
-                "FILIAL": "FERRONORTE TIMON",
+                "FILIAL": "TIMON",
                 "COD_RCA": 8403,
                 "MES": 7,
                 "ANO": 2024,
@@ -42,7 +42,7 @@ def _dados_meta():
     return pd.DataFrame(
         [
             {
-                "FILIAL": "FERRONORTE TIMON",
+                "FILIAL": "TIMON",
                 "COD_RCA": 8403,
                 "COD_SUPERVISOR": 9,
                 "MES": 7,
@@ -51,7 +51,7 @@ def _dados_meta():
                 "VALOR_META": 100000.0,
             },
             {
-                "FILIAL": "FERRONORTE TIBIRI",
+                "FILIAL": "TIBIRI",
                 "COD_RCA": 9138,
                 "COD_SUPERVISOR": 11,
                 "MES": 7,
@@ -170,7 +170,7 @@ def test_resolver_periodo_nao_suportado_gera_erro():
 
 def test_executar_consulta_indicador_sem_fonte_real_gera_erro():
     with pytest.raises(ConsultaInvalida):
-        orq.executar_consulta({"indicador": "nps"})
+        orq.executar_consulta({"indicador": "desconto"})
 
 
 # --- executar_consulta: faturamento ---
@@ -226,7 +226,7 @@ def test_executar_consulta_faturamento_agrupado_por_filial(monkeypatch):
         }
     )
 
-    assert resultado["resultados"][0]["filial"] == "FERRONORTE TIMON"
+    assert resultado["resultados"][0]["filial"] == "TIMON"
     assert resultado["resultados"][0]["faturamento"] == 100.0
 
 
@@ -336,7 +336,7 @@ def test_executar_consulta_faturamento_agrupado_por_rca_traz_nome(monkeypatch):
     dados = pd.DataFrame(
         [
             {
-                "FILIAL": "FERRONORTE TIMON", "COD_RCA": 8403, "MES": 7,
+                "FILIAL": "TIMON", "COD_RCA": 8403, "MES": 7,
                 "ANO": 2025, "VENDA_LIQ": 100.0, "VENDA_BRUTA": 0,
                 "VALORDESC": 0, "PESOLIQ": 0, "QT_NOTAS": 0,
             },
@@ -355,7 +355,7 @@ def test_executar_consulta_faturamento_agrupado_por_rca_traz_nome(monkeypatch):
     resultado = orq.executar_consulta(
         {
             "indicador": "faturamento",
-            "filtros": {"filial": ["FERRONORTE TIMON"], "mes": [7], "ano": [2025]},
+            "filtros": {"filial": ["TIMON"], "mes": [7], "ano": [2025]},
             "agrupar_por": ["rca"],
         }
     )
@@ -369,12 +369,12 @@ def test_executar_consulta_agrupado_por_rca_filtra_sem_meta_cadastrada(
     dados_faturamento_teste = pd.DataFrame(
         [
             {
-                "FILIAL": "FERRONORTE TIMON", "COD_RCA": 1, "MES": 7,
+                "FILIAL": "TIMON", "COD_RCA": 1, "MES": 7,
                 "ANO": 2025, "VENDA_LIQ": 100.0, "VENDA_BRUTA": 0,
                 "VALORDESC": 0, "PESOLIQ": 0, "QT_NOTAS": 0,
             },
             {
-                "FILIAL": "FERRONORTE TIMON", "COD_RCA": 2, "MES": 7,
+                "FILIAL": "TIMON", "COD_RCA": 2, "MES": 7,
                 "ANO": 2025, "VENDA_LIQ": 50.0, "VENDA_BRUTA": 0,
                 "VALORDESC": 0, "PESOLIQ": 0, "QT_NOTAS": 0,
             },
@@ -384,11 +384,11 @@ def test_executar_consulta_agrupado_por_rca_filtra_sem_meta_cadastrada(
         [
             # RCA 1 tem meta cadastrada; RCA 2 não (conta genérica).
             {
-                "FILIAL": "FERRONORTE TIMON", "COD_RCA": 1, "MES": 7,
+                "FILIAL": "TIMON", "COD_RCA": 1, "MES": 7,
                 "ANO": 2025, "VENDA_LIQ": 100.0, "VALOR_META": 90.0,
             },
             {
-                "FILIAL": "FERRONORTE TIMON", "COD_RCA": 2, "MES": 7,
+                "FILIAL": "TIMON", "COD_RCA": 2, "MES": 7,
                 "ANO": 2025, "VENDA_LIQ": 50.0, "VALOR_META": 0.0,
             },
         ]
@@ -403,7 +403,7 @@ def test_executar_consulta_agrupado_por_rca_filtra_sem_meta_cadastrada(
     resultado = orq.executar_consulta(
         {
             "indicador": "faturamento",
-            "filtros": {"filial": ["FERRONORTE TIMON"], "mes": [7], "ano": [2025]},
+            "filtros": {"filial": ["TIMON"], "mes": [7], "ano": [2025]},
             "agrupar_por": ["rca"],
         }
     )
@@ -418,7 +418,7 @@ def test_executar_consulta_agrupado_por_rca_com_rca_explicito_nao_filtra(
     dados_faturamento_teste = pd.DataFrame(
         [
             {
-                "FILIAL": "FERRONORTE TIMON", "COD_RCA": 2, "MES": 7,
+                "FILIAL": "TIMON", "COD_RCA": 2, "MES": 7,
                 "ANO": 2025, "VENDA_LIQ": 50.0, "VENDA_BRUTA": 0,
                 "VALORDESC": 0, "PESOLIQ": 0, "QT_NOTAS": 0,
             },
@@ -427,7 +427,7 @@ def test_executar_consulta_agrupado_por_rca_com_rca_explicito_nao_filtra(
     dados_meta_teste = pd.DataFrame(
         [
             {
-                "FILIAL": "FERRONORTE TIMON", "COD_RCA": 2, "MES": 7,
+                "FILIAL": "TIMON", "COD_RCA": 2, "MES": 7,
                 "ANO": 2025, "VENDA_LIQ": 50.0, "VALOR_META": 0.0,
             },
         ]
@@ -450,7 +450,7 @@ def test_executar_consulta_agrupado_por_rca_com_rca_explicito_nao_filtra(
         {
             "indicador": "faturamento",
             "filtros": {
-                "filial": ["FERRONORTE TIMON"], "mes": [7], "ano": [2025],
+                "filial": ["TIMON"], "mes": [7], "ano": [2025],
                 "rca": [2],
             },
             "agrupar_por": ["rca"],
@@ -473,10 +473,10 @@ def test_executar_consulta_meta_aplica_derivados(monkeypatch):
 
     por_filial = {item["filial"]: item for item in resultado["resultados"]}
 
-    assert por_filial["FERRONORTE TIMON"]["percentual_atingimento"] == 80.0
-    assert por_filial["FERRONORTE TIMON"]["falta_para_meta"] == 20000.0
-    assert por_filial["FERRONORTE TIBIRI"]["percentual_atingimento"] == 125.0
-    assert por_filial["FERRONORTE TIBIRI"]["falta_para_meta"] == 0.0
+    assert por_filial["TIMON"]["percentual_atingimento"] == 80.0
+    assert por_filial["TIMON"]["falta_para_meta"] == 20000.0
+    assert por_filial["TIBIRI"]["percentual_atingimento"] == 125.0
+    assert por_filial["TIBIRI"]["falta_para_meta"] == 0.0
 
 
 def test_executar_consulta_meta_mes_e_ano_calcula_variacao_ano_anterior(
@@ -485,7 +485,7 @@ def test_executar_consulta_meta_mes_e_ano_calcula_variacao_ano_anterior(
     dados = pd.DataFrame(
         [
             {
-                "FILIAL": "FERRONORTE TIMON",
+                "FILIAL": "TIMON",
                 "COD_RCA": 8403,
                 "COD_SUPERVISOR": 9,
                 "MES": 7,
@@ -494,7 +494,7 @@ def test_executar_consulta_meta_mes_e_ano_calcula_variacao_ano_anterior(
                 "VALOR_META": 100.0,
             },
             {
-                "FILIAL": "FERRONORTE TIMON",
+                "FILIAL": "TIMON",
                 "COD_RCA": 8403,
                 "COD_SUPERVISOR": 9,
                 "MES": 7,
@@ -602,7 +602,7 @@ def test_executar_consulta_meta_inclui_necessidade_diaria_no_mes_atual(
         lambda: pd.DataFrame(
             [
                 {
-                    "FILIAL": "FERRONORTE TIMON",
+                    "FILIAL": "TIMON",
                     "COD_RCA": 8403,
                     "COD_SUPERVISOR": 9,
                     "MES": 8,
@@ -710,7 +710,7 @@ def test_executar_consulta_ordenar_por_ascendente_menor(monkeypatch):
         }
     )
 
-    assert resultado["resultados"][0]["filial"] == "FERRONORTE TIMON"
+    assert resultado["resultados"][0]["filial"] == "TIMON"
 
 
 def test_executar_consulta_meta_agrupada_por_supervisor_vira_inteiro(
@@ -756,4 +756,312 @@ def test_executar_consulta_meta_filtros_calculados_atingimento_minimo(
     )
 
     assert len(resultado["resultados"]) == 1
-    assert resultado["resultados"][0]["filial"] == "FERRONORTE TIBIRI"
+    assert resultado["resultados"][0]["filial"] == "TIBIRI"
+
+
+# --- campos calculados na comparação, períodos por data, NPS ---
+
+
+def _dados_nps():
+    def linha(filial, dia, nota):
+        data = pd.Timestamp(dia)
+        return {
+            "FILIAL": filial, "DATA": data, "MES": data.month, "ANO": data.year,
+            "RESPOSTA": 1, "PROMOTOR": int(nota >= 9),
+            "NEUTRO": int(7 <= nota <= 8), "DETRATOR": int(nota <= 6),
+        }
+
+    return pd.DataFrame(
+        [
+            # TIMON 2024: 1 promotor + 1 detrator -> NPS 0
+            linha("TIMON", "2024-07-10", 10), linha("TIMON", "2024-07-11", 3),
+            # TIMON 2025: 3 promotores + 1 neutro -> NPS 75
+            linha("TIMON", "2025-07-01", 10), linha("TIMON", "2025-07-15", 9),
+            linha("TIMON", "2025-07-31", 10), linha("TIMON", "2025-08-01", 8),
+            # TIBIRI 2024: 1 detrator -> NPS -100; 2025: 1 promotor -> 100
+            linha("TIBIRI", "2024-07-10", 2), linha("TIBIRI", "2025-07-10", 10),
+        ]
+    )
+
+
+def test_nps_calculado_sobre_a_soma_e_intervalo_inclui_o_ultimo_dia(monkeypatch):
+    monkeypatch.setitem(catalogo.INDICADORES["nps"], "carregar", _dados_nps)
+
+    resultado = orq.executar_consulta(
+        {
+            "indicador": "nps",
+            "periodo": "personalizado",
+            "periodo_personalizado": {
+                "data_inicial": "2025-07-01", "data_final": "2025-07-31",
+            },
+        }
+    )
+
+    item = resultado["resultados"][0]
+    # 4 respostas de julho/2025 (a de 31/07 conta; a de 01/08 fica de
+    # fora), todas promotoras.
+    assert item["total_respostas"] == 4.0
+    assert item["total_promotores"] == 4.0
+    assert item["nps"] == 100.0
+    assert item["percentual_promotores"] == 100.0
+
+
+def test_comparar_com_compara_tambem_campos_calculados(monkeypatch):
+    monkeypatch.setitem(catalogo.INDICADORES["nps"], "carregar", _dados_nps)
+
+    resultado = orq.executar_consulta(
+        {
+            "indicador": "nps",
+            "filtros": {"ano": [2025]},
+            "agrupar_por": ["filial"],
+            "comparar_com": "ano_anterior_ao_filtro",
+            "ordenar_por": {"campo": "diferenca_nps", "ordem": "desc"},
+        }
+    )
+
+    por_filial = {item["filial"]: item for item in resultado["resultados"]}
+    # TIBIRI foi de -100 a 100 (+200); TIMON foi de 0 a 100 (+100).
+    assert por_filial["TIBIRI"]["nps_anterior"] == -100.0
+    assert por_filial["TIBIRI"]["diferenca_nps"] == 200.0
+    assert por_filial["TIMON"]["nps_anterior"] == 0.0
+    assert resultado["resultados"][0]["filial"] == "TIBIRI"
+
+
+def test_nps_variacao_mes_a_mes_usa_o_campo_calculado(monkeypatch):
+    monkeypatch.setitem(catalogo.INDICADORES["nps"], "carregar", _dados_nps)
+
+    resultado = orq.executar_consulta(
+        {
+            "indicador": "nps",
+            "filtros": {"ano": [2025]},
+            "agrupar_por": ["mes"],
+        }
+    )
+
+    por_mes = {item["mes"]: item for item in resultado["resultados"]}
+    assert por_mes[7]["nps"] == 100.0
+    assert por_mes[8]["nps"] == 0.0
+    assert por_mes[8]["diferenca_mes_anterior"] == -100.0
+
+
+def test_comparar_com_personalizado_compara_com_qualquer_periodo(monkeypatch):
+    monkeypatch.setitem(
+        catalogo.INDICADORES["faturamento"], "carregar", _dados_faturamento
+    )
+
+    resultado = orq.executar_consulta(
+        {
+            "indicador": "faturamento",
+            "filtros": {"ano": [2025]},
+            "comparar_com": "personalizado",
+            "comparar_com_personalizado": {"anos": [2024]},
+        }
+    )
+
+    item = resultado["resultados"][0]
+    assert item["faturamento_anterior"] == 80.0
+    assert item["percentual_faturamento"] == 25.0
+
+
+def _com_data_fixa(monkeypatch):
+    class DataFalsa(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 1, 15)
+
+    monkeypatch.setattr(orq, "date", DataFalsa)
+
+
+def test_periodos_por_data_aceitam_mes_anterior_e_mesmo_mes_ano_anterior(
+    monkeypatch,
+):
+    _com_data_fixa(monkeypatch)
+
+    assert orq.resolver_periodo("mes_anterior", None, "diaria") == {
+        "dia": {"data_inicial": "2025-12-01", "data_final": "2025-12-31"}
+    }
+    assert orq.resolver_periodo("mesmo_mes_ano_anterior", None, "diaria") == {
+        "dia": {"data_inicial": "2025-01-01", "data_final": "2025-01-31"}
+    }
+
+
+def test_periodo_personalizado_por_data_aceita_meses_e_anos():
+    assert orq.resolver_periodo(
+        "personalizado", {"meses": [7], "anos": [2025]}, "diaria"
+    ) == {"mes": [7], "ano": [2025]}
+
+
+def test_periodo_incompativel_com_o_indicador_nao_e_ignorado_em_silencio():
+    # faturamento_diario não tem dimensão "mes"/"ano".
+    with pytest.raises(ConsultaInvalida):
+        orq.executar_consulta(
+            {
+                "indicador": "faturamento_diario",
+                "periodo": "personalizado",
+                "periodo_personalizado": {"meses": [7], "anos": [2025]},
+            }
+        )
+
+
+def test_contagens_continuam_inteiras_no_resultado(monkeypatch):
+    monkeypatch.setitem(catalogo.INDICADORES["nps"], "carregar", _dados_nps)
+
+    total = orq.executar_consulta({"indicador": "nps"})["resultados"][0]
+    por_filial = orq.executar_consulta(
+        {"indicador": "nps", "agrupar_por": ["filial"]}
+    )["resultados"]
+
+    assert isinstance(total["total_respostas"], int)
+    assert total["total_respostas"] == 8
+    assert all(isinstance(i["total_promotores"], int) for i in por_filial)
+    # Valores que não são contagem (o NPS) seguem com casas decimais.
+    assert isinstance(total["nps"], float)
+
+
+def test_variacao_mes_a_mes_funciona_com_periodo_personalizado(monkeypatch):
+    """
+    Regressão: a variação em relação ao mesmo mês do ano anterior só
+    era calculada quando o(s) ano(s) vinham em "filtros" — se vinham
+    por "periodo_personalizado", ela sumia em silêncio.
+    """
+    monkeypatch.setitem(catalogo.INDICADORES["nps"], "carregar", _dados_nps)
+
+    resultado = orq.executar_consulta(
+        {
+            "indicador": "nps",
+            "agrupar_por": ["mes", "ano"],
+            "periodo": "personalizado",
+            "periodo_personalizado": {"meses": [7], "anos": [2024, 2025]},
+        }
+    )
+
+    por_ano = {item["ano"]: item for item in resultado["resultados"]}
+    # julho/2024: 1 promotor e 2 detratores em 3 respostas (NPS -33,33);
+    # julho/2025: 4 promotores em 4 respostas (NPS 100).
+    assert por_ano[2024]["diferenca_ano_anterior"] is None
+    assert por_ano[2025]["nps_ano_anterior"] == -33.33
+    assert por_ano[2025]["diferenca_ano_anterior"] == 133.33
+
+
+def test_necessidade_diaria_funciona_quando_o_mes_vem_pelo_periodo(monkeypatch):
+    class DataFalsa(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 8, 26)
+
+    monkeypatch.setattr(orq, "date", DataFalsa)
+    monkeypatch.setattr(motor_metricas, "date", DataFalsa)
+    monkeypatch.setitem(
+        catalogo.INDICADORES["meta"],
+        "carregar",
+        lambda: pd.DataFrame(
+            [
+                {
+                    "FILIAL": "TIMON", "COD_RCA": 8403,
+                    "COD_SUPERVISOR": 9, "MES": 8, "ANO": 2026,
+                    "VENDA_LIQ": 80000.0, "VALOR_META": 100000.0,
+                }
+            ]
+        ),
+    )
+
+    resultado = orq.executar_consulta(
+        {"indicador": "meta", "periodo": "mes_atual"}
+    )
+
+    assert resultado["resultados"][0]["necessidade_diaria"] == 5000.0
+
+
+def test_agrupado_por_filial_traz_o_codigo_de_cada_filial(monkeypatch):
+    """Sem o código no resultado, a IA adivinha o código pelo nome e erra."""
+    dados = pd.DataFrame(
+        [
+            {"FILIAL": "GUAJAJARAS", "MES": 7, "ANO": 2025, "VENDA_LIQ": 74.0,
+             "VENDA_BRUTA": 0, "VALORDESC": 0, "PESOLIQ": 0, "QT_NOTAS": 0},
+            {"FILIAL": "AREINHA", "MES": 7, "ANO": 2025, "VENDA_LIQ": 44.0,
+             "VENDA_BRUTA": 0, "VALORDESC": 0, "PESOLIQ": 0, "QT_NOTAS": 0},
+        ]
+    )
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"], "carregar", lambda: dados)
+
+    resultado = orq.executar_consulta(
+        {
+            "indicador": "faturamento",
+            "filtros": {"filial": ["5", "6"], "ano": [2025]},
+            "agrupar_por": ["filial"],
+        }
+    )
+
+    codigos = {item["filial"]: item["codigo_filial"] for item in resultado["resultados"]}
+    assert codigos == {"GUAJAJARAS": 5, "AREINHA": 6}
+
+
+def _faturamento_dois_anos():
+    def linha(filial, ano, valor):
+        return {
+            "FILIAL": filial, "MES": 7, "ANO": ano, "VENDA_LIQ": valor,
+            "VENDA_BRUTA": valor, "VALORDESC": 0.0, "PESOLIQ": 1000.0,
+            "QT_NOTAS": 1,
+        }
+
+    return pd.DataFrame(
+        [
+            linha("TIMON", 2024, 100.0), linha("TIMON", 2025, 150.0),
+            linha("PICOS", 2024, 80.0), linha("PICOS", 2025, 72.0),
+        ]
+    )
+
+
+def test_agrupar_por_filial_e_ano_traz_a_variacao_em_relacao_ao_ano_anterior(monkeypatch):
+    """Antes só havia variação entre anos quando o mês também era agrupado."""
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"], "carregar", _faturamento_dois_anos)
+
+    resultado = orq.executar_consulta(
+        {
+            "indicador": "faturamento",
+            "filtros": {"ano": [2024, 2025]},
+            "agrupar_por": ["filial", "ano"],
+        }
+    )
+
+    por_chave = {(i["filial"], i["ano"]): i for i in resultado["resultados"]}
+
+    assert por_chave[("TIMON", 2024)]["percentual_ano_anterior"] is None
+    assert por_chave[("TIMON", 2025)]["percentual_ano_anterior"] == 50.0
+    assert por_chave[("PICOS", 2025)]["percentual_ano_anterior"] == -10.0
+
+
+def test_colunas_devolve_a_tabela_recortada_e_o_resultado_completo(monkeypatch):
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"], "carregar", _faturamento_dois_anos)
+
+    resultado = orq.executar_consulta(
+        {
+            "indicador": "faturamento",
+            "filtros": {"ano": [2025]},
+            "agrupar_por": ["filial"],
+            "colunas": ["faturamento"],
+        }
+    )
+
+    linha_completa = resultado["resultados"][0]
+    linha_tabela = resultado["tabela"][0]
+
+    assert "venda_bruta" in linha_completa  # a IA recebe tudo
+    assert set(linha_tabela) == {"filial", "faturamento", "_colunas_pedidas"}
+
+
+def test_sem_colunas_nao_devolve_tabela_recortada(monkeypatch):
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"], "carregar", _faturamento_dois_anos)
+
+    resultado = orq.executar_consulta(
+        {"indicador": "faturamento", "filtros": {"ano": [2025]}, "agrupar_por": ["filial"]}
+    )
+
+    assert "tabela" not in resultado
+
+
+def test_colunas_com_campo_inexistente_gera_erro_claro():
+    with pytest.raises(ConsultaInvalida):
+        orq.executar_consulta(
+            {"indicador": "faturamento", "colunas": ["campo_que_nao_existe"]}
+        )

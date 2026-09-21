@@ -115,16 +115,19 @@ def processar_pergunta(
             "mensagem": str(error),
         }
 
-    resultado_limitado = _limitar_resultados(resultado)
+    # "tabela" (linhas já recortadas nas colunas pedidas) é só pra tela;
+    # a IA recebe o resultado completo, sem essa cópia.
+    resultado_limitado = dict(_limitar_resultados(resultado))
+    linhas_tabela = resultado_limitado.pop("tabela", None)
 
     dados_tabela = None
-    lista_resultados = resultado_limitado.get("resultados")
+    lista_resultados = linhas_tabela or resultado_limitado.get("resultados")
 
     if (
         isinstance(lista_resultados, list)
         and len(lista_resultados) >= LIMITE_MINIMO_PARA_TABELA
     ):
-        dados_tabela = lista_resultados
+        dados_tabela = lista_resultados[:LIMITE_RESULTADOS_RESPOSTA]
 
     resposta_final = gerar_resposta_final(
         pergunta=pergunta,

@@ -33,12 +33,11 @@ Cada indicador registra:
 Baseado nos rascunhos do gestor (catalogo.py/motor_metricas.py/
 orquestrador.py, em Downloads\\) e no documento
 prompt_claude_code_migracao.md, adaptados às fontes de dado reais do
-projeto: CSV via pandas para faturamento/faturamento diário/meta.
+projeto: CSV via pandas para faturamento/faturamento diário/meta/meta de
+tonelada, e Azure SQL (carregado inteiro pro pandas) para o NPS.
 
-Indicadores sem "carregar" real (meta_tonelada, nps, desconto,
-inadimplencia, clientes) continuam servidos pelas ferramentas antigas
-enquanto não são conectados ao motor genérico — motivo de cada um
-descrito no comentário logo abaixo de INDICADORES.
+Indicadores sem "carregar" real (desconto, inadimplencia, clientes)
+ainda não têm nenhuma fonte de dado conectada.
 
 Este arquivo é a ÚNICA fonte de verdade sobre o que o motor genérico
 (orquestrador.py) sabe consultar. A IA nunca deve referenciar um
@@ -50,18 +49,18 @@ from src.faturamento_diario_data import (
     carregar_faturamento_8302_cobranca,
     construir_mapa_rca_nome,
     resolver_codigos_rca,
-    resolver_nome_filial_diario,
 )
-from src.faturamento_tools import resolver_nome_filial
+from src.filiais import resolver_estado, resolver_nome_filial
 from src.metas_data import resolver_codigos_supervisor
+from src.nps_data import carregar_avaliacoes_nps
 from src.meta_tonelada_data import (
     carregar_meta_tonelada,
-    resolver_nome_filial_tonelada,
     resolver_nomes_rca_tonelada,
 )
 
 DIMENSOES_VALIDAS = [
-    "filial", "rca", "supervisor", "mes", "ano", "dia", "forma_pagamento",
+    "filial", "estado", "rca", "supervisor", "mes", "ano", "dia",
+    "forma_pagamento",
 ]
 
 PERIODOS_VALIDOS = [
@@ -85,10 +84,12 @@ INDICADORES = {
             "quantidade_notas": ("QT_NOTAS", "sum"),
         },
         "dimensoes": {
-            "filial": "FILIAL", "rca": "COD_RCA", "mes": "MES", "ano": "ANO",
+            "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
+            "mes": "MES", "ano": "ANO",
         },
         "resolver_dimensao": {
             "filial": resolver_nome_filial,
+            "estado": resolver_estado,
             "rca": resolver_codigos_rca,
         },
         "rca_nome_mapa": construir_mapa_rca_nome,
@@ -122,11 +123,12 @@ INDICADORES = {
             "quantidade_notas": ("QT_NOTAS", "sum"),
         },
         "dimensoes": {
-            "filial": "FILIAL", "rca": "COD_RCA", "dia": "DATA",
-            "forma_pagamento": "COBRANCA",
+            "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
+            "dia": "DATA", "forma_pagamento": "COBRANCA",
         },
         "resolver_dimensao": {
-            "filial": resolver_nome_filial_diario,
+            "filial": resolver_nome_filial,
+            "estado": resolver_estado,
             "rca": resolver_codigos_rca,
         },
         "rca_nome_mapa": construir_mapa_rca_nome,
@@ -148,11 +150,12 @@ INDICADORES = {
             "faturamento_realizado": ("VENDA_LIQ", "sum"),
         },
         "dimensoes": {
-            "filial": "FILIAL", "rca": "COD_RCA",
+            "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
             "supervisor": "COD_SUPERVISOR", "mes": "MES", "ano": "ANO",
         },
         "resolver_dimensao": {
             "filial": resolver_nome_filial,
+            "estado": resolver_estado,
             "rca": resolver_codigos_rca,
             "supervisor": resolver_codigos_supervisor,
         },
@@ -199,34 +202,84 @@ INDICADORES = {
             "meta_tonelada_rca": ("Meta Tonelada - RCA", "sum"),
         },
         "dimensoes": {
-            "filial": "FILIAL", "rca": "RCA", "mes": "MES", "ano": "ANO",
+            "filial": "FILIAL", "estado": "ESTADO", "rca": "RCA",
+            "mes": "MES", "ano": "ANO",
         },
         "resolver_dimensao": {
-            "filial": resolver_nome_filial_tonelada,
+            "filial": resolver_nome_filial,
+            "estado": resolver_estado,
             "rca": resolver_nomes_rca_tonelada,
         },
         "unidade": "toneladas",
         "exibicao": {
             "meta_tonelada_filial": {"tipo": "texto", "rotulo": "Meta Tonelada (Filial)", "sempre": True},
-            "meta_tonelada_rca": {"tipo": "texto", "rotulo": "Meta Tonelada (RCA)", "sempre": True},
+            "meta_tonelada_rca": {"tipo": "texto", "rotulo": "Meta Tonelada (RCA)", "palavras": ["rca", "vendedor"]},
         },
     },
 
-    # Abaixo, indicadores registrados no catálogo mas SEM fonte real
-    # conectada ainda ("carregar": None) — continuam sendo atendidos
-    # pelas ferramentas antigas equivalentes, não pelo motor genérico:
-    # - nps: vem de Azure SQL via cursor manual (queries.py), não de
-    #   um DataFrame pandas — precisa de um loader que traga as
-    #   respostas brutas antes de caber no motor genérico.
-    # - desconto, inadimplencia, clientes: ainda sem nenhuma fonte
-    #   real (CSV ou view Oracle/WinThor) conectada no projeto.
     "nps": {
-        "carregar": None,
-        "granularidade_periodo": "mensal",
-        "campos": {"nps": None},
-        "dimensoes": {"filial": None, "mes": None, "ano": None},
+        "carregar": carregar_avaliacoes_nps,
+        # NPS é consultado por datas quaisquer ("mês passado", um
+        # intervalo) — a granularidade "diaria" aceita isso, e as
+        # dimensões mes/ano continuam disponíveis pra agrupar/filtrar.
+        "granularidade_periodo": "diaria",
+        "campos": {
+            "total_respostas": ("RESPOSTA", "sum"),
+            "total_promotores": ("PROMOTOR", "sum"),
+            "total_neutros": ("NEUTRO", "sum"),
+            "total_detratores": ("DETRATOR", "sum"),
+        },
+        "dimensoes": {
+            "filial": "FILIAL", "estado": "ESTADO", "mes": "MES",
+            "ano": "ANO", "dia": "DATA",
+        },
+        "resolver_dimensao": {
+            "filial": resolver_nome_filial,
+            "estado": resolver_estado,
+        },
+        # Os percentuais e o NPS são calculados em cima das SOMAS (nunca
+        # a média de NPS de vários períodos/filiais, que daria errado).
+        "derivados": [
+            {
+                "nome": "percentual_promotores",
+                "formula": "calcular_participacao",
+                "campos": ("total_promotores", "total_respostas"),
+            },
+            {
+                "nome": "percentual_neutros",
+                "formula": "calcular_participacao",
+                "campos": ("total_neutros", "total_respostas"),
+            },
+            {
+                "nome": "percentual_detratores",
+                "formula": "calcular_participacao",
+                "campos": ("total_detratores", "total_respostas"),
+            },
+            {
+                "nome": "nps",
+                "formula": "calcular_nps",
+                "campos": (
+                    "total_promotores", "total_detratores", "total_respostas",
+                ),
+            },
+        ],
+        "campo_principal": "nps",
         "unidade": "pontos",
+        "exibicao": {
+            "nps": {"tipo": "texto", "rotulo": "NPS", "sempre": True},
+            "total_respostas": {"tipo": "texto", "rotulo": "Respostas", "palavras": ["resposta"]},
+            "total_promotores": {"tipo": "texto", "rotulo": "Promotores", "palavras": ["promotor"]},
+            "total_neutros": {"tipo": "texto", "rotulo": "Neutros", "palavras": ["neutro"]},
+            "total_detratores": {"tipo": "texto", "rotulo": "Detratores", "palavras": ["detrator"]},
+            "percentual_promotores": {"tipo": "percentual", "rotulo": "% Promotores", "palavras": ["promotor"]},
+            "percentual_neutros": {"tipo": "percentual", "rotulo": "% Neutros", "palavras": ["neutro"]},
+            "percentual_detratores": {"tipo": "percentual", "rotulo": "% Detratores", "palavras": ["detrator"]},
+        },
     },
+    # Abaixo, indicadores registrados no catálogo mas SEM fonte real
+    # conectada ainda ("carregar": None) — documentam o que o sistema
+    # deveria ter (desconto, inadimplencia, clientes: ainda sem
+    # nenhuma fonte real, CSV ou view Oracle/WinThor, no projeto).
     "desconto": {
         "carregar": None,
         "granularidade_periodo": "mensal",
@@ -263,6 +316,44 @@ INDICADORES = {
         "unidade": "R$ / qtd",
     },
 }
+
+# Fórmulas que dependem de DOIS indicadores ao mesmo tempo (ex: toneladas
+# vendidas ÷ meta de tonelada). O orquestrador calcula esses derivados
+# depois de juntar os indicadores, só quando a consulta cruza todos os
+# indicadores listados em "indicadores" (campo "cruzar_com").
+CRUZAMENTOS = [
+    {
+        "indicadores": ("faturamento", "meta_tonelada"),
+        "derivados": [
+            {
+                "nome": "percentual_atingimento_tonelada",
+                "formula": "calcular_atingimento_meta",
+                "campos": ("toneladas", "meta_tonelada_filial"),
+                "descricao": (
+                    "% de atingimento da meta de tonelada (toneladas "
+                    "vendidas ÷ meta de tonelada da filial) — use pra "
+                    "'quem bateu a meta de tonelada'"
+                ),
+            },
+            {
+                "nome": "falta_para_meta_tonelada",
+                "formula": "calcular_valor_faltante",
+                "campos": ("meta_tonelada_filial", "toneladas"),
+                "descricao": "toneladas que faltam pra bater a meta de tonelada",
+            },
+        ],
+        "exibicao": {
+            "percentual_atingimento_tonelada": {
+                "tipo": "percentual", "rotulo": "Atingimento Tonelada",
+                "sempre": True,
+            },
+            "falta_para_meta_tonelada": {
+                "tipo": "texto", "rotulo": "Falta para Meta (t)",
+                "palavras": ["falta"],
+            },
+        },
+    },
+]
 
 
 def indicador_existe(nome: str) -> bool:
@@ -302,27 +393,72 @@ def gerar_descricao_indicadores() -> str:
     return "\n".join(linhas)
 
 
+def gerar_descricao_cruzamentos() -> str:
+    """
+    Texto com os campos calculados ao cruzar indicadores, pra IA saber
+    que eles existem e com qual "cruzar_com" aparecem.
+    """
+    return "\n".join(
+        f"  * {' + '.join(cruzamento['indicadores'])}: "
+        f"{derivado['nome']} ({derivado['descricao']})"
+        for cruzamento in CRUZAMENTOS
+        for derivado in cruzamento["derivados"]
+    )
+
+
 def gerar_colunas_tabela() -> list[dict]:
     """
     Monta a lista de colunas (coluna, tipo, rótulo, e "sempre" ou
     "palavras") pra exibição em tabela, juntando o "exibicao" de todos
-    os indicadores conectados (carregar preenchido) — usada por
-    app.py pra montar a config de "consultar_dados_comerciais" sem
-    precisar de um bloco escrito à mão por indicador. Cada indicador
+    os indicadores conectados (carregar preenchido) e dos cruzamentos —
+    usada por app.py pra montar a config de "consultar_dados_comerciais"
+    sem precisar de um bloco escrito à mão por indicador. Cada indicador
     novo só precisa preencher "exibicao" aqui; a tabela do app.py
     passa a reconhecer as colunas dele automaticamente.
+
+    Quando a consulta usa "comparar_com", o motor cria, pra cada campo,
+    "{campo}_anterior", "diferenca_{campo}" e "percentual_{campo}" — as
+    três colunas são geradas aqui pra TODO campo (assim qualquer campo
+    pedido em "colunas" tem rótulo e formato). No padrão, só as do campo
+    principal do indicador aparecem sozinhas ("sempre").
     """
+    exibicoes = [
+        cruzamento["exibicao"] for cruzamento in CRUZAMENTOS
+    ] + [
+        definicao.get("exibicao", {})
+        for definicao in INDICADORES.values()
+        if definicao.get("carregar") is not None
+    ]
+    campos_principais = {
+        definicao.get("campo_principal")
+        for definicao in INDICADORES.values()
+        if definicao.get("carregar") is not None
+    }
+
     colunas_por_nome: dict[str, dict] = {}
 
-    for definicao in INDICADORES.values():
-        if definicao.get("carregar") is None:
-            continue
+    for exibicao in exibicoes:
+        for nome_campo, especificacao in exibicao.items():
+            colunas_por_nome.setdefault(
+                nome_campo, {"coluna": nome_campo, **especificacao}
+            )
 
-        for nome_campo, especificacao in definicao.get("exibicao", {}).items():
-            if nome_campo not in colunas_por_nome:
-                colunas_por_nome[nome_campo] = {
-                    "coluna": nome_campo,
-                    **especificacao,
-                }
+    for nome_campo, especificacao in list(colunas_por_nome.items()):
+        tipo = especificacao["tipo"]
+        rotulo = especificacao["rotulo"]
+        tipo_diferenca = {
+            "percentual": "percentual_com_sinal", "texto": "numero_com_sinal",
+        }.get(tipo, tipo)
+        sempre = {"sempre": True} if nome_campo in campos_principais else {}
+
+        for nome, tipo_coluna, rotulo_coluna in (
+            (f"{nome_campo}_anterior", tipo, f"{rotulo} (anterior)"),
+            (f"diferenca_{nome_campo}", tipo_diferenca, f"Diferença {rotulo}"),
+            (f"percentual_{nome_campo}", "percentual_com_sinal", f"Variação {rotulo}"),
+        ):
+            colunas_por_nome.setdefault(
+                nome,
+                {"coluna": nome, "tipo": tipo_coluna, "rotulo": rotulo_coluna, **sempre},
+            )
 
     return list(colunas_por_nome.values())

@@ -10,6 +10,7 @@ export bruto do TARGIT.
 from pathlib import Path
 import pandas as pd
 
+from src.filiais import padronizar_filiais
 from src.filial_utils import (
     encontrar_filial_mais_proxima,
     normalizar_nome_filial,
@@ -41,48 +42,10 @@ def carregar_meta_tonelada() -> pd.DataFrame:
 
     dados.columns = dados.columns.str.strip()
 
-    return dados
+    # o código da filial vem dentro do nome ("...-F09-TIMON" é a filial 9)
+    codigos = dados["FILIAL"].str.extract(r"-F(\d+)-")[0].astype(int)
 
-
-def resolver_nome_filial_tonelada(nome_informado: str) -> str:
-    """
-    Encontra o nome correto da filial na base de meta de tonelada.
-
-    Essa base vem do TARGIT e usa o nome da razão social completa
-    (ex: "COMERCIAL FERRONORTE LTDA-F09-TIMON"), diferente do formato
-    mais limpo usado nas bases de faturamento (rotina 8280/8302, ex:
-    "FERRONORTE TIMON") — por isso tem um resolvedor próprio.
-    """
-    dados = carregar_meta_tonelada()
-
-    filiais = (
-        dados["FILIAL"]
-        .dropna()
-        .astype(str)
-        .str.strip()
-        .unique()
-        .tolist()
-    )
-
-    if not filiais:
-        raise ValueError(
-            "Nenhuma filial foi encontrada na base de meta de tonelada."
-        )
-
-    nome_procurado = normalizar_nome_filial(nome_informado)
-
-    filial_encontrada = encontrar_filial_mais_proxima(
-        nome_procurado,
-        filiais,
-    )
-
-    if filial_encontrada is None:
-        raise ValueError(
-            f"A filial '{nome_informado}' não foi encontrada na base "
-            "de meta de tonelada."
-        )
-
-    return filial_encontrada
+    return padronizar_filiais(dados, codigos)
 
 
 def construir_lista_rca_tonelada() -> list[dict]:

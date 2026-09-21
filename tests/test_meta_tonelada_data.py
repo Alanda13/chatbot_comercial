@@ -27,23 +27,22 @@ def _dados_teste():
     )
 
 
-def test_resolver_nome_filial_tonelada_encontra_por_substring(monkeypatch):
-    monkeypatch.setattr(
-        mtd, "carregar_meta_tonelada", lambda: _dados_teste()
+def test_carregar_meta_tonelada_padroniza_filiais(monkeypatch, tmp_path):
+    """O código da filial vem do nome ("-F09-") e o nome vira o padrão."""
+    arquivo = tmp_path / "meta_tonelada.csv"
+    arquivo.write_text(
+        "FILIAL;ANO;MES;RCA;Meta Tonelada - Filial;Meta Tonelada - RCA\n"
+        "COMERCIAL FERRONORTE LTDA-F09-TIMON;2025;1;A-F09;622.03;175.03\n"
+        "FERROLESTE LTDA-F08-FL JXXIII;2025;1;B-F08;100.0;50.0\n"
+        "COMERCIAL FERRONORTE LTDA-F99-OUTRA;2025;1;C-F99;1.0;1.0\n",
+        encoding="utf-8",
     )
+    monkeypatch.setattr(mtd, "ARQUIVO_META_TONELADA", arquivo)
 
-    assert mtd.resolver_nome_filial_tonelada("Timon") == (
-        "COMERCIAL FERRONORTE LTDA-F09-TIMON"
-    )
+    dados = mtd.carregar_meta_tonelada()
 
-
-def test_resolver_nome_filial_tonelada_nao_encontrada(monkeypatch):
-    monkeypatch.setattr(
-        mtd, "carregar_meta_tonelada", lambda: _dados_teste()
-    )
-
-    with pytest.raises(ValueError):
-        mtd.resolver_nome_filial_tonelada("Filial Que Nao Existe Xyz")
+    assert list(dados["FILIAL"]) == ["TIMON", "JOÃO XXIII"]
+    assert list(dados["ESTADO"]) == ["MA", "PI"]
 
 
 def test_construir_lista_rca_tonelada(monkeypatch):

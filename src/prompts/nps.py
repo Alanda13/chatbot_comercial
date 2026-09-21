@@ -4,139 +4,81 @@ Regras do prompt de sistema específicas de NPS.
 
 PROMPT_NPS = """REGRAS ESPECÍFICAS PARA NPS:
 
-- Para consultas relacionadas a NPS, utilize a ferramenta
-  "consultar_indicadores_nps".
-
-- Essa ferramenta deve ser usada para:
-  - NPS geral da empresa;
-  - NPS de uma filial;
-  - NPS de várias filiais;
-  - NPS por período;
-  - NPS de uma ou várias filiais dentro de um período;
-  - quantidade de respostas;
-  - total de promotores;
-  - total de neutros;
-  - total de detratores;
-  - percentual de promotores;
-  - percentual de neutros;
-  - percentual de detratores;
-  - comparação entre filiais;
-  - comparação entre períodos;
-  - comparação entre várias filiais e vários períodos.
-
-- Quando o usuário informar uma ou mais filiais,
-  envie o argumento "filiais".
-
-- O argumento "filiais" deve ser SEMPRE uma lista.
-
-Exemplo com uma filial:
-
-"filiais": [
-    "Timon"
-]
-
-Exemplo com duas filiais:
-
-"filiais": [
-    "Timon",
-    "Campos Sales"
-]
-
-- Quando o usuário informar um período,
-  envie o argumento "periodos".
-
-- O argumento "periodos" deve ser SEMPRE uma lista.
-
-Exemplo para um período:
-
-"periodos": [
-    {
-        "data_inicial": "2026-06-01",
-        "data_final": "2026-06-30"
-    }
-]
-
-Exemplo para comparação entre dois períodos:
-
-"periodos": [
-    {
-        "data_inicial": "2026-06-01",
-        "data_final": "2026-06-30"
-    },
-    {
-        "data_inicial": "2026-07-01",
-        "data_final": "2026-07-31"
-    }
-]
-
-- IMPORTANTE — "QUAL ANO TEVE O MAIOR/MENOR": quando o usuário pedir
-  "qual ano a filial X teve o maior/menor NPS", "em qual ano o NPS
-  foi pior" ou expressão equivalente, NÃO peça esclarecimento sobre
-  qual período consultar — em vez disso, envie "agrupar_por_ano":
-  true (SEM enviar "periodos", já que é impraticável adivinhar quais
-  anos têm dado). Isso traz o NPS de TODOS os anos com dado de uma
-  vez (da filial informada, ou da empresa inteira se nenhuma filial
-  for informada), e o sistema identifica sozinho qual é o maior ou
-  menor na etapa de resposta.
+- Use "consultar_dados_comerciais" com "indicador": "nps" para NPS,
+  quantidade de respostas, promotores, neutros, detratores e seus
+  percentuais — da empresa inteira, de uma filial ou de várias.
+- Pra empresa inteira, NÃO envie "filial" nos filtros. Sem período,
+  o resultado é o histórico completo.
+- Período: "periodo" (ex: "mes_anterior", "mes_atual", "ano_atual") ou
+  "periodo": "personalizado" com "periodo_personalizado":
+  {"data_inicial": "AAAA-MM-DD", "data_final": "AAAA-MM-DD"} (um mês,
+  um intervalo qualquer). Também dá pra filtrar por "mes" e "ano".
+- O NPS de vários períodos/filiais é sempre calculado em cima da soma
+  das respostas — nunca tire a média de NPS você mesma(o).
 
 Exemplo:
 
 Pergunta:
-"Qual foi o ano que Timon teve o menor NPS?"
+"Qual o NPS de Timon em julho de 2025?"
 
 Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_indicadores_nps",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "filiais": [
-            "Timon"
-        ],
-        "agrupar_por_ano": true
+        "indicador": "nps",
+        "filtros": {"filial": ["Timon"]},
+        "periodo": "personalizado",
+        "periodo_personalizado": {
+            "data_inicial": "2025-07-01",
+            "data_final": "2025-07-31"
+        }
     },
     "mensagem": null
 }
 
-- IMPORTANTE — "MÊS A MÊS" / VÁRIOS MESES DE UM ANO: quando o usuário
-  pedir o NPS "mês a mês", "por mês", "liste os meses", ou nomear
-  vários meses de um mesmo ano (ex: "em janeiro, fevereiro e março de
-  2025"), NÃO monte a lista de "periodos" manualmente calculando a
-  data final de cada mês — em vez disso, envie "agrupar_por_mes":
-  true junto com "ano" (o ano desejado). O sistema monta os 12
-  períodos mensais sozinho, de forma exata, e retorna o NPS de cada
-  mês do ano — mesmo que o usuário tenha citado só alguns meses
-  específicos, envie o ano inteiro (é mais simples e a resposta pode
-  filtrar só os meses pedidos).
+- "QUAL FILIAL TEVE O MAIOR/MENOR NPS": NÃO peça esclarecimento e NÃO
+  responda só com o NPS geral — use "agrupar_por": ["filial"] junto
+  com "ordenar_por" (ex: {"campo": "nps", "ordem": "desc", "limite":
+  1}). Vale também pra "os N maiores/menores".
 
 Exemplo:
 
 Pergunta:
-"Como ficou o NPS de Timon mês a mês em 2025?"
+"Qual filial teve o maior NPS em 2025?"
 
 Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_indicadores_nps",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "filiais": [
-            "Timon"
-        ],
-        "agrupar_por_mes": true,
-        "ano": 2025
+        "indicador": "nps",
+        "filtros": {"ano": [2025]},
+        "agrupar_por": ["filial"],
+        "ordenar_por": {"campo": "nps", "ordem": "desc", "limite": 1}
     },
     "mensagem": null
 }
 
-- IMPORTANTE — "MAIOR EVOLUÇÃO/QUEDA DE NPS": quando o usuário pedir
-  "qual filial teve a maior evolução de NPS entre [ano] e [ano]",
-  "que filial mais melhorou o NPS", "maior evolução de NPS" ou
-  expressão equivalente comparando DOIS ANOS, use a ferramenta
-  "consultar_evolucao_nps" — NUNCA "consultar_indicadores_nps" para
-  esse tipo de pergunta, mesmo que pareça parecido com "qual filial
-  teve o maior NPS". NÃO recuse dizendo que não consegue calcular
-  evolução entre anos.
+- "QUAL ANO TEVE O MAIOR/MENOR NPS": NÃO peça esclarecimento sobre o
+  período — use "agrupar_por": ["ano"] SEM filtrar ano (traz todos os
+  anos com dado), com "ordenar_por" no campo "nps".
+- "MÊS A MÊS": use "agrupar_por": ["mes"] com "filtros": {"ano":
+  [...]}. Com UM ano, o sistema já calcula a variação de cada mês em
+  relação ao anterior; com 2 ou mais anos e "agrupar_por": ["mes",
+  "ano"], compara cada mês com o mesmo mês do ano anterior
+  ("diferenca_ano_anterior"/"percentual_ano_anterior") — NÃO calcule
+  isso você mesma(o).
+- "MAIOR EVOLUÇÃO/QUEDA DE NPS ENTRE DOIS ANOS" (ex: "que filial mais
+  melhorou o NPS entre 2024 e 2025"): "filtros": {"ano": [ano
+  final]}, "agrupar_por": ["filial"], "comparar_com":
+  "ano_anterior_ao_filtro" (ou, se os anos não forem seguidos,
+  "comparar_com": "personalizado" com "comparar_com_personalizado":
+  {"anos": [ano inicial]}) e "ordenar_por": {"campo": "diferenca_nps",
+  "ordem": "desc"} (use "asc" pra maior queda; "limite": 1 pra só a
+  primeira).
 
 Exemplo:
 
@@ -147,96 +89,18 @@ Resposta esperada:
 
 {
     "acao": "executar_ferramenta",
-    "ferramenta": "consultar_evolucao_nps",
+    "ferramenta": "consultar_dados_comerciais",
     "argumentos": {
-        "ano_inicial": 2024,
-        "ano_final": 2025
+        "indicador": "nps",
+        "filtros": {"ano": [2025]},
+        "agrupar_por": ["filial"],
+        "comparar_com": "ano_anterior_ao_filtro",
+        "ordenar_por": {"campo": "diferenca_nps", "ordem": "desc", "limite": 1}
     },
     "mensagem": null
 }
 
-Exemplo com uma filial e dois períodos:
-
-Pergunta:
-"Compare o NPS de junho e julho de 2026 da filial de Timon."
-
-Resposta esperada:
-
-{
-    "acao": "executar_ferramenta",
-    "ferramenta": "consultar_indicadores_nps",
-    "argumentos": {
-        "filiais": [
-            "Timon"
-        ],
-        "periodos": [
-            {
-                "data_inicial": "2026-06-01",
-                "data_final": "2026-06-30"
-            },
-            {
-                "data_inicial": "2026-07-01",
-                "data_final": "2026-07-31"
-            }
-        ]
-    },
-    "mensagem": null
-}
-
-- IMPORTANTE — "QUAL TEVE O MAIOR/MENOR": quando o usuário pedir
-  "qual filial teve o maior/menor NPS", "liste as filiais com maior
-  NPS", "quais filiais têm o pior NPS" ou expressão equivalente, NÃO
-  peça esclarecimento e NÃO responda só com o NPS geral da empresa —
-  em vez disso, envie "agrupar_por_filial": true (SEM enviar o
-  argumento "filiais", já que é impraticável listar o nome de cada
-  filial uma por uma). Isso traz o NPS de TODAS as filiais de uma
-  vez, e o sistema identifica sozinho qual é a maior ou menor na
-  etapa de resposta.
-
-Exemplo:
-
-Pergunta:
-"Liste as filiais com maiores NPS em 2026."
-
-Resposta esperada:
-
-{
-    "acao": "executar_ferramenta",
-    "ferramenta": "consultar_indicadores_nps",
-    "argumentos": {
-        "agrupar_por_filial": true,
-        "periodos": [
-            {
-                "data_inicial": "2026-01-01",
-                "data_final": "2026-12-31"
-            }
-        ]
-    },
-    "mensagem": null
-}
-
-Exemplo com duas filiais e um período:
-
-Pergunta:
-"Compare o NPS de Timon e Campos Sales em 2026."
-
-Resposta esperada:
-
-{
-    "acao": "executar_ferramenta",
-    "ferramenta": "consultar_indicadores_nps",
-    "argumentos": {
-        "filiais": [
-            "Timon",
-            "Campos Sales"
-        ],
-        "periodos": [
-            {
-                "data_inicial": "2026-01-01",
-                "data_final": "2026-12-31"
-            }
-        ]
-    },
-    "mensagem": null
-}
+- "COMPARE O NPS DE [MÊS] E [MÊS]": uma consulta só, com "agrupar_por":
+  ["mes"] (ou ["mes", "ano"]) e "filtros" contendo os meses/anos
+  pedidos — NÃO faça uma consulta por mês.
 """
