@@ -420,6 +420,60 @@ contra período) e `comparar_filtros` juntos — ex: "Timon e Lourival, 1º seme
 (`_normalizar_comparacoes`: junta os itens nos filtros, agrupa pela dimensão e fica
 só com `comparar_com`), em vez de devolver erro ao usuário.
 
+## Investigação: ligar o faturamento no Oracle (WinThor) em vez do CSV
+
+O faturamento (mensal e diário) hoje vem de CSVs exportados das rotinas 8280/
+8302 e param em dezembro de 2025 — sem nenhum dado de 2026, e sem atualizar
+sem exportação manual. A ideia é o motor consultar o Oracle de produção
+direto (schema `FNORTE`, banco `WINT`), sempre só leitura. A conexão já
+existe (`src/connection.py`, credenciais no `.env`) e foi testada: funciona.
+
+**Método:** como não existe o texto das rotinas 8280/8302, a regra foi
+descoberta por comparação — uma consulta no Oracle, comparada campo a campo
+com o CSV (o gabarito, seis anos de dados) até bater exatamente. Feito pra
+Timon, janeiro/2025, vendedor por vendedor, só leitura, nada alterado.
+
+**O que já bate exatamente com o CSV**, usando a tabela de itens de venda
+`PCMOV` (`CODOPER='S'` = venda, `DTCANCEL IS NULL` = não cancelada):
+- Venda bruta = soma de `ROUND(QT * PUNIT, 2)`.
+- Valor de tabela = soma de `ROUND(QT * PTABELA, 2)`.
+- Desconto = venda bruta − valor de tabela.
+- Devoluções (valor e quantidade) = mesma conta, com `CODOPER='ED'`.
+- Quantidade de notas = `COUNT(DISTINCT NUMTRANSVENDA)`; canceladas = notas
+  com `DTCANCEL` preenchido.
+- Conferido também contra o cabeçalho da nota (`PCNFSAID.VLTOTAL`) — mesmas
+  notas, mesmo valor, bate igual.
+
+**O que NÃO bate exatamente, e por quê (achado confirmado, não vou
+resolver): o peso líquido (as toneladas).** A conta óbvia — quantidade
+vendida × peso cadastrado no produto (`PCPRODUT.PESOLIQ`) — bate quase
+perfeito para vendas de **2026** (testei contra a view oficial
+`GFN_MVIEW_VENDAS_ANO_ATUAL`, Timon janeiro/2026: 1.137.231,15 contra
+1.137.231,70 da view — diferença de 0,55 em mais de 1 milhão). Mas pra
+**2025 pra trás** essa mesma conta erra por ~0,8% (Timon jan/2025: 973.189,19
+calculado contra 965.302,49 do CSV). O motivo: o peso cadastrado do produto é
+o de **hoje**, e o WinThor não guarda o peso como ele estava na data da
+venda — quem confirmou isso foi um colega de TI que ajudou a validar a
+`GFN_MVIEW_VENDAS_ANO_ATUAL` ("essa parte não é padronizada"). Não é uma
+tabela que falta achar: a informação exata não existe mais pra vendas
+antigas. **Decisão tomada:** aceitar essa margem (pequena, ~0,8%, só em anos
+anteriores — vendas do ano corrente batem quase exato) quando o Oracle for
+ligado, e avisar isso na resposta da IA quando a pergunta for sobre
+toneladas/peso de anos passados.
+
+**Meta e nomes: também bateram exatos.** `PCMETARCA` guarda a meta **por dia**
+(uma linha por vendedor por dia, campo `VLVENDAPREV`) — a soma do mês, por
+vendedor, bate ao centavo com `VALOR_META` do CSV (conferido nos 5 vendedores
+de Timon jan/2025, diferença 0,00 em todos). Nome do vendedor vem de
+`PCUSUARI.NOME`, nome do supervisor de `PCSUPERV.NOME` (join por
+`CODSUPERVISOR`) — mesmos nomes que o CSV já usa.
+
+**Ainda faltando pra fechar o faturamento** (não investigado ainda): o
+faturamento diário com forma de pagamento (rotina 8302) — provavelmente as
+mesmas tabelas (`PCMOV`/`PCNFSAID`) com granularidade de dia em vez de mês, e
+a forma de pagamento (`PCMOV`/`PCNFSAID` têm `CODCOB`, mesma coluna que a
+`PCPREST` usa pra cobrança).
+
 ## O que continua sem fonte, e por quê
 
 | Indicador | Situação |
