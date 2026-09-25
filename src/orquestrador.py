@@ -505,12 +505,19 @@ def _aplicar_filtros(
 
 def _rcas_com_meta_cadastrada(
     filiais: list[str] | None, anos: list[int] | None
-) -> set[int]:
+) -> set[tuple[str, int]]:
     """
-    "RCA de uma filial" é, no negócio, quem tem meta cadastrada ali —
-    não qualquer código que apareceu na base (contas genéricas/
-    contábeis também vendem, mas não são vendedores de verdade). Essa
-    definição usa sempre a base de metas como referência, mesmo
+    "RCA de uma filial" é, no negócio, quem tem meta cadastrada NAQUELA
+    filial — não qualquer código que apareceu na base (contas genéricas/
+    contábeis também vendem, mas não são vendedores de verdade). A
+    validade é por (filial, código), nunca só pelo código sozinho: o
+    mesmo código pode ser reaproveitado como conta genérica em várias
+    filiais, com meta de verdade só em uma delas (ex: código 1,
+    "COMERCIAL FERRONORTE LTDA-F01-MATRIZ", tem meta em Campos Sales mas
+    aparece com meta zero em Timon, Areinha e outras) — somar a meta do
+    código em todas as filiais da consulta juntas fazia esse código
+    "vazar" como RCA válido pras filiais onde ele não tem meta nenhuma.
+    Essa definição usa sempre a base de metas como referência, mesmo
     quando o indicador consultado é outro (faturamento) — é uma regra
     compartilhada entre indicadores, não específica de um.
     """
@@ -522,9 +529,10 @@ def _rcas_com_meta_cadastrada(
     if anos:
         dados_meta = dados_meta[dados_meta["ANO"].isin(anos)]
 
-    metas_por_rca = dados_meta.groupby("COD_RCA")["VALOR_META"].sum()
+    metas_por_rca = dados_meta.groupby(["FILIAL", "COD_RCA"])["VALOR_META"].sum()
+    validos = metas_por_rca[metas_por_rca > 0].index
 
-    return set(metas_por_rca[metas_por_rca > 0].index.astype(int))
+    return {(filial, int(codigo)) for filial, codigo in validos}
 
 
 def buscar_dados_brutos(
@@ -550,6 +558,8 @@ def buscar_dados_brutos(
     principal), senão um RCA que tem meta este ano mas não tinha no
     ano anterior perderia o histórico do ano anterior inteiro (não só
     a meta, o realizado também), estragando o cálculo de crescimento.
+    Cada item de `rcas_validos` é um par (filial, código) — ver
+    _rcas_com_meta_cadastrada.
     """
     carregar = indicador_def.get("carregar")
 
@@ -579,7 +589,11 @@ def buscar_dados_brutos(
             )
 
         coluna_rca = indicador_def["dimensoes"]["rca"]
-        dados = dados[dados[coluna_rca].isin(rcas_validos)]
+        coluna_filial = indicador_def["dimensoes"]["filial"]
+        chaves = pd.MultiIndex.from_arrays(
+            [dados[coluna_filial], dados[coluna_rca]]
+        )
+        dados = dados[chaves.isin(rcas_validos)]
 
     return dados, rcas_validos
 

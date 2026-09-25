@@ -145,6 +145,23 @@ com filtro de ano, a versão nova fica mais precisa que a antiga: a antiga
 ignorava o ano ao checar "tem meta cadastrada" (somava todos os 6 anos
 disponíveis juntos); a nova considera só o ano perguntado.
 
+**Bug real achido depois, testando "quais RCAs cada filial tem":**
+`_rcas_com_meta_cadastrada` somava a meta de cada código em TODAS as
+filiais da consulta juntas, não por filial. Um código genérico
+reaproveitado em várias filiais como conta contábil (ex: código 1,
+"COMERCIAL FERRONORTE LTDA-F01-MATRIZ", meta de verdade só em Campos
+Sales) "vazava": bastava ter meta em UMA filial da consulta pra contar
+como RCA válido em TODAS as outras, mesmo com meta zero nelas — só
+aparecia quando a pergunta trazia várias filiais de uma vez (uma
+filial só, filtrada, já calculava certo). Corrigido: a validade agora é
+por par (filial, código) — `_rcas_com_meta_cadastrada` agrupa por
+`["FILIAL", "COD_RCA"]`, e o filtro em `buscar_dados_brutos` usa
+`pd.MultiIndex` nas duas colunas. Conferido: o novo resultado bate
+exatamente (nenhum RCA de menos, nenhum a mais) com a lista calculada de
+forma independente, filial por filial, a partir do CSV — e confirmei que,
+em 2025, nenhum código tem meta de verdade em mais de uma filial (então a
+correção só removeu vazamentos, nunca um RCA legítimo).
+
 ## As últimas 2 ferramentas específicas de meta, eliminadas
 
 Você perguntou por que `consultar_crescimento_abaixo_meta` e
@@ -522,7 +539,7 @@ erraram antes — todas corretas agora, incluindo a que tinha errado.
 `tests/test_motor_metricas.py`, `tests/test_orquestrador.py` (motor
 genérico) e `tests/test_app.py` (regressão da tabela) — testes novos, todos
 passando (mais `test_nps_data.py` e `test_variacao_utils.py`). Suíte
-completa: 192 passando, 6 falhando (as do `test_chatbot.py`, ver "o que
+completa: 193 passando, 6 falhando (as do `test_chatbot.py`, ver "o que
 falta" — já existiam antes da migração). As 3 falhas antigas de NPS foram
 consertadas antes de migrar o NPS (testes que ainda usavam `ano=` em vez de
 `anos=[...]`). O total de testes oscila porque os das funções mortas são

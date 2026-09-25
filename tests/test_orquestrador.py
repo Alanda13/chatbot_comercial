@@ -1065,3 +1065,75 @@ def test_colunas_com_campo_inexistente_gera_erro_claro():
         orq.executar_consulta(
             {"indicador": "faturamento", "colunas": ["campo_que_nao_existe"]}
         )
+
+
+def test_rca_com_meta_zero_numa_filial_nao_vaza_de_outra_filial_onde_tem_meta(
+    monkeypatch,
+):
+    """
+    Regressão: código genérico (ex: conta "MATRIZ") reaproveitado em
+    várias filiais, com meta de verdade só numa delas. Antes, quando a
+    consulta trazia várias filiais de uma vez (sem filtro de filial), a
+    validade do código era calculada somando a meta dele em TODAS as
+    filiais juntas — a meta de uma única filial "vazava" e o código
+    aparecia como RCA válido também nas filiais onde não tinha meta
+    nenhuma.
+    """
+    dados_faturamento_teste = pd.DataFrame(
+        [
+            {
+                "FILIAL": "CAMPOS SALES", "COD_RCA": 1, "MES": 7,
+                "ANO": 2025, "VENDA_LIQ": 100.0, "VENDA_BRUTA": 0,
+                "VALORDESC": 0, "PESOLIQ": 0, "QT_NOTAS": 0,
+            },
+            {
+                "FILIAL": "TIMON", "COD_RCA": 1, "MES": 7,
+                "ANO": 2025, "VENDA_LIQ": 30.0, "VENDA_BRUTA": 0,
+                "VALORDESC": 0, "PESOLIQ": 0, "QT_NOTAS": 0,
+            },
+            {
+                "FILIAL": "TIMON", "COD_RCA": 8403, "MES": 7,
+                "ANO": 2025, "VENDA_LIQ": 50.0, "VENDA_BRUTA": 0,
+                "VALORDESC": 0, "PESOLIQ": 0, "QT_NOTAS": 0,
+            },
+        ]
+    )
+    dados_meta_teste = pd.DataFrame(
+        [
+            # código 1 é conta genérica: tem meta em Campos Sales,
+            # mas zero em Timon.
+            {
+                "FILIAL": "CAMPOS SALES", "COD_RCA": 1, "MES": 7,
+                "ANO": 2025, "VENDA_LIQ": 100.0, "VALOR_META": 90.0,
+            },
+            {
+                "FILIAL": "TIMON", "COD_RCA": 1, "MES": 7,
+                "ANO": 2025, "VENDA_LIQ": 30.0, "VALOR_META": 0.0,
+            },
+            {
+                "FILIAL": "TIMON", "COD_RCA": 8403, "MES": 7,
+                "ANO": 2025, "VENDA_LIQ": 50.0, "VALOR_META": 40.0,
+            },
+        ]
+    )
+    monkeypatch.setitem(
+        catalogo.INDICADORES["faturamento"], "carregar", lambda: dados_faturamento_teste
+    )
+    monkeypatch.setitem(
+        catalogo.INDICADORES["meta"], "carregar", lambda: dados_meta_teste
+    )
+
+    resultado = orq.executar_consulta(
+        {
+            "indicador": "faturamento",
+            "filtros": {"mes": [7], "ano": [2025]},
+            "agrupar_por": ["filial", "rca"],
+        }
+    )
+
+    por_filial = {}
+    for item in resultado["resultados"]:
+        por_filial.setdefault(item["filial"], []).append(item["rca"])
+
+    assert por_filial["CAMPOS SALES"] == [1]
+    assert por_filial["TIMON"] == [8403]  # o código 1 NÃO aparece aqui
