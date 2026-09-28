@@ -431,48 +431,142 @@ existe (`src/connection.py`, credenciais no `.env`) e foi testada: funciona.
 **Método:** como não existe o texto das rotinas 8280/8302, a regra foi
 descoberta por comparação — uma consulta no Oracle, comparada campo a campo
 com o CSV (o gabarito, seis anos de dados) até bater exatamente. Feito pra
-Timon, janeiro/2025, vendedor por vendedor, só leitura, nada alterado.
+Timon, janeiro/2025, vendedor por vendedor, e depois validado nos 6 anos
+inteiros e nas 18 lojas de uma vez, só leitura, nada alterado.
 
-**O que já bate exatamente com o CSV**, usando a tabela de itens de venda
-`PCMOV` (`CODOPER='S'` = venda, `DTCANCEL IS NULL` = não cancelada):
-- Venda bruta = soma de `ROUND(QT * PUNIT, 2)`.
-- Valor de tabela = soma de `ROUND(QT * PTABELA, 2)`.
-- Desconto = venda bruta − valor de tabela.
-- Devoluções (valor e quantidade) = mesma conta, com `CODOPER='ED'`.
-- Quantidade de notas = `COUNT(DISTINCT NUMTRANSVENDA)`; canceladas = notas
-  com `DTCANCEL` preenchido.
-- Conferido também contra o cabeçalho da nota (`PCNFSAID.VLTOTAL`) — mesmas
-  notas, mesmo valor, bate igual.
+### Primeira tentativa (`PCMOV`, item de venda) — abandonada
 
-**O que NÃO bate exatamente, e por quê (achado confirmado, não vou
-resolver): o peso líquido (as toneladas).** A conta óbvia — quantidade
-vendida × peso cadastrado no produto (`PCPRODUT.PESOLIQ`) — bate quase
-perfeito para vendas de **2026** (testei contra a view oficial
-`GFN_MVIEW_VENDAS_ANO_ATUAL`, Timon janeiro/2026: 1.137.231,15 contra
-1.137.231,70 da view — diferença de 0,55 em mais de 1 milhão). Mas pra
-**2025 pra trás** essa mesma conta erra por ~0,8% (Timon jan/2025: 973.189,19
-calculado contra 965.302,49 do CSV). O motivo: o peso cadastrado do produto é
-o de **hoje**, e o WinThor não guarda o peso como ele estava na data da
-venda — quem confirmou isso foi um colega de TI que ajudou a validar a
-`GFN_MVIEW_VENDAS_ANO_ATUAL` ("essa parte não é padronizada"). Não é uma
-tabela que falta achar: a informação exata não existe mais pra vendas
-antigas. **Decisão tomada:** aceitar essa margem (pequena, ~0,8%, só em anos
-anteriores — vendas do ano corrente batem quase exato) quando o Oracle for
-ligado, e avisar isso na resposta da IA quando a pergunta for sobre
-toneladas/peso de anos passados.
+`PCMOV` é a tabela de itens de venda (uma linha por produto vendido). Um
+teste de um mês só (Timon, jan/2025) bateu exato: venda bruta = soma de
+`ROUND(QT * PUNIT, 2)` com `CODOPER='S'` e `DTCANCEL IS NULL`; valor de
+tabela = mesma conta com `PTABELA`; devolução = mesma conta com
+`CODOPER='ED'`. Mas validando os **6 anos inteiros**, apareceu uma
+divergência grande (às vezes o dobro do valor certo): a `PCMOV` guarda, pra
+muitas vendas, **duas linhas pra mesma venda** — uma com `ESPECIE='NF'`
+(nota fiscal real, ligando com `PCNFSAID`) e outra com `ESPECIE='CN'`, sem
+número de nota real (`NUMNOTA = NUMTRANSVENDA`, o próprio código interno).
+Não é raro: 25% a 29% de todas as vendas, todo ano, de 2020 a 2025 — e
+crescendo. Consultado o supervisor: **faturamento não deve ser calculado
+pela `PCMOV`** — existe fonte própria pra isso (abaixo).
+
+### Fonte certa: `GFN_MVIEW_VENDAS_HIST` + `GFN_MVIEW_VENDAS_ANO_ATUAL`
+
+Views (85 colunas) já preparadas pra vendas, com `ESPECIE` direto (sem
+precisar de join) — `HIST` cobre 2009 até 31/12/2025, `ANO_ATUAL` cobre o
+ano corrente (2026 em diante); juntas, cobrem o período todo. Validado nos 6
+anos, nas 18 lojas, filial+ano+mês+vendedor: **venda bruta e valor de
+tabela bateram exatos (diferença 0,00) em 10.425 das 10.435 combinações** —
+sem precisar filtrar `ESPECIE`, a view já resolve a duplicação da `PCMOV`
+sozinha. As 10 linhas com diferença são pequenas (maior: R$ 67 mil, numa
+filial que fatura dezenas de milhões); as ~590 linhas "só no CSV" são RCA
+com venda R$ 0,00 (a view não cria linha pra quem não vendeu nada — não é
+perda de dado).
+
+**Devolução (`GFN_MVIEW_DEV_HIST`/`GFN_MVIEW_DEV_ANO_ATUAL`, 103 colunas,
+campo `VLDEVOLUCAO`, data `DTENT`):** achado um problema parecido, mas bem
+menor. Em 53 de 5.485 combinações o valor não bateu — o pior caso
+(Imperatriz, vendedor 8436, jul/2025) deu quase o dobro (R$ 444.891,77
+contra R$ 225.045,63 do CSV). Investigando: duas devoluções diferentes,
+ligadas a **duas notas de venda diferentes e reais** (não é o mesmo padrão
+"nota falsa" da `PCMOV`), com os mesmos produtos/quantidades/valores — indício
+de duplicação, causa não confirmada. **Medido o impacto real:** a
+diferença total (R$ 1,54 milhão) é 0,031% da venda bruta total (R$ 4,89
+bilhões) e 2,37% do total de devolução (que já é só 1,33% da venda bruta).
+**Decisão tomada:** aceitar essa margem pequena (mesmo espírito da decisão
+sobre o peso, abaixo), sem investigar mais.
+
+### Peso líquido (toneladas): dois problemas achados, um corrigido
+
+**1. Bug real no próprio WinThor, corrigido (`scripts/atualizar_faturamento_oracle.py`,
+`_PESO_POR_LINHA`):** a princípio a validação de peso deu erro grande (3,17%
+no ano de 2025 inteiro, com casos extremos de até +1.387% num vendedor/mês)
+— bem maior que uma simples margem de arredondamento. Investigando o pior
+caso (uma chapa de aço grossa, filial 7): o produto tem `PESOLIQ` cadastrado
+de 456,5 kg (o peso de **uma chapa inteira**), mas a venda foi de 456,51
+**quilos** (não "456,51 chapas") — como a unidade do produto é `KG`, a
+quantidade vendida (`QTVENDA`) já É o peso. A conta padrão
+(`QTVENDA × PESOLIQ`) multiplica o peso por ele mesmo, dando 208 toneladas
+pra uma venda de R$ 3.807. Confirmado que **não é erro da view nem meu**: o
+próprio cabeçalho oficial da nota (`PCNFSAID.TOTPESOLIQ`) já tem esse mesmo
+valor inflado — o bug existe no WinThor. **Correção:** quando
+`UNIDADE = 'KG'`, o peso da linha é a própria `QTVENDA`; só multiplica por
+`PESOLIQ` quando o produto é vendido por peça. Isso derrubou o erro de
+3,17% pra **1,18%** no ano de 2025 (18 lojas) — só 13 de 367 vendedores
+ficaram com diferença acima de 20% no ano, contra a maioria antes.
+
+**2. O que sobra (~1,18%), não vou resolver — margem pequena aceita:** a
+conta `QTVENDA × PESOLIQ` (produtos vendidos por peça) bate quase perfeito
+pra vendas de **2026** (testado contra `GFN_MVIEW_VENDAS_ANO_ATUAL`, Timon
+jan/2026: 1.137.231,15 contra 1.137.231,70 da view — diferença de 0,55 em
+mais de 1 milhão), mas erra um pouco pra **2025 pra trás**, porque o peso
+cadastrado do produto é o de **hoje**, e o WinThor não guarda o peso como
+ele estava na data da venda (confirmado por um colega de TI: "essa parte
+não é padronizada") — não é uma tabela que falta achar, a informação exata
+não existe mais. **Decisão tomada:** aceitar essa margem (pequena, só em
+anos anteriores — vendas do ano corrente batem quase exato), e avisar isso
+na resposta da IA quando a pergunta for sobre toneladas/peso de anos
+passados.
 
 **Meta e nomes: também bateram exatos.** `PCMETARCA` guarda a meta **por dia**
 (uma linha por vendedor por dia, campo `VLVENDAPREV`) — a soma do mês, por
 vendedor, bate ao centavo com `VALOR_META` do CSV (conferido nos 5 vendedores
 de Timon jan/2025, diferença 0,00 em todos). Nome do vendedor vem de
 `PCUSUARI.NOME`, nome do supervisor de `PCSUPERV.NOME` (join por
-`CODSUPERVISOR`) — mesmos nomes que o CSV já usa.
+`CODSUPERVISOR`) — mesmos nomes que o CSV já usa. As duas
+`GFN_MVIEW_VENDAS_*` já trazem `CODSUPERVISOR`/`SUPERV` (nome) direto,
+sem precisar desse join, se for usar a mesma consulta pra tudo.
+
+### Como a troca será feita: script agendado, não consulta ao vivo
+
+Decisão do supervisor (mesmo padrão de código que ele já usa em outros
+projetos, com `oracledb` + `get_connection` de `src/connection.py`): em vez
+do motor genérico consultar o Oracle a cada pergunta (o plano original, com
+cache curto tipo NPS), um **script separado** consulta o Oracle
+periodicamente e **regrava o CSV** — o motor continua lendo CSV exatamente
+como hoje, sem nenhuma mudança nele. Só o *que escreve* o CSV muda: de
+exportação manual pra automática. Menos risco (a parte "quente" do sistema
+nem muda) e menos carga no banco de produção (consultado só 1x por período,
+não por pergunta). Falta decidir: frequência de atualização (diária?) e
+como disparar o script (Agendador de Tarefas do Windows?) — combinado de
+deixar pra depois.
+
+**Script escrito e validado:** `scripts/atualizar_faturamento_oracle.py`.
+Consulta vendas (`GFN_MVIEW_VENDAS_HIST`/`_ANO_ATUAL`), devolução
+(`GFN_MVIEW_DEV_HIST`/`_ANO_ATUAL`) e meta (`PCMETARCA`) — três consultas
+simples, já agregadas no banco — e junta em Python por
+filial/ano/mês/vendedor; grava no mesmo formato (`;`, latin1, decimal `,`)
+que `carregar_faturamento_8280` já lê, com só as colunas de fato usadas em
+`src/*.py` (nenhuma coluna morta tipo `PERC_META`/`VALOR_CANC`/etc., que o
+CSV manual tem mas nada no código lê). Roda com `python -m
+scripts.atualizar_faturamento_oracle [--ano-inicio AAAA] [--saida
+caminho.csv]`; sem argumentos, sobrescreve o CSV atual — testado sempre
+com `--saida` apontando pra um arquivo separado, nunca sobrescrevendo o
+CSV real, até aqui.
+
+**Validado nos 6 anos inteiros (2020-2025), 18 lojas** (não só 2025):
+venda bruta e meta batem exatos em todo ano (0,000%, exceto 2025 com
+0,010%); venda líquida com diferença insignificante (-0,00% a -0,06%, a
+margem da devolução já aceita); peso entre +0,71% e +1,15% em todo ano —
+sem nenhum ano fugindo do padrão, confirmando que a correção do peso
+(abaixo) generaliza bem, não é um acerto isolado de 2025.
+
+**Dois bugs reais achados e corrigidos escrevendo esse script** (nenhum
+tinha aparecido nos testes manuais anteriores, mais restritos):
+1. `SELECT *` dentro de um `UNION ALL` de duas views — o Oracle junta as
+   colunas por posição, não por nome; corrigido nomeando as colunas
+   explicitamente dos dois lados do `UNION ALL` (`_COLUNAS_VENDA`,
+   `_COLUNAS_DEV`).
+2. `TO_DATE(:ano, 'YYYY')` **não** vira 1º de janeiro daquele ano — o
+   Oracle completa o mês/dia que faltam no formato com o mês/dia de
+   **hoje** (não com 01/01), então o filtro "desde 2025" virou "desde
+   setembro de 2025" e apagou 8 meses em silêncio, sem erro nenhum.
+   Corrigido passando uma data real do Python (`date(ano, 1, 1)`) como
+   parâmetro, em vez de montar a data dentro do SQL.
 
 **Ainda faltando pra fechar o faturamento** (não investigado ainda): o
-faturamento diário com forma de pagamento (rotina 8302) — provavelmente as
-mesmas tabelas (`PCMOV`/`PCNFSAID`) com granularidade de dia em vez de mês, e
-a forma de pagamento (`PCMOV`/`PCNFSAID` têm `CODCOB`, mesma coluna que a
-`PCPREST` usa pra cobrança).
+faturamento diário com forma de pagamento (rotina 8302) — provavelmente a
+mesma dupla `GFN_MVIEW_VENDAS_HIST`/`_ANO_ATUAL` com granularidade de dia em
+vez de mês, e a forma de pagamento (`CODCOB`, presente nessas views).
 
 ## O que continua sem fonte, e por quê
 
