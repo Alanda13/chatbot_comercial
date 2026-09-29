@@ -16,7 +16,7 @@ RAIZ_PROJETO = Path(__file__).resolve().parent.parent
 ARQUIVO_8302 = (
     RAIZ_PROJETO
     / "dados"
-    / "faturamento_diario.csv"
+    / "faturamento_por_rca_filial_dia_2020_a_2025.csv"
 )
 
 ARQUIVO_8302_COBRANCA = (
@@ -133,6 +133,9 @@ def resolver_codigos_rca(
     filiais: list[str] | None = None,
 ) -> list[int]:
     """
+    Resolve os codigos numericos de rca a partir do que o usuario informou  -
+    o proprio codigo oi nome do  vendedor de ia sem semopre
+    sabe o codigo, ent precisa poder buscvar por nome.
     Resolve o(s) código(s) numérico(s) de RCA a partir do que o
     usuário informou — o próprio código, ou o nome do vendedor (a IA
     nem sempre sabe o código, então precisa poder buscar por nome).
