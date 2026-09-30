@@ -1,7 +1,7 @@
 from src import faturamento_data as fd
 
 
-def test_carregar_faturamento_8280_padroniza_filiais(monkeypatch, tmp_path):
+def test_carregar_faturamento_mensal_padroniza_filiais(monkeypatch, tmp_path):
     """
     Só as lojas da planilha ficam, com o nome padrão e o estado; o código
     30 (ARAGUAINAV) é somado ao 24 (ARAGUAÍNA).
@@ -15,9 +15,9 @@ def test_carregar_faturamento_8280_padroniza_filiais(monkeypatch, tmp_path):
         "22;FN ATACADO;1904;999,0\n",
         encoding="latin1",
     )
-    monkeypatch.setattr(fd, "ARQUIVO_8280", arquivo)
+    monkeypatch.setattr(fd, "ARQUIVO_FATURAMENTO_MENSAL", arquivo)
 
-    dados = fd.carregar_faturamento_8280()
+    dados = fd.carregar_faturamento_mensal()
 
     assert list(dados["FILIAL"]) == ["TIMON", "ARAGUAÍNA", "ARAGUAÍNA"]
     assert list(dados["CODFILIAL"]) == [9, 24, 24]

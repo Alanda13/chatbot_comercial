@@ -43,10 +43,10 @@ Este arquivo é a ÚNICA fonte de verdade sobre o que o motor genérico
 (orquestrador.py) sabe consultar. A IA nunca deve referenciar um
 indicador ou dimensão que não esteja aqui.
 """
-from src.faturamento_data import carregar_faturamento_8280
+from src.faturamento_data import carregar_faturamento_mensal
 from src.faturamento_diario_data import (
-    carregar_faturamento_8302,
-    carregar_faturamento_8302_cobranca,
+    carregar_faturamento_diario,
+    carregar_faturamento_diario_forma_pagamento,
     construir_mapa_rca_nome,
     resolver_codigos_rca,
 )
@@ -74,7 +74,7 @@ PERIODOS_VALIDOS = [
 
 INDICADORES = {
     "faturamento": {
-        "carregar": carregar_faturamento_8280,
+        "carregar": carregar_faturamento_mensal,
         "granularidade_periodo": "mensal",
         "campos": {
             "faturamento": ("VENDA_LIQ", "sum"),
@@ -113,8 +113,8 @@ INDICADORES = {
         },
     },
     "faturamento_diario": {
-        "carregar": carregar_faturamento_8302,
-        "carregar_forma_pagamento": carregar_faturamento_8302_cobranca,
+        "carregar": carregar_faturamento_diario,
+        "carregar_forma_pagamento": carregar_faturamento_diario_forma_pagamento,
         "granularidade_periodo": "diaria",
         "campos": {
             "faturamento": ("VENDA_LIQ", "sum"),
@@ -143,7 +143,7 @@ INDICADORES = {
         },
     },
     "meta": {
-        "carregar": carregar_faturamento_8280,
+        "carregar": carregar_faturamento_mensal,
         "granularidade_periodo": "mensal",
         "campos": {
             "valor_meta": ("VALOR_META", "sum"),

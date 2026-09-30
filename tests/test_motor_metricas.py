@@ -79,23 +79,6 @@ def test_calcular_participacao_sem_total_retorna_none():
     assert mm.calcular_participacao(25000, 0) is None
 
 
-def test_montar_ranking_ordem_decrescente_por_padrao():
-    ranking = mm.montar_ranking({"Loja A": 850000, "Loja B": 920000})
-
-    assert ranking == [
-        {"posicao": 1, "nome": "Loja B", "valor": 920000},
-        {"posicao": 2, "nome": "Loja A", "valor": 850000},
-    ]
-
-
-def test_montar_ranking_ordem_crescente():
-    ranking = mm.montar_ranking(
-        {"Loja A": 850000, "Loja B": 920000}, ordem="asc"
-    )
-
-    assert ranking[0]["nome"] == "Loja A"
-
-
 def test_formulas_registradas_batem_com_as_funcoes():
     assert mm.FORMULAS["calcular_atingimento_meta"] is mm.calcular_atingimento_meta
     assert mm.FORMULAS["calcular_desconto"] is mm.calcular_desconto

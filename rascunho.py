@@ -3,6 +3,9 @@ Carregamento e preparação dos dados de Faturamento por dia,
 exportados da rotina 8302 (Faturamento por RCA/Filial/Dia) do Winthor.
 """
 from pathlib import Path
+from pathlib import Path
+import pandas as pd
+from pathlib import Path
 import pandas as pd
 
 from src.filiais import padronizar_filiais
@@ -76,6 +79,15 @@ def carregar_faturamento_8302_cobranca() -> pd.DataFrame:
     """
     return _carregar_csv_8302(ARQUIVO_8302_COBRANCA)
 
+def carregar_faturamento_8302_cobranca() -> pd.DataFrame:
+    """
+    Carrega um export separado da rotina 8302 (2024-2025), usado
+    SOMENTE para agrupoamento por forma de pagamento - o arquivo
+    principal (ARQUIVO_8302) tem a coluna COBRANCA sempre vazia, 
+    entao essa consulta espcifica usa essa base alternativa, mais
+    recente e com forma de pagamento preenchida. cobre um periodo 
+    menor que o arquivo principal, entao nao substitui ele nas
+    outras consultas."""
 
 def construir_mapa_rca_nome() -> dict[int, str]:
     """
@@ -162,7 +174,14 @@ def resolver_codigos_rca(
     e só descobrir lá na frente, quando a consulta não retornar
     nenhum dado, o que faria parecer um problema de período.
     """
+    """
+    Quando o codigo ja vem numerico (informamdo pelo usuareio, 
+    ou ja resolvido.)"""
     rcas = construir_lista_rca()
+
+    rcas = construir_lista_rca()
+
+    texto = str(nome_ou_codigo).strip()
 
     texto = str(nome_ou_codigo).strip()
 
@@ -171,6 +190,10 @@ def resolver_codigos_rca(
             nome_ou_codigo
             if isinstance(nome_ou_codigo, int)
             else int(texto)
+        )
+    if isinstance(nome_ou_codigo, int) or texto.isdigit():
+        codigo = (
+
         )
 
         if not any(rca["codigo"] == codigo for rca in rcas):

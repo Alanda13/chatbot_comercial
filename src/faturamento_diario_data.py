@@ -1,29 +1,283 @@
 """
-Carregamento e preparação dos dados de Faturamento por dia,
-exportados da rotina 8302 (Faturamento por RCA/Filial/Dia) do Winthor.
+Carregamento e preparação dos dados de Faturamento por dia.
+
+O CSV (`faturamento_diario.csv`) funciona como um cache em disco: se
+tiver menos de 1 hora, é só lido; se estiver mais velho (ou não
+existir ainda), o Oracle é consultado de novo e o CSV é reescrito antes
+de ler — mesmo mecanismo do faturamento mensal (`faturamento_data.py`).
+
+Fonte dos dados (Oracle, schema FNORTE, só leitura — ver
+docs/arquitetura_atual.md):
+- Venda (bruta, desconto, nº de notas), nome do RCA: `GFN_MVIEW_VENDAS_ATUAL`.
+- Devolução: `VIEW_DEVOL_RESUMO_FATURAMENTO`.
+
+Forma de pagamento (`faturamento_diario_forma_pagamento.csv`, usado só
+quando a pergunta filtra/agrupa por forma de pagamento — ver
+`carregar_faturamento_diario_forma_pagamento`): mesmas duas fontes acima, cada
+uma já tem a coluna `CODCOB` — agrupar por ela também (com `PCCOB` pro
+nome) reproduz exatamente o valor por forma de pagamento, incluindo a
+devolução (validado nos 2 anos que o CSV antigo cobria, 0 de
+diferença).
 """
+import time
+from datetime import date
 from pathlib import Path
+
 import pandas as pd
 
+from src.connection import get_connection
 from src.filiais import padronizar_filiais
 from src.filial_utils import (
     encontrar_filial_mais_proxima,
     normalizar_nome_filial,
 )
+from src.logger import obter_logger
+
+logger = obter_logger(__name__)
 
 RAIZ_PROJETO = Path(__file__).resolve().parent.parent
 
-ARQUIVO_8302 = (
+ARQUIVO_FATURAMENTO_DIARIO = (
     RAIZ_PROJETO
     / "dados"
     / "faturamento_diario.csv"
 )
 
-ARQUIVO_8302_COBRANCA = (
+ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO = (
     RAIZ_PROJETO
     / "dados"
-    / "rotina 8302 2024 a 2025 cobranca.csv"
+    / "faturamento_diario_forma_pagamento.csv"
 )
+
+DESDE_PADRAO = date(2020, 1, 1)
+_SEGUNDOS_CACHE = 3600
+_TENTATIVAS_ORACLE = 3
+_SEGUNDOS_ENTRE_TENTATIVAS = 5
+
+# Colunas que src/faturamento_diario_data.py e src/catalogo.py de fato
+# leem desse arquivo — nada além disso precisa ser gerado.
+COLUNAS_SAIDA = [
+    "CODFILIAL", "DATA", "COD_RCA", "NOME_RCA",
+    "VENDA_BRUTA", "VALORDESC", "VENDA_LIQ", "QT_NOTAS",
+]
+
+COLUNAS_SAIDA_COBRANCA = [
+    "CODFILIAL", "DATA", "COD_RCA", "COBRANCA",
+    "VENDA_BRUTA", "VALORDESC", "VENDA_LIQ", "QT_NOTAS",
+]
+
+
+def _consultar_vendas(cursor, desde: date) -> pd.DataFrame:
+    cursor.execute(
+        """
+        SELECT CODFILIAL, TRUNC(DTMOV) DATA, CODUSUR,
+               MAX(NOME) NOME_RCA,
+               COUNT(DISTINCT NUMTRANSVENDA) QT_NOTAS,
+               ROUND(SUM(VLVENDA), 2) VENDA_BRUTA,
+               ROUND(SUM(VLDESCONTO), 2) VALORDESC
+        FROM GFN_MVIEW_VENDAS_ATUAL
+        WHERE DTMOV >= :desde
+        GROUP BY CODFILIAL, TRUNC(DTMOV), CODUSUR
+        """,
+        desde=desde,
+    )
+    colunas = [d[0] for d in cursor.description]
+    return pd.DataFrame(cursor.fetchall(), columns=colunas)
+
+
+def _consultar_devolucao(cursor, desde: date) -> pd.DataFrame:
+    cursor.execute(
+        """
+        SELECT CODFILIAL, TRUNC(DTENT) DATA, CODUSUR,
+               ROUND(SUM(VLDEVOLUCAO), 2) VALOR_DEV
+        FROM VIEW_DEVOL_RESUMO_FATURAMENTO
+        WHERE DTENT >= :desde
+        GROUP BY CODFILIAL, TRUNC(DTENT), CODUSUR
+        """,
+        desde=desde,
+    )
+    colunas = [d[0] for d in cursor.description]
+    return pd.DataFrame(cursor.fetchall(), columns=colunas)
+
+
+def gerar_tabela(desde: date = DESDE_PADRAO) -> pd.DataFrame:
+    """
+    Busca venda e devolução no Oracle (duas consultas simples, já
+    agregadas no banco, por filial/dia/vendedor) e junta em Python —
+    ver docstring do módulo pras fontes.
+    """
+    conexao = get_connection()
+
+    try:
+        cursor = conexao.cursor()
+        vendas = _consultar_vendas(cursor, desde)
+        devolucao = _consultar_devolucao(cursor, desde)
+    finally:
+        conexao.close()
+
+    chave = ["CODFILIAL", "DATA", "CODUSUR"]
+    dados = vendas.merge(devolucao, on=chave, how="left")
+
+    dados["CODFILIAL"] = dados["CODFILIAL"].astype(int)
+    dados["VALOR_DEV"] = dados["VALOR_DEV"].fillna(0.0)
+    dados["VENDA_LIQ"] = (dados["VENDA_BRUTA"] - dados["VALOR_DEV"]).round(2)
+
+    dados = dados.rename(columns={"CODUSUR": "COD_RCA"})
+
+    return dados[COLUNAS_SAIDA]
+
+
+def _consultar_vendas_cobranca(cursor, desde: date) -> pd.DataFrame:
+    cursor.execute(
+        """
+        SELECT V.CODFILIAL, TRUNC(V.DTMOV) DATA, V.CODUSUR,
+               V.CODCOB, MAX(C.COBRANCA) COBRANCA,
+               COUNT(DISTINCT V.NUMTRANSVENDA) QT_NOTAS,
+               ROUND(SUM(V.VLVENDA), 2) VENDA_BRUTA,
+               ROUND(SUM(V.VLDESCONTO), 2) VALORDESC
+        FROM GFN_MVIEW_VENDAS_ATUAL V
+        LEFT JOIN PCCOB C ON (C.CODCOB = V.CODCOB)
+        WHERE V.DTMOV >= :desde
+        GROUP BY V.CODFILIAL, TRUNC(V.DTMOV), V.CODUSUR, V.CODCOB
+        """,
+        desde=desde,
+    )
+    colunas = [d[0] for d in cursor.description]
+    return pd.DataFrame(cursor.fetchall(), columns=colunas)
+
+
+def _consultar_devolucao_cobranca(cursor, desde: date) -> pd.DataFrame:
+    cursor.execute(
+        """
+        SELECT CODFILIAL, TRUNC(DTENT) DATA, CODUSUR, CODCOB,
+               ROUND(SUM(VLDEVOLUCAO), 2) VALOR_DEV
+        FROM VIEW_DEVOL_RESUMO_FATURAMENTO
+        WHERE DTENT >= :desde
+        GROUP BY CODFILIAL, TRUNC(DTENT), CODUSUR, CODCOB
+        """,
+        desde=desde,
+    )
+    colunas = [d[0] for d in cursor.description]
+    return pd.DataFrame(cursor.fetchall(), columns=colunas)
+
+
+def gerar_tabela_cobranca(desde: date = DESDE_PADRAO) -> pd.DataFrame:
+    """
+    Igual a `gerar_tabela`, mas agrupando também por forma de pagamento
+    (`CODCOB`) — usada só quando a pergunta filtra/agrupa por forma de
+    pagamento (ver `carregar_faturamento_diario_forma_pagamento`).
+    """
+    conexao = get_connection()
+
+    try:
+        cursor = conexao.cursor()
+        vendas = _consultar_vendas_cobranca(cursor, desde)
+        devolucao = _consultar_devolucao_cobranca(cursor, desde)
+    finally:
+        conexao.close()
+
+    chave = ["CODFILIAL", "DATA", "CODUSUR", "CODCOB"]
+    dados = vendas.merge(devolucao, on=chave, how="outer")
+
+    dados["CODFILIAL"] = dados["CODFILIAL"].astype(int)
+    dados["VENDA_BRUTA"] = dados["VENDA_BRUTA"].fillna(0.0)
+    dados["VALORDESC"] = dados["VALORDESC"].fillna(0.0)
+    dados["QT_NOTAS"] = dados["QT_NOTAS"].fillna(0).astype(int)
+    dados["VALOR_DEV"] = dados["VALOR_DEV"].fillna(0.0)
+    dados["VENDA_LIQ"] = (dados["VENDA_BRUTA"] - dados["VALOR_DEV"]).round(2)
+
+    dados = dados.rename(columns={"CODUSUR": "COD_RCA"})
+
+    return dados[COLUNAS_SAIDA_COBRANCA]
+
+
+def _gravar_csv(tabela: pd.DataFrame) -> None:
+    ARQUIVO_FATURAMENTO_DIARIO.parent.mkdir(parents=True, exist_ok=True)
+    tabela.to_csv(
+        ARQUIVO_FATURAMENTO_DIARIO, sep=";", encoding="latin1", decimal=",", index=False,
+    )
+
+
+def _gravar_csv_cobranca(tabela: pd.DataFrame) -> None:
+    ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO.parent.mkdir(parents=True, exist_ok=True)
+    tabela.to_csv(
+        ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO, sep=";", encoding="latin1", decimal=",",
+        index=False,
+    )
+
+
+def _atualizar_se_necessario() -> None:
+    """
+    Mantém `ARQUIVO_FATURAMENTO_DIARIO` com no máximo 1 hora de idade. Se o Oracle
+    estiver fora do ar, tenta de novo algumas vezes antes de desistir e
+    seguir usando o CSV que já existe (mesmo desatualizado) — melhor
+    responder com um dado velho do que não responder nada. Se o
+    arquivo nem existe ainda e o Oracle não responde, a falha sobe (não
+    tem o que servir).
+    """
+    if ARQUIVO_FATURAMENTO_DIARIO.exists():
+        idade = time.time() - ARQUIVO_FATURAMENTO_DIARIO.stat().st_mtime
+        if idade < _SEGUNDOS_CACHE:
+            return
+
+    ultimo_erro = None
+    for tentativa in range(1, _TENTATIVAS_ORACLE + 1):
+        try:
+            tabela = gerar_tabela()
+            _gravar_csv(tabela)
+            return
+        except Exception as erro:
+            ultimo_erro = erro
+            logger.warning(
+                "Falha ao atualizar faturamento diário do Oracle "
+                f"(tentativa {tentativa}/{_TENTATIVAS_ORACLE}): {erro}"
+            )
+            if tentativa < _TENTATIVAS_ORACLE:
+                time.sleep(_SEGUNDOS_ENTRE_TENTATIVAS)
+
+    if ARQUIVO_FATURAMENTO_DIARIO.exists():
+        logger.warning(
+            "Não foi possível atualizar o faturamento diário — "
+            "seguindo com o CSV existente (pode estar desatualizado)."
+        )
+        return
+
+    raise ultimo_erro
+
+
+def _atualizar_cobranca_se_necessario() -> None:
+    """
+    Mesma lógica de `_atualizar_se_necessario`, pro arquivo de forma de
+    pagamento (`ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO`).
+    """
+    if ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO.exists():
+        idade = time.time() - ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO.stat().st_mtime
+        if idade < _SEGUNDOS_CACHE:
+            return
+
+    ultimo_erro = None
+    for tentativa in range(1, _TENTATIVAS_ORACLE + 1):
+        try:
+            tabela = gerar_tabela_cobranca()
+            _gravar_csv_cobranca(tabela)
+            return
+        except Exception as erro:
+            ultimo_erro = erro
+            logger.warning(
+                "Falha ao atualizar forma de pagamento do Oracle "
+                f"(tentativa {tentativa}/{_TENTATIVAS_ORACLE}): {erro}"
+            )
+            if tentativa < _TENTATIVAS_ORACLE:
+                time.sleep(_SEGUNDOS_ENTRE_TENTATIVAS)
+
+    if ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO.exists():
+        logger.warning(
+            "Não foi possível atualizar a forma de pagamento — "
+            "seguindo com o CSV existente (pode estar desatualizado)."
+        )
+        return
+
+    raise ultimo_erro
 
 
 def _carregar_csv_8302(caminho: Path) -> pd.DataFrame:
@@ -47,34 +301,33 @@ def _carregar_csv_8302(caminho: Path) -> pd.DataFrame:
         ~dados.columns.str.startswith("Unnamed")
     ]
 
-    dados["DATA"] = pd.to_datetime(
-        dados["DATA"],
-        dayfirst=True,
-    )
+    # Os dois arquivos (principal e forma de pagamento) são gerados por
+    # nós mesmos, sempre em ISO (AAAA-MM-DD) — sem ambiguidade de
+    # dia/mês, não precisa de dayfirst.
+    dados["DATA"] = pd.to_datetime(dados["DATA"])
 
     return padronizar_filiais(dados, dados["CODFILIAL"])
 
 
-def carregar_faturamento_8302() -> pd.DataFrame:
+def carregar_faturamento_diario() -> pd.DataFrame:
     """
-    Carrega o arquivo CSV exportado da rotina 8302 do Winthor,
-    com o faturamento detalhado por filial, RCA, dia e forma
-    de pagamento.
+    Carrega o faturamento diário, atualizando do Oracle primeiro se o
+    CSV estiver com mais de 1 hora (ver `_atualizar_se_necessario`).
     """
-    return _carregar_csv_8302(ARQUIVO_8302)
+    _atualizar_se_necessario()
+    return _carregar_csv_8302(ARQUIVO_FATURAMENTO_DIARIO)
 
 
-def carregar_faturamento_8302_cobranca() -> pd.DataFrame:
+def carregar_faturamento_diario_forma_pagamento() -> pd.DataFrame:
     """
-    Carrega um export separado da rotina 8302 (2024-2025), usado
-    SOMENTE para agrupamento por forma de pagamento — o arquivo
-    principal (ARQUIVO_8302) tem a coluna COBRANCA sempre vazia,
-    então essa consulta específica usa essa base alternativa, mais
-    recente e com a forma de pagamento preenchida. Cobre um período
-    menor que o arquivo principal, então não substitui ele nas
-    outras consultas.
+    Carrega o faturamento diário agrupado por forma de pagamento,
+    usado SOMENTE quando a pergunta filtra/agrupa por forma de
+    pagamento — o arquivo principal (ARQUIVO_FATURAMENTO_DIARIO) não tem essa
+    granularidade. Atualiza do Oracle primeiro se o CSV estiver com
+    mais de 1 hora (mesmo mecanismo do arquivo principal).
     """
-    return _carregar_csv_8302(ARQUIVO_8302_COBRANCA)
+    _atualizar_cobranca_se_necessario()
+    return _carregar_csv_8302(ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO)
 
 
 def construir_mapa_rca_nome() -> dict[int, str]:
@@ -86,7 +339,7 @@ def construir_mapa_rca_nome() -> dict[int, str]:
     aparece com nomes diferentes ao longo do tempo, fica o primeiro
     nome encontrado.
     """
-    dados = carregar_faturamento_8302()
+    dados = carregar_faturamento_diario()
 
     pares = (
         dados[["COD_RCA", "NOME_RCA"]]
@@ -110,7 +363,7 @@ def construir_lista_rca() -> list[dict]:
     for ambíguo (o mesmo vendedor pode ter um código diferente em
     cada filial).
     """
-    dados = carregar_faturamento_8302()
+    dados = carregar_faturamento_diario()
 
     pares = (
         dados[["COD_RCA", "NOME_RCA", "FILIAL"]]

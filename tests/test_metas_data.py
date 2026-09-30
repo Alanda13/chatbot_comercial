@@ -24,7 +24,7 @@ def test_construir_lista_supervisores(monkeypatch):
             },
         ]
     )
-    monkeypatch.setattr(md, "carregar_faturamento_8280", lambda: df)
+    monkeypatch.setattr(md, "carregar_faturamento_mensal", lambda: df)
 
     lista = md.construir_lista_supervisores()
 

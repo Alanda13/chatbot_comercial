@@ -126,20 +126,6 @@ def calcular_participacao(
     return round((valor_item / valor_total) * 100, 2)
 
 
-def montar_ranking(itens: dict, ordem: str = "desc") -> list[dict]:
-    """
-    itens: {"Loja A": 850000, "Loja B": 920000, ...}
-    Retorna lista ordenada com posição, já pronta para a IA formatar.
-    """
-    ordenados = sorted(
-        itens.items(), key=lambda x: x[1], reverse=(ordem == "desc")
-    )
-    return [
-        {"posicao": i + 1, "nome": nome, "valor": valor}
-        for i, (nome, valor) in enumerate(ordenados)
-    ]
-
-
 FORMULAS = {
     "calcular_atingimento_meta": calcular_atingimento_meta,
     "calcular_desconto": calcular_desconto,

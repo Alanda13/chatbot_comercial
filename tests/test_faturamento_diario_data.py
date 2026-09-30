@@ -13,7 +13,7 @@ def test_construir_mapa_rca_nome(monkeypatch):
             {"COD_RCA": 1903, "NOME_RCA": None},
         ]
     )
-    monkeypatch.setattr(fdd, "carregar_faturamento_8302", lambda: df)
+    monkeypatch.setattr(fdd, "carregar_faturamento_diario", lambda: df)
 
     mapa = fdd.construir_mapa_rca_nome()
 

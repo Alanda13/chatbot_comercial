@@ -5,7 +5,7 @@ A própria rotina 8280 (Faturamento por RCA/Filial/Mês/Ano) já traz
 VALOR_META, PERC_META, COD_SUPERVISOR e NOME_SUPERVISOR por linha —
 não é preciso nenhuma base nova.
 """
-from src.faturamento_data import carregar_faturamento_8280
+from src.faturamento_data import carregar_faturamento_mensal
 from src.filial_utils import (
     encontrar_filial_mais_proxima,
     normalizar_nome_filial,
@@ -18,7 +18,7 @@ def construir_lista_supervisores() -> list[dict]:
     usada para resolver o nome informado pelo usuário e mostrar
     candidatos legíveis quando houver ambiguidade.
     """
-    dados = carregar_faturamento_8280()
+    dados = carregar_faturamento_mensal()
 
     pares = (
         dados[["COD_SUPERVISOR", "NOME_SUPERVISOR", "FILIAL"]]
