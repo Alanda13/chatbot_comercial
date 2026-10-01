@@ -11,11 +11,17 @@ def test_calcular_atingimento_meta_sem_meta_retorna_none():
 
 
 def test_calcular_desconto():
-    assert mm.calcular_desconto(100000, 90000) == 10.0
+    assert mm.calcular_desconto(10000, 100000) == 10.0
+
+
+def test_calcular_desconto_agosto_2026():
+    # Valores reais (todas as filiais, ago/2026), conferidos no Oracle.
+    assert mm.calcular_desconto(2259420.82, 102510486.55) == 2.2
 
 
 def test_calcular_desconto_sem_faturamento_tabela_retorna_none():
-    assert mm.calcular_desconto(0, 90000) is None
+    assert mm.calcular_desconto(10000, 0) is None
+    assert mm.calcular_desconto(None, 100000) is None
 
 
 def test_calcular_inadimplencia():

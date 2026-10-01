@@ -320,9 +320,14 @@ Como funciona (`orquestrador.py`, `_consultar_indicadores`):
    um dos indicadores) e `comparar_com`. A tabela usa as colunas do
    catálogo (`exibicao`) dos dois indicadores — nenhum formato novo.
 
-Proteções (erro claro em vez de resposta errada em silêncio): só cruza
-agrupando por filial/estado/mês/ano (RCA tem código num indicador e nome no
-outro, a junção sairia vazia); indicadores com campo de mesmo nome
+Proteções (erro claro em vez de resposta errada em silêncio): cruza
+agrupando por filial/estado/mês/ano; por **RCA ou supervisor só quando todos
+os indicadores da consulta identificam do mesmo jeito** (mesma coluna e mesmo
+resolvedor — `_mesma_identificacao`): faturamento, meta e desconto usam o
+código (`COD_RCA`) e cruzam por RCA; meta e desconto cruzam por supervisor; a
+meta de tonelada usa o nome do RCA e não cruza por RCA com eles (a junção
+sairia vazia). Dimensão pedida em `colunas` (ex: "rca") é descartada em vez
+de derrubar a consulta — ela já sai sempre na tabela. Indicadores com campo de mesmo nome
 (`faturamento` e `faturamento_diario`) são recusados; um filtro que um dos
 indicadores não tem é erro, não é ignorado; indicador repetido ou
 inexistente é erro.
@@ -572,7 +577,49 @@ vez de mês, e a forma de pagamento (`CODCOB`, presente nessas views).
 
 | Indicador | Situação |
 |---|---|
-| `desconto`, `inadimplencia`, `clientes` | Registrados no catálogo (documentando o que o sistema deveria ter), mas sem nenhuma fonte de dado real conectada ainda. **Atenção `desconto`:** cheguei a cogitar usar `VENDA_BRUTA`/`VENDA_LIQ`/`VALORDESC` da base de faturamento, mas conferi contra dado real e a diferença entre `VENDA_BRUTA − VENDA_LIQ` e `VALORDESC` chega a R$ 1,16 milhão em algumas linhas — não é a mesma fórmula do documento ("Fat. Tabela − Fat. Líquido"). Fica pendente até a definição exata ser confirmada. |
+| `inadimplencia`, `clientes` | Registrados no catálogo (documentando o que o sistema deveria ter), mas sem nenhuma fonte de dado real conectada ainda. |
+
+## Desconto (conectado em 01/10/2026)
+
+- **Fonte:** o mesmo `faturamento_mensal.csv` (mesma consulta de vendas):
+  `VENDA_TABELA` (`SUM(VLTABELA)`, coluna nova) e `VALORDESC`, que passou a
+  ser `SUM(VLDESCONTO * QT)` — antes era "venda − tabela" (a conta do
+  `VALORDESC` da 8280, negativa). Agora o desconto é a mesma conta em todo o
+  chatbot: indicador desconto, campo "Desconto" do faturamento mensal e do
+  diário. Sem consulta nova ao banco.
+- **Fórmula:** % Desconto = desconto concedido ÷ faturamento de tabela,
+  calculado sobre as somas (`motor_metricas.calcular_desconto`).
+- **Por que `VLDESCONTO * QT`:** em `VIEW_VENDAS_RESUMO_FATURAMENTO` o
+  `VLDESCONTO` vem de `PCMOV` e é **por unidade** (preço de tabela − preço
+  vendido; zero quando o item sai na tabela ou acima). Conferido em ago/2026:
+  em 100% dos 73.483 itens com desconto, `VLDESCONTO × QT` = `VLTABELA −
+  VLVENDA`, e nenhum item com `VLDESCONTO` = 0 foi vendido abaixo da tabela.
+  O `PERCDESC` da rotina 8280 soma sem multiplicar (dá 0,05% em ago/2026, errado);
+  multiplicado, bate centavo a centavo com a rotina 8302 (R$ 2.259.420,82,
+  que usa `GFN_MVIEW_VENDAS_ATUAL`, onde o campo já vem total).
+- **Venda acima da tabela conta zero** (não abate o desconto dos outros
+  itens), igual à 8302. A conta "tabela − vendido" (usada no `VALORDESC` da
+  8280 e, até 01/10/2026, no campo "Desconto" do faturamento mensal) abate, e por isso
+  dá menos (1,56% x 2,20% em ago/2026) e fica negativa em filiais que vendem
+  acima da tabela (FN Atacado).
+- **Devolução não entra**, como nas duas rotinas do WinThor.
+- Dimensões: filial, estado, RCA, supervisor, mês, ano. Validado: Timon
+  ago/2026 = R$ 310.567,19 / R$ 9.920.150,98, igual ao banco.
+
+## Período sempre explícito na resposta + trava contra número inventado
+
+- **"mês passado" saía como o mês errado:** o resultado não dizia qual
+  período foi consultado e a IA que escreve a resposta deduzia (dizia
+  "agosto" pra dado de setembro). Agora todo resultado traz
+  `periodo_consultado` (e `periodo_comparado`) com a descrição pronta
+  ("setembro de 2026") e a resposta é obrigada a usá-la. Novos períodos
+  prontos: `ano_anterior` e `semana_anterior` (o código calcula a data, não a
+  IA).
+- **IA inventando número no "responder_com_historico":** em "e o
+  percentual?", depois de mostrar só o R$, ela calculava um % com um
+  faturamento que nunca apareceu. `chatbot.py` agora confere os números
+  dessa resposta contra o histórico; número novo = resposta descartada e a
+  pergunta é reinterpretada pra consultar (se insistir, pede pra reformular).
 
 ## Ferramentas registradas: antes x depois
 

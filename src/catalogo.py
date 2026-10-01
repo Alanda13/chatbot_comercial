@@ -36,7 +36,7 @@ prompt_claude_code_migracao.md, adaptados às fontes de dado reais do
 projeto: CSV via pandas para faturamento/faturamento diário/meta/meta de
 tonelada, e Azure SQL (carregado inteiro pro pandas) para o NPS.
 
-Indicadores sem "carregar" real (desconto, inadimplencia, clientes)
+Indicadores sem "carregar" real (inadimplencia, clientes)
 ainda não têm nenhuma fonte de dado conectada.
 
 Este arquivo é a ÚNICA fonte de verdade sobre o que o motor genérico
@@ -64,8 +64,9 @@ DIMENSOES_VALIDAS = [
 ]
 
 PERIODOS_VALIDOS = [
-    "hoje", "ontem", "semana_atual", "mes_atual", "ano_atual",
-    "mes_anterior", "mesmo_mes_ano_anterior", "personalizado",
+    "hoje", "ontem", "semana_atual", "semana_anterior", "mes_atual",
+    "ano_atual", "mes_anterior", "ano_anterior", "mesmo_mes_ano_anterior",
+    "personalizado",
     # Especial: só faz sentido em "comparar_com" — usa o(s) ano(s) já
     # filtrados na consulta, menos 1 (ex: filtros={"ano": [2025]} +
     # comparar_com="ano_anterior_ao_filtro" compara com 2024).
@@ -276,24 +277,51 @@ INDICADORES = {
             "percentual_detratores": {"tipo": "percentual", "rotulo": "% Detratores", "palavras": ["detrator"]},
         },
     },
-    # Abaixo, indicadores registrados no catálogo mas SEM fonte real
-    # conectada ainda ("carregar": None) — documentam o que o sistema
-    # deveria ter (desconto, inadimplencia, clientes: ainda sem
-    # nenhuma fonte real, CSV ou view Oracle/WinThor, no projeto).
+    # Desconto concedido (VLDESCONTO, mesmo critério da rotina 8302 —
+    # ver src/faturamento_data.py e motor_metricas.calcular_desconto).
+    # O % é calculado sobre as SOMAS (desconto total ÷ tabela total),
+    # nunca a média dos % de cada filial/RCA.
     "desconto": {
-        "carregar": None,
+        "carregar": carregar_faturamento_mensal,
         "granularidade_periodo": "mensal",
-        "campos": {"faturamento_tabela": None, "faturamento_liquido": None},
-        "dimensoes": {"filial": None, "rca": None},
+        "campos": {
+            # Mesmo nome e mesma coluna do campo do faturamento: num
+            # cruzamento os dois viram UMA coluna só (ver
+            # orquestrador._validar_cruzamento).
+            "valor_desconto": ("VALORDESC", "sum"),
+            "faturamento_tabela": ("VENDA_TABELA", "sum"),
+        },
+        "dimensoes": {
+            "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
+            "supervisor": "COD_SUPERVISOR", "mes": "MES", "ano": "ANO",
+        },
+        "resolver_dimensao": {
+            "filial": resolver_nome_filial,
+            "estado": resolver_estado,
+            "rca": resolver_codigos_rca,
+            "supervisor": resolver_codigos_supervisor,
+        },
+        "rca_nome_mapa": construir_mapa_rca_nome,
+        "rca_requer_meta_cadastrada": True,
         "derivados": [
             {
                 "nome": "percentual_desconto",
                 "formula": "calcular_desconto",
-                "campos": ("faturamento_tabela", "faturamento_liquido"),
+                "campos": ("valor_desconto", "faturamento_tabela"),
             },
         ],
+        "campo_principal": "percentual_desconto",
         "unidade": "%",
+        "exibicao": {
+            "percentual_desconto": {"tipo": "percentual", "rotulo": "% Desconto", "sempre": True},
+            "valor_desconto": {"tipo": "moeda", "rotulo": "Desconto", "palavras": ["descont"]},
+            "faturamento_tabela": {"tipo": "moeda", "rotulo": "Faturamento de Tabela", "palavras": ["tabela"]},
+        },
     },
+    # Abaixo, indicadores registrados no catálogo mas SEM fonte real
+    # conectada ainda ("carregar": None) — documentam o que o sistema
+    # deveria ter (inadimplencia, clientes: ainda sem nenhuma fonte
+    # real, CSV ou view Oracle/WinThor, no projeto).
     "inadimplencia": {
         "carregar": None,
         "granularidade_periodo": "mensal",

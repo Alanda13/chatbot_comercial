@@ -264,3 +264,116 @@ def test_campo_de_atingimento_de_tonelada_so_existe_ao_cruzar(_bases_tonelada):
                 "ordenar_por": {"campo": "percentual_atingimento_tonelada"},
             }
         )
+
+
+# --- cruzamento por RCA/supervisor (só quando todos identificam pelo código) ---
+
+
+def _base_mensal_por_rca():
+    # Mesma base pros três indicadores (como o faturamento_mensal.csv).
+    return pd.DataFrame(
+        [
+            {
+                "FILIAL": "TIMON", "COD_RCA": 8403, "COD_SUPERVISOR": 9,
+                "MES": 9, "ANO": 2026, "VENDA_LIQ": 900.0, "VENDA_BRUTA": 950.0,
+                "VALORDESC": 30.0, "PESOLIQ": 0.0, "QT_NOTAS": 3,
+                "VALOR_META": 1000.0, "VENDA_TABELA": 1000.0,
+            },
+            {
+                "FILIAL": "TIMON", "COD_RCA": 9232, "COD_SUPERVISOR": 9,
+                "MES": 9, "ANO": 2026, "VENDA_LIQ": 500.0, "VENDA_BRUTA": 500.0,
+                "VALORDESC": 10.0, "PESOLIQ": 0.0, "QT_NOTAS": 2,
+                "VALOR_META": 400.0, "VENDA_TABELA": 500.0,
+            },
+        ]
+    )
+
+
+@pytest.fixture
+def _bases_por_rca(monkeypatch):
+    for indicador in ("faturamento", "meta", "desconto"):
+        monkeypatch.setitem(catalogo.INDICADORES[indicador], "carregar", _base_mensal_por_rca)
+        monkeypatch.setitem(catalogo.INDICADORES[indicador], "rca_nome_mapa", lambda: {})
+        monkeypatch.setitem(catalogo.INDICADORES[indicador], "rca_requer_meta_cadastrada", False)
+
+
+def test_desconto_cruza_com_faturamento_por_rca(_bases_por_rca):
+    resultado = orq.executar_consulta(
+        {
+            "indicador": "desconto",
+            "cruzar_com": ["faturamento"],
+            "filtros": {"mes": [9], "ano": [2026]},
+            "agrupar_por": ["rca"],
+        }
+    )
+
+    por_rca = {item["rca"]: item for item in resultado["resultados"]}
+
+    assert por_rca[8403]["percentual_desconto"] == 3.0
+    assert por_rca[8403]["faturamento"] == 900.0
+    assert por_rca[9232]["percentual_desconto"] == 2.0
+    assert por_rca[9232]["faturamento"] == 500.0
+
+
+def test_desconto_cruza_com_meta_por_supervisor(_bases_por_rca):
+    resultado = orq.executar_consulta(
+        {
+            "indicador": "desconto",
+            "cruzar_com": ["meta"],
+            "filtros": {"mes": [9], "ano": [2026]},
+            "agrupar_por": ["supervisor"],
+        }
+    )
+
+    linha = resultado["resultados"][0]
+
+    assert linha["supervisor"] == 9
+    assert linha["valor_desconto"] == 40.0
+    assert linha["percentual_atingimento"] == 100.0  # 1400 / 1400
+
+
+def test_faturamento_nao_cruza_por_supervisor_porque_nao_tem_essa_dimensao():
+    with pytest.raises(ConsultaInvalida):
+        orq.executar_consulta(
+            {"indicador": "desconto", "cruzar_com": ["faturamento"], "agrupar_por": ["supervisor"]}
+        )
+
+
+def test_desconto_nao_cruza_por_rca_com_meta_tonelada():
+    # meta_tonelada identifica o RCA pelo nome, os outros pelo código.
+    with pytest.raises(ConsultaInvalida):
+        orq.executar_consulta(
+            {"indicador": "desconto", "cruzar_com": ["meta_tonelada"], "agrupar_por": ["rca"]}
+        )
+
+
+def test_dimensao_em_colunas_e_ignorada_em_vez_de_derrubar_a_consulta(_bases_por_rca):
+    resultado = orq.executar_consulta(
+        {
+            "indicador": "desconto",
+            "cruzar_com": ["faturamento"],
+            "filtros": {"mes": [9], "ano": [2026]},
+            "agrupar_por": ["rca"],
+            "colunas": ["rca", "valor_desconto", "percentual_desconto", "faturamento"],
+        }
+    )
+
+    assert len(resultado["resultados"]) == 2
+
+
+def test_campo_igual_nos_dois_indicadores_vira_uma_coluna_so(_bases_por_rca):
+    # "valor_desconto" existe no faturamento e no desconto, mesma coluna
+    # do mesmo arquivo — o cruzamento aceita e não duplica.
+    resultado = orq.executar_consulta(
+        {
+            "indicador": "desconto",
+            "cruzar_com": ["faturamento"],
+            "filtros": {"mes": [9], "ano": [2026]},
+            "agrupar_por": ["rca"],
+            "colunas": ["valor_desconto", "percentual_desconto", "faturamento"],
+        }
+    )
+
+    por_rca = {item["rca"]: item for item in resultado["resultados"]}
+    assert por_rca[8403]["valor_desconto"] == 30.0
+    assert resultado["tabela"][0]["_colunas_pedidas"].count("valor_desconto") == 1

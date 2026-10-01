@@ -53,12 +53,19 @@ def calcular_atingimento_meta(
 
 
 def calcular_desconto(
-    fat_tabela: Optional[float], fat_liquido: Optional[float]
+    desconto_concedido: Optional[float], fat_tabela: Optional[float]
 ) -> Optional[float]:
-    """% Desconto = (Fat. Tabela - Fat. Líquido) / Fat. Tabela"""
-    if not fat_tabela:
+    """
+    % Desconto = Desconto concedido / Fat. Tabela
+
+    Desconto concedido = soma de (preço de tabela − preço vendido) só
+    dos itens vendidos ABAIXO da tabela (campo VLDESCONTO do WinThor) —
+    venda acima da tabela conta zero, não abate o desconto dos outros
+    itens (mesmo critério da rotina 8302).
+    """
+    if not fat_tabela or desconto_concedido is None:
         return None
-    return round(((fat_tabela - fat_liquido) / fat_tabela) * 100, 2)
+    return round((desconto_concedido / fat_tabela) * 100, 2)
 
 
 def calcular_inadimplencia(

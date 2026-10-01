@@ -170,7 +170,62 @@ def test_resolver_periodo_nao_suportado_gera_erro():
 
 def test_executar_consulta_indicador_sem_fonte_real_gera_erro():
     with pytest.raises(ConsultaInvalida):
-        orq.executar_consulta({"indicador": "desconto"})
+        orq.executar_consulta({"indicador": "inadimplencia"})
+
+
+# --- executar_consulta: desconto ---
+
+
+def _dados_desconto():
+    return pd.DataFrame(
+        [
+            {
+                "FILIAL": "TIMON", "COD_RCA": 8403, "COD_SUPERVISOR": 9,
+                "MES": 8, "ANO": 2026,
+                "VALORDESC": 30.0, "VENDA_TABELA": 1000.0,
+            },
+            {
+                "FILIAL": "CAXIAS", "COD_RCA": 8500, "COD_SUPERVISOR": 9,
+                "MES": 8, "ANO": 2026,
+                "VALORDESC": 10.0, "VENDA_TABELA": 1000.0,
+            },
+        ]
+    )
+
+
+def test_executar_consulta_desconto_calcula_percentual_sobre_as_somas(monkeypatch):
+    monkeypatch.setitem(catalogo.INDICADORES["desconto"], "carregar", _dados_desconto)
+
+    resultado = orq.executar_consulta(
+        {"indicador": "desconto", "filtros": {"mes": [8], "ano": [2026]}}
+    )
+
+    # (30 + 10) / (1000 + 1000) = 2% — e não a média de 3% e 1%.
+    assert resultado["resultados"] == [
+        {
+            "valor_desconto": 40.0,
+            "faturamento_tabela": 2000.0,
+            "percentual_desconto": 2.0,
+        }
+    ]
+
+
+def test_executar_consulta_desconto_agrupado_por_filial(monkeypatch):
+    monkeypatch.setitem(catalogo.INDICADORES["desconto"], "carregar", _dados_desconto)
+
+    resultado = orq.executar_consulta(
+        {
+            "indicador": "desconto",
+            "filtros": {"mes": [8], "ano": [2026]},
+            "agrupar_por": ["filial"],
+        }
+    )
+
+    por_filial = {
+        linha["filial"]: linha["percentual_desconto"]
+        for linha in resultado["resultados"]
+    }
+    assert por_filial == {"TIMON": 3.0, "CAXIAS": 1.0}
 
 
 # --- executar_consulta: faturamento ---
@@ -883,6 +938,71 @@ def test_periodos_por_data_aceitam_mes_anterior_e_mesmo_mes_ano_anterior(
     assert orq.resolver_periodo("mesmo_mes_ano_anterior", None, "diaria") == {
         "dia": {"data_inicial": "2025-01-01", "data_final": "2025-01-31"}
     }
+
+
+def test_periodo_ano_anterior(monkeypatch):
+    _com_data_fixa(monkeypatch)
+
+    assert orq.resolver_periodo("ano_anterior", None, "mensal") == {"ano": [2025]}
+    assert orq.resolver_periodo("ano_anterior", None, "diaria") == {
+        "dia": {"data_inicial": "2025-01-01", "data_final": "2025-12-31"}
+    }
+
+
+def test_periodo_semana_anterior_vai_de_segunda_a_domingo(monkeypatch):
+    _com_data_fixa(monkeypatch)  # 15/01/2026, quinta-feira
+
+    assert orq.resolver_periodo("semana_anterior", None, "diaria") == {
+        "dia": {"data_inicial": "2026-01-05", "data_final": "2026-01-11"}
+    }
+
+
+def test_periodo_semana_anterior_nao_existe_em_indicador_mensal(monkeypatch):
+    _com_data_fixa(monkeypatch)
+
+    with pytest.raises(ConsultaInvalida):
+        orq.resolver_periodo("semana_anterior", None, "mensal")
+
+
+def test_descrever_periodo():
+    assert orq._descrever_periodo({"mes": [9], "ano": [2026]})["descricao"] == (
+        "setembro de 2026"
+    )
+    assert orq._descrever_periodo({"mes": [7, 8], "ano": [2025]})["descricao"] == (
+        "julho e agosto de 2025"
+    )
+    assert orq._descrever_periodo({"ano": [2025, 2026]})["descricao"] == "2025 e 2026"
+    assert orq._descrever_periodo(
+        {"dia": {"data_inicial": "2026-09-30", "data_final": "2026-09-30"}}
+    )["descricao"] == "30/09/2026"
+    assert orq._descrever_periodo(
+        {"dia": {"data_inicial": "2026-09-01", "data_final": "2026-09-30"}}
+    )["descricao"] == "de 01/09/2026 a 30/09/2026"
+    assert orq._descrever_periodo({"filial": ["TIMON"]}) is None
+
+
+def test_resultado_informa_o_periodo_consultado_e_o_comparado(monkeypatch):
+    class DataFalsa(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 10, 1)
+
+    monkeypatch.setattr(orq, "date", DataFalsa)
+    monkeypatch.setitem(catalogo.INDICADORES["desconto"], "carregar", _dados_desconto)
+
+    resultado = orq.executar_consulta(
+        {
+            "indicador": "desconto",
+            "periodo": "mes_anterior",
+            "comparar_com": "personalizado",
+            "comparar_com_personalizado": {"meses": [8], "anos": [2026]},
+        }
+    )
+
+    # "mês passado" em 01/10/2026 é SETEMBRO — vai escrito no resultado
+    # pra IA não deduzir o mês sozinha.
+    assert resultado["periodo_consultado"]["descricao"] == "setembro de 2026"
+    assert resultado["periodo_comparado"]["descricao"] == "agosto de 2026"
 
 
 def test_periodo_personalizado_por_data_aceita_meses_e_anos():

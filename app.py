@@ -2,7 +2,6 @@ import base64
 import io
 import json
 import re
-from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
@@ -13,8 +12,6 @@ from src.exceptions import ChatbotError
 from src.logger import obter_logger
 from src.perguntas_log import registrar_pergunta
 from src import catalogo
-from src.faturamento_data import ARQUIVO_FATURAMENTO_MENSAL
-from src.faturamento_diario_data import ARQUIVO_FATURAMENTO_DIARIO, ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO
 
 logger = obter_logger(__name__)
 
@@ -57,24 +54,6 @@ PERGUNTAS_NORTEADORAS = [
         "resposta": "O NPS do mês passado (agosto de 2026) foi de 90,74.",
     },
 ]
-
-
-def data_ultima_atualizacao_faturamento():
-    """
-    Data/hora da atualização mais antiga entre os 3 arquivos de
-    faturamento (mensal, diário, forma de pagamento) — cada um se
-    atualiza sozinho, no máximo 1 hora depois de vencer (ver
-    src/faturamento_data.py e src/faturamento_diario_data.py). Usa a
-    mais antiga das três por segurança: é a visão mais conservadora
-    de "os dados estão atualizados até aqui, no mínimo".
-    """
-    arquivos = [ARQUIVO_FATURAMENTO_MENSAL, ARQUIVO_FATURAMENTO_DIARIO, ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO]
-    datas = [arquivo.stat().st_mtime for arquivo in arquivos if arquivo.exists()]
-
-    if not datas:
-        return None
-
-    return datetime.fromtimestamp(min(datas))
 
 
 def escapar_para_markdown(texto):
@@ -680,6 +659,7 @@ st.markdown(
     <span class="badge-indicador" style="--cor-indicador: {AZUL_FERRONORTE};">💰 Faturamento (R$ e toneladas — anual, mensal e diário)</span>
     <span class="badge-indicador" style="--cor-indicador: {LARANJA_FERRONORTE};">🎯 Metas (faturamento)</span>
     <span class="badge-indicador" style="--cor-indicador: {LARANJA_FERRONORTE};">🎯 Metas (tonelada) — 2024 a 2026</span>
+    <span class="badge-indicador" style="--cor-indicador: {AZUL_FERRONORTE};">🏷️ Desconto</span>
     <span class="badge-indicador" style="--cor-indicador: {VERDE_FERRONORTE};">⭐ NPS</span>
     <div class="legenda-filtros">
         Tudo por <b>filial, RCA, supervisor ou período</b>, além da
@@ -688,13 +668,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-_data_atualizacao = data_ultima_atualizacao_faturamento()
-if _data_atualizacao:
-    st.caption(
-        f"🕒 Dados de faturamento atualizados em "
-        f"{_data_atualizacao.strftime('%d/%m/%Y às %H:%M')}"
-    )
 
 if "mensagens" not in st.session_state:
     st.session_state.mensagens = []

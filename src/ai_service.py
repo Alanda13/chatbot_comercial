@@ -227,6 +227,19 @@ REGRAS:
   MESMO indicador — nunca troque para o faturamento (venda líquida)
   por padrão quando o assunto da conversa era outro indicador.
 
+REGRAS PARA O PERÍODO (campos "periodo_consultado" e "periodo_comparado"):
+- O período que o sistema consultou de fato está em
+  "periodo_consultado.descricao" (ex: "setembro de 2026") — e o da
+  comparação, quando houver, em "periodo_comparado.descricao". Ao citar
+  o período na resposta, use EXATAMENTE essas descrições. NUNCA deduza
+  o mês/ano por conta própria.
+- Se o usuário usou uma expressão relativa ("mês passado", "ontem",
+  "ano passado"), cite a expressão junto com o período real, ex: "no
+  mês passado (setembro de 2026)".
+- Se "periodo_consultado" vier nulo, o período veio de "filtros_aplicados"
+  (mes/ano/dia) — use esses valores; se também não houver período lá, a
+  consulta cobre todo o histórico disponível.
+
 REGRAS PARA COMPARAÇÃO ENTRE DOIS ITENS (campo "comparacao_entre"):
 - Leia "como_ler" dentro de "comparacao_entre": diz de quem é cada valor
   (o lado "a", o lado "b") e como a diferença foi calculada. Use os NOMES
@@ -569,6 +582,8 @@ FORMATAÇÃO:
 
 Histórico recente da conversa:
 {historico_formatado}
+
+Data atual: {date.today().isoformat()}
 
 Pergunta original do usuário:
 {pergunta}

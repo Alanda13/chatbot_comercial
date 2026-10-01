@@ -37,6 +37,29 @@ _ORDEM_RESOLUCAO_DIMENSOES = ("filial", "rca", "supervisor")
 # tonelada usa o nome, então a junção sairia vazia sem avisar.
 _DIMENSOES_DE_CRUZAMENTO = ("filial", "estado", "mes", "ano")
 
+# RCA e supervisor só cruzam quando TODOS os indicadores da consulta os
+# identificam do mesmo jeito (mesma coluna e mesmo resolvedor) — ex:
+# faturamento, meta e desconto usam o código (COD_RCA), então cruzam por
+# RCA; a meta de tonelada usa o nome, então não cruza com eles por RCA.
+_DIMENSOES_POR_CODIGO = ("rca", "supervisor")
+
+
+def _mesma_identificacao(indicadores: list[str], dimensao: str) -> bool:
+    definicoes = [catalogo.INDICADORES[nome] for nome in indicadores]
+
+    if any(dimensao not in definicao["dimensoes"] for definicao in definicoes):
+        return False
+
+    identificacoes = {
+        (
+            definicao["dimensoes"][dimensao],
+            definicao.get("resolver_dimensao", {}).get(dimensao),
+        )
+        for definicao in definicoes
+    }
+
+    return len(identificacoes) == 1
+
 _OPERADORES = {
     ">=": operator.ge,
     "<=": operator.le,
@@ -174,15 +197,16 @@ def _derivados_do_cruzamento(indicadores: list[str]) -> list[dict]:
 
 def _campos_da_consulta(indicadores: list[str]) -> list[str]:
     """Todos os campos que a consulta produz: os de cada indicador mais
-    os derivados do cruzamento."""
-    return [
+    os derivados do cruzamento (sem repetir o campo que dois indicadores
+    têm em comum)."""
+    return list(dict.fromkeys([
         *(
             campo
             for nome in indicadores
             for campo in _campos_do_indicador(catalogo.INDICADORES[nome])
         ),
         *(derivado["nome"] for derivado in _derivados_do_cruzamento(indicadores)),
-    ]
+    ]))
 
 
 def _linhas_da_tabela(
@@ -292,18 +316,41 @@ def _validar_cruzamento(indicadores: list[str], agrupar_por: list[str]) -> None:
         )
 
     for dimensao in agrupar_por:
-        if dimensao not in _DIMENSOES_DE_CRUZAMENTO:
-            raise ConsultaInvalida(
-                "Só é possível cruzar indicadores agrupando por "
-                f"{', '.join(_DIMENSOES_DE_CRUZAMENTO)} — a dimensão "
-                f"'{dimensao}' não tem o mesmo valor em todas as bases."
-            )
+        if dimensao in _DIMENSOES_DE_CRUZAMENTO:
+            continue
 
-    vistos: set[str] = set()
+        if dimensao in _DIMENSOES_POR_CODIGO and _mesma_identificacao(
+            indicadores, dimensao
+        ):
+            continue
+
+        raise ConsultaInvalida(
+            "Só é possível cruzar indicadores agrupando por "
+            f"{', '.join(_DIMENSOES_DE_CRUZAMENTO)} — ou por "
+            f"{'/'.join(_DIMENSOES_POR_CODIGO)} quando todos os indicadores "
+            f"identificam do mesmo jeito. A dimensão '{dimensao}' não tem o "
+            "mesmo valor em todas as bases desta consulta."
+        )
+
+    # Campo com o mesmo nome em dois indicadores só é aceito quando é o
+    # MESMO dado (mesma base, mesma coluna, mesma soma) — ex: o
+    # "valor_desconto" do faturamento e do desconto, os dois do
+    # faturamento_mensal.csv: vira uma coluna só. Nome igual com dado
+    # diferente (faturamento x faturamento_diario) não dá pra separar.
+    vistos: dict[str, tuple] = {}
 
     for nome in indicadores:
-        campos = set(_campos_do_indicador(catalogo.INDICADORES[nome]))
-        repetidos = vistos & campos
+        definicao = catalogo.INDICADORES[nome]
+        identidades = {
+            campo: (definicao.get("carregar"), definicao["campos"].get(campo))
+            for campo in _campos_do_indicador(definicao)
+        }
+        repetidos = [
+            campo for campo, identidade in identidades.items()
+            if campo in vistos and (
+                identidade[1] is None or vistos[campo] != identidade
+            )
+        ]
 
         if repetidos:
             raise ConsultaInvalida(
@@ -311,7 +358,7 @@ def _validar_cruzamento(indicadores: list[str], agrupar_por: list[str]) -> None:
                 f"({', '.join(sorted(repetidos))}) — não dá pra separar."
             )
 
-        vistos |= campos
+        vistos.update(identidades)
 
 
 def resolver_periodo(
@@ -377,9 +424,12 @@ def resolver_periodo(
         if periodo == "mesmo_mes_ano_anterior":
             return {"mes": [hoje.month], "ano": [hoje.year - 1]}
 
+        if periodo == "ano_anterior":
+            return {"ano": [hoje.year - 1]}
+
         raise ConsultaInvalida(
             f"O período '{periodo}' não é suportado para indicadores "
-            "mensais."
+            "mensais (eles não têm dado por dia/semana)."
         )
 
     if periodo == "hoje":
@@ -432,9 +482,78 @@ def resolver_periodo(
     if periodo == "mesmo_mes_ano_anterior":
         return {"dia": _intervalo_do_mes(hoje.year - 1, hoje.month)}
 
+    if periodo == "semana_anterior":
+        inicio_semana = hoje - timedelta(days=hoje.weekday() + 7)
+        return {
+            "dia": {
+                "data_inicial": inicio_semana.isoformat(),
+                "data_final": (inicio_semana + timedelta(days=6)).isoformat(),
+            }
+        }
+
+    if periodo == "ano_anterior":
+        return {
+            "dia": {
+                "data_inicial": date(hoje.year - 1, 1, 1).isoformat(),
+                "data_final": date(hoje.year - 1, 12, 31).isoformat(),
+            }
+        }
+
     raise ConsultaInvalida(
         f"O período '{periodo}' não é suportado para indicadores diários."
     )
+
+
+_NOMES_MESES = (
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
+    "agosto", "setembro", "outubro", "novembro", "dezembro",
+)
+
+
+def _juntar_com_e(itens: list[str]) -> str:
+    return itens[0] if len(itens) == 1 else f"{', '.join(itens[:-1])} e {itens[-1]}"
+
+
+def _como_lista(valor) -> list:
+    return valor if isinstance(valor, list) else [valor]
+
+
+def _descrever_periodo(filtros: dict) -> dict | None:
+    """
+    O período que a consulta usou de fato (mês/ano/dias), com uma
+    descrição pronta ("setembro de 2026", "de 01/09/2026 a 30/09/2026").
+    Vai junto no resultado pra IA nunca precisar deduzir sozinha a que
+    mês "mês passado" se refere — ela errava (ex: dizia "agosto" pra um
+    dado de setembro).
+    """
+    periodo = {
+        chave: filtros[chave] for chave in ("dia", "mes", "ano") if filtros.get(chave)
+    }
+
+    if not periodo:
+        return None
+
+    if "dia" in periodo:
+        inicio = date.fromisoformat(str(periodo["dia"]["data_inicial"])[:10])
+        fim = date.fromisoformat(
+            str(periodo["dia"].get("data_final") or inicio)[:10]
+        )
+        descricao = (
+            inicio.strftime("%d/%m/%Y") if inicio == fim
+            else f"de {inicio.strftime('%d/%m/%Y')} a {fim.strftime('%d/%m/%Y')}"
+        )
+    else:
+        meses = [_NOMES_MESES[int(mes) - 1] for mes in _como_lista(periodo.get("mes", []))]
+        anos = [str(int(ano)) for ano in _como_lista(periodo.get("ano", []))]
+
+        if meses and anos:
+            descricao = f"{_juntar_com_e(meses)} de {_juntar_com_e(anos)}"
+        elif anos:
+            descricao = _juntar_com_e(anos)
+        else:
+            descricao = f"{_juntar_com_e(meses)} (todos os anos)"
+
+    return {**periodo, "descricao": descricao}
 
 
 def _intervalo_do_mes(ano: int, mes: int) -> dict:
@@ -1196,6 +1315,19 @@ def executar_consulta(consulta: dict) -> dict:
       grande de itens "de olho".
     """
     consulta = _normalizar_comparacoes(consulta)
+
+    # Dimensão (rca, filial, mês...) em "colunas" é inofensiva — ela já
+    # sai sempre na tabela quando é agrupada — então é descartada em vez
+    # de derrubar a consulta inteira (a IA às vezes pede "rca" ali).
+    if consulta.get("colunas"):
+        consulta = {
+            **consulta,
+            "colunas": [
+                coluna for coluna in consulta["colunas"]
+                if coluna not in (*catalogo.DIMENSOES_VALIDAS, "rca_nome")
+            ],
+        }
+
     validar_consulta(consulta)
 
     indicador = consulta["indicador"]
@@ -1272,9 +1404,23 @@ def executar_consulta(consulta: dict) -> dict:
         "indicador": indicador,
         "cruzado_com": cruzar_com or None,
         "filtros_aplicados": consulta.get("filtros"),
+        "periodo_consultado": _descrever_periodo(
+            _filtros_efetivos(
+                indicador_def, consulta, consulta.get("periodo"),
+                consulta.get("periodo_personalizado"),
+            )
+        ),
         "agrupar_por": agrupar_por or None,
         "resultados": resultado,
     }
+
+    if comparar_com:
+        resposta["periodo_comparado"] = _descrever_periodo(
+            _filtros_efetivos(
+                indicador_def, consulta, comparar_com,
+                consulta.get("comparar_com_personalizado"),
+            )
+        )
 
     if comparar_filtros:
         resposta["comparacao_entre"] = {

@@ -48,7 +48,7 @@ _SEGUNDOS_ENTRE_TENTATIVAS = 5
 COLUNAS_SAIDA = [
     "CODFILIAL", "ANO", "MES", "COD_RCA", "COD_SUPERVISOR",
     "NOME_SUPERVISOR", "VENDA_BRUTA", "VALORDESC", "VENDA_LIQ",
-    "PESOLIQ", "QT_NOTAS", "VALOR_META",
+    "PESOLIQ", "QT_NOTAS", "VALOR_META", "VENDA_TABELA",
 ]
 
 # Mesmos filtros de negócio usados para achar venda válida (nota não
@@ -79,6 +79,14 @@ _COLUNAS_PESO = "DTMOV, CODFILIAL, CODUSUR, TOTPESOLIQ, UNIDADE, QTVENDA"
 _PESO_POR_LINHA = "CASE WHEN UNIDADE = 'KG' THEN QTVENDA ELSE TOTPESOLIQ END"
 
 
+# Desconto (VALORDESC) = desconto concedido, igual à rotina 8302 e ao
+# faturamento diário: nesta view, VLDESCONTO vem direto de PCMOV e é o
+# desconto POR UNIDADE (preço de tabela − preço vendido, zero quando o
+# item sai na tabela ou acima dela) — por isso multiplica pela
+# quantidade. Multiplicado, bate centavo a centavo com a 8302 (R$
+# 2.259.420,82 em ago/2026). Não é "venda − tabela" (o VALORDESC da 8280):
+# essa conta sai negativa e deixa a venda acima da tabela abater o
+# desconto dos outros itens.
 def _consultar_vendas(cursor, desde: date) -> pd.DataFrame:
     cursor.execute(
         f"""
@@ -87,7 +95,8 @@ def _consultar_vendas(cursor, desde: date) -> pd.DataFrame:
                V.CODSUPERVISOR, MAX(S.NOME) NOME_SUPERVISOR,
                COUNT(DISTINCT V.NUMTRANSVENDA) QT_NOTAS,
                ROUND(SUM(V.VLVENDA), 2) VENDA_BRUTA,
-               ROUND(SUM(V.VLTABELA), 2) VENDA_TABELA
+               ROUND(SUM(V.VLTABELA), 2) VENDA_TABELA,
+               ROUND(SUM(V.VLDESCONTO * V.QT), 2) VALORDESC
         FROM VIEW_VENDAS_RESUMO_FATURAMENTO V
         LEFT JOIN PCSUPERV S ON (S.CODSUPERVISOR = V.CODSUPERVISOR)
         WHERE V.DTSAIDA >= :desde
@@ -186,7 +195,7 @@ def gerar_tabela(ano_inicio: int = ANO_INICIO_PADRAO) -> pd.DataFrame:
     dados["PESOLIQ"] = dados["PESOLIQ"].fillna(0.0)
     dados["VALOR_DEV"] = dados["VALOR_DEV"].fillna(0.0)
     dados["VALOR_META"] = dados["VALOR_META"].fillna(0.0)
-    dados["VALORDESC"] = (dados["VENDA_BRUTA"] - dados["VENDA_TABELA"]).round(2)
+    dados["VALORDESC"] = dados["VALORDESC"].fillna(0.0)
     dados["VENDA_LIQ"] = (dados["VENDA_BRUTA"] - dados["VALOR_DEV"]).round(2)
 
     dados = dados.rename(

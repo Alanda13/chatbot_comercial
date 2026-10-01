@@ -4,6 +4,8 @@ Orquestrador principal do Chatbot Comercial.
 Este módulo recebe a pergunta do usuário, solicita a interpretação
 ao Gemini, executa ferramentas autorizadas e monta a resposta final.
 """
+import re
+
 from src.ai_service import interpretar_pergunta
 from src.ai_service import gerar_resposta_final
 from src.tool_manager import executar_ferramenta
@@ -39,6 +41,44 @@ def _limitar_resultados(resultado: dict) -> dict:
 
     return resultado
 
+
+_NUMERO = re.compile(r"\d+(?:[.,]\d+)*")
+
+_INSTRUCAO_CONSULTAR_DE_NOVO = (
+    "\n\n(Instrução do sistema: o valor pedido NÃO aparece no histórico "
+    "da conversa. Use a ação \"executar_ferramenta\" para consultá-lo — "
+    "não use \"responder_com_historico\".)"
+)
+
+
+def _numeros(texto: str | None) -> set[str]:
+    """Números do texto só com os dígitos ("241.509,98" -> "24150998")."""
+    return {re.sub(r"[.,]", "", numero) for numero in _NUMERO.findall(texto or "")}
+
+
+def _numeros_fora_do_historico(
+    mensagem: str | None,
+    pergunta: str,
+    historico: list[dict[str, str]] | None,
+) -> set[str]:
+    """
+    Números da resposta "responder_com_historico" que não aparecem nem
+    no histórico nem na pergunta — ou seja, inventados pela IA (ela já
+    respondeu "e o percentual?" calculando um % com um faturamento que
+    nunca tinha sido mostrado). Números de até 2 dígitos são ignorados
+    (numeração de lista, "os 3 maiores").
+    """
+    permitidos = _numeros(pergunta)
+
+    for mensagem_historico in historico or []:
+        permitidos |= _numeros(mensagem_historico.get("conteudo"))
+
+    return {
+        numero for numero in _numeros(mensagem)
+        if len(numero) > 2 and numero not in permitidos
+    }
+
+
 def processar_pergunta(
     pergunta: str,
     historico: list[dict[str, str]] | None = None,
@@ -59,6 +99,33 @@ def processar_pergunta(
         pergunta=pergunta,
         historico=historico,
     )
+
+    # Trava: "responder_com_historico" só pode reorganizar números que já
+    # foram mostrados. Se a resposta trouxer número novo, ela foi
+    # inventada — descarta e pede a interpretação de novo, consultando.
+    if solicitacao.acao == "responder_com_historico":
+        inventados = _numeros_fora_do_historico(
+            solicitacao.mensagem, pergunta, historico
+        )
+
+        if inventados:
+            logger.warning(
+                "Resposta pelo histórico descartada — números que não "
+                "estão no histórico: %s", sorted(inventados),
+            )
+            solicitacao = interpretar_pergunta(
+                pergunta=pergunta + _INSTRUCAO_CONSULTAR_DE_NOVO,
+                historico=historico,
+            )
+
+            if solicitacao.acao == "responder_com_historico":
+                return (
+                    "Não consegui confirmar esse valor com os dados já "
+                    "mostrados. Pode refazer a pergunta completa (indicador, "
+                    "filial e período)?",
+                    None,
+                    None,
+                )
 
     if solicitacao.acao == "pedir_esclarecimento":
         return (

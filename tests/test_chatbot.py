@@ -180,3 +180,83 @@ def test_processar_pergunta_limita_resultado_grande_antes_de_gerar_resposta(
 
     resultado_passado = mock_gerar.call_args.kwargs["resultado"]
     assert len(resultado_passado["resultados"]) == 60
+
+
+# --- trava contra números inventados no "responder_com_historico" ---
+
+HISTORICO_DESCONTO = [
+    {"papel": "user", "conteudo": "Qual o desconto de Parnaíba no mês passado?"},
+    {
+        "papel": "assistant",
+        "conteudo": (
+            "O desconto concedido pela filial Parnaíba no mês passado "
+            "(setembro de 2026) foi de R$ 241.509,98."
+        ),
+    },
+]
+
+
+@patch("src.chatbot.interpretar_pergunta")
+def test_responder_com_historico_so_com_numeros_ja_mostrados_e_aceito(
+    mock_interpretar,
+):
+    mock_interpretar.return_value = SolicitacaoFerramenta(
+        acao="responder_com_historico",
+        mensagem="Em setembro de 2026, Parnaíba concedeu R$ 241.509,98 de desconto.",
+    )
+
+    resposta, _, _ = processar_pergunta("repete o valor", historico=HISTORICO_DESCONTO)
+
+    assert "241.509,98" in resposta
+    assert mock_interpretar.call_count == 1
+
+
+@patch("src.chatbot.gerar_resposta_final", return_value="O percentual foi de 6,86%.")
+@patch("src.chatbot.executar_ferramenta", return_value={"encontrado": True, "resultados": []})
+@patch("src.chatbot.interpretar_pergunta")
+def test_responder_com_historico_com_numero_inventado_consulta_de_novo(
+    mock_interpretar, mock_executar, mock_gerar,
+):
+    mock_interpretar.side_effect = [
+        # 1ª interpretação: inventa um % com um faturamento nunca mostrado
+        SolicitacaoFerramenta(
+            acao="responder_com_historico",
+            mensagem=(
+                "O percentual foi de 2,21% (R$ 241.509,98 sobre "
+                "R$ 10.925.753,74)."
+            ),
+        ),
+        # 2ª interpretação (com a instrução de consultar): consulta
+        SolicitacaoFerramenta(
+            acao="executar_ferramenta",
+            ferramenta="consultar_dados_comerciais",
+            argumentos={"indicador": "desconto", "periodo": "mes_anterior"},
+        ),
+    ]
+
+    resposta, _, _ = processar_pergunta(
+        "e o percentual de desconto", historico=HISTORICO_DESCONTO
+    )
+
+    assert resposta == "O percentual foi de 6,86%."
+    assert mock_interpretar.call_count == 2
+    mock_executar.assert_called_once()
+    # a resposta final é gerada com a pergunta ORIGINAL, sem a instrução
+    assert mock_gerar.call_args.kwargs["pergunta"] == "e o percentual de desconto"
+
+
+@patch("src.chatbot.interpretar_pergunta")
+def test_responder_com_historico_insistindo_em_inventar_nao_mostra_o_numero(
+    mock_interpretar,
+):
+    mock_interpretar.return_value = SolicitacaoFerramenta(
+        acao="responder_com_historico",
+        mensagem="O percentual foi de 8,42%.",
+    )
+
+    resposta, _, _ = processar_pergunta(
+        "e o percentual de desconto", historico=HISTORICO_DESCONTO
+    )
+
+    assert "8,42" not in resposta
+    assert "refazer a pergunta" in resposta
