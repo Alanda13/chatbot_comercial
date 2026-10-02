@@ -5,8 +5,10 @@ Cada indicador registra:
 - carregar: função Python que busca os dados brutos (DataFrame) — None
   quando ainda não há fonte real conectada; nesse caso o orquestrador
   levanta um erro claro em vez de inventar dado.
-- carregar_forma_pagamento (opcional): fonte alternativa usada só
-  quando o agrupamento/filtro pede a dimensão "forma_pagamento".
+- fontes_por_dimensao (opcional): dimensão -> fonte alternativa,
+  usada só quando o agrupamento/filtro pede aquela dimensão (ex:
+  "forma_pagamento", "cliente") — arquivos maiores que só são lidos
+  quando a pergunta precisa deles.
 - granularidade_periodo: "mensal" (filtra por mes/ano) ou "diaria"
   (filtra por intervalo de datas) — usado por
   orquestrador.resolver_periodo pra saber que vocabulário de período
@@ -43,6 +45,11 @@ Este arquivo é a ÚNICA fonte de verdade sobre o que o motor genérico
 (orquestrador.py) sabe consultar. A IA nunca deve referenciar um
 indicador ou dimensão que não esteja aqui.
 """
+from src.cliente_data import (
+    carregar_desconto_cliente,
+    resolver_codigos_cliente,
+    resolver_empresas,
+)
 from src.faturamento_data import carregar_faturamento_mensal
 from src.faturamento_diario_data import (
     carregar_faturamento_diario,
@@ -60,8 +67,24 @@ from src.meta_tonelada_data import (
 
 DIMENSOES_VALIDAS = [
     "filial", "estado", "rca", "supervisor", "mes", "ano", "dia",
-    "forma_pagamento",
+    "forma_pagamento", "cliente", "empresa",
 ]
+
+# Colunas que DESCREVEM o item de uma dimensão (vêm junto quando se
+# agrupa por ela, mas não são agrupamentos novos): nome do campo no
+# resultado -> (coluna do DataFrame, título na tabela). Ex: agrupar por
+# "cliente" (o código) traz também nome, CNPJ e cidade da loja.
+ATRIBUTOS_DIMENSAO = {
+    "cliente": {
+        "cliente_nome": ("CLIENTE", "Cliente"),
+        "cnpj": ("CNPJ", "CNPJ"),
+        "cidade": ("CIDADE", "Cidade"),
+    },
+    "empresa": {
+        "empresa_nome": ("NOME_EMPRESA", "Empresa"),
+        "cnpj_empresa": ("CNPJ_EMPRESA", "CNPJ (início)"),
+    },
+}
 
 PERIODOS_VALIDOS = [
     "hoje", "ontem", "semana_atual", "semana_anterior", "mes_atual",
@@ -115,7 +138,9 @@ INDICADORES = {
     },
     "faturamento_diario": {
         "carregar": carregar_faturamento_diario,
-        "carregar_forma_pagamento": carregar_faturamento_diario_forma_pagamento,
+        "fontes_por_dimensao": {
+            "forma_pagamento": carregar_faturamento_diario_forma_pagamento,
+        },
         "granularidade_periodo": "diaria",
         "campos": {
             "faturamento": ("VENDA_LIQ", "sum"),
@@ -283,6 +308,14 @@ INDICADORES = {
     # nunca a média dos % de cada filial/RCA.
     "desconto": {
         "carregar": carregar_faturamento_mensal,
+        # Sem período a consulta somaria desde 2020 — a IA pergunta.
+        "periodo_obrigatorio": True,
+        # Por cliente/empresa: arquivo próprio (~1,2 milhão de linhas,
+        # ver src/cliente_data.py), lido só quando a pergunta pede.
+        "fontes_por_dimensao": {
+            "cliente": carregar_desconto_cliente,
+            "empresa": carregar_desconto_cliente,
+        },
         "granularidade_periodo": "mensal",
         "campos": {
             # Mesmo nome e mesma coluna do campo do faturamento: num
@@ -294,12 +327,15 @@ INDICADORES = {
         "dimensoes": {
             "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
             "supervisor": "COD_SUPERVISOR", "mes": "MES", "ano": "ANO",
+            "cliente": "CODCLI", "empresa": "EMPRESA",
         },
         "resolver_dimensao": {
             "filial": resolver_nome_filial,
             "estado": resolver_estado,
             "rca": resolver_codigos_rca,
             "supervisor": resolver_codigos_supervisor,
+            "cliente": resolver_codigos_cliente,
+            "empresa": resolver_empresas,
         },
         "rca_nome_mapa": construir_mapa_rca_nome,
         "rca_requer_meta_cadastrada": True,
@@ -311,6 +347,10 @@ INDICADORES = {
             },
         ],
         "campo_principal": "percentual_desconto",
+        # A variação mês a mês/ano a ano é do desconto em R$: a variação do
+        # % (9,05% → 9,07% = "+0,22%") escondia uma queda de R$ 115 mil
+        # pra R$ 19 mil, lida ao lado das colunas em R$.
+        "campo_variacao": "valor_desconto",
         "unidade": "%",
         "exibicao": {
             "percentual_desconto": {"tipo": "percentual", "rotulo": "% Desconto", "sempre": True},

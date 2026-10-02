@@ -185,7 +185,17 @@ TIPO_POR_COLUNA = {
 TIPO_POR_COLUNA["percentual_mes_anterior"] = "percentual_com_sinal"
 TIPO_POR_COLUNA["percentual_ano_anterior"] = "percentual_com_sinal"
 
+# Nome/CNPJ/cidade que acompanham uma dimensão (ex: cliente) — vêm do
+# catálogo, não de uma lista escrita aqui.
+ATRIBUTOS_DA_TABELA = {
+    campo: rotulo
+    for atributos in catalogo.ATRIBUTOS_DIMENSAO.values()
+    for campo, (_, rotulo) in atributos.items()
+}
+
 RENOMEAR_COLUNAS = {
+    **ATRIBUTOS_DA_TABELA,
+    "cliente": "Código Cliente",
     "filial": "Filial",
     "estado": "Estado",
     "rca_nome": "RCA",
@@ -274,8 +284,9 @@ def formatar_coluna_numerica(serie):
 
 # Colunas que identificam a linha (em vez de medir alguma coisa).
 DIMENSOES_DA_TABELA = (
-    "estado", "filial", "rca_nome", "rca", "codigo", "ano", "mes",
-    "periodo", "forma_pagamento", "dia",
+    "estado", "filial", "rca_nome", "rca", "codigo", "cliente",
+    "empresa", *ATRIBUTOS_DA_TABELA, "ano", "mes", "periodo",
+    "forma_pagamento", "dia",
 )
 DIMENSOES_DE_TEMPO = ("ano", "mes", "dia", "periodo")
 
@@ -296,9 +307,16 @@ def _pivotar(tabela, dimensoes, metricas, metrica_sem_prefixo=None):
     MÉTRICA — o valor de todos os itens comparados lado a lado primeiro
     (LOURIVAL | SANTA INÊS), depois as demais métricas — pra comparar sem
     pular colunas. Coluna toda vazia (ex: variação do primeiro ano) some.
-    Se passar de LIMITE_COLUNAS_PIVO colunas, não pivota.
+    Se passar de LIMITE_COLUNAS_PIVO colunas, não pivota. Também não
+    pivota quando a maioria das células ficaria vazia (ex: 5 pares RCA x
+    cliente, cada cliente de um RCA só — virar os RCAs em colunas deixava
+    quase tudo "sem dados").
     """
-    variaveis = [d for d in dimensoes if tabela[d].nunique() > 1]
+    # Nome/CNPJ/cidade acompanham a linha do cliente — nunca viram coluna.
+    variaveis = [
+        d for d in dimensoes
+        if d not in ATRIBUTOS_DA_TABELA.values() and tabela[d].nunique() > 1
+    ]
 
     if len(variaveis) < 2 or not metricas:
         return tabela
@@ -312,6 +330,11 @@ def _pivotar(tabela, dimensoes, metricas, metrica_sem_prefixo=None):
         return tabela
 
     dimensoes_linha = [d for d in dimensoes if d != pivo]
+
+    celulas = tabela[dimensoes_linha].drop_duplicates().shape[0] * tabela[pivo].nunique()
+
+    if len(tabela) < celulas / 2:
+        return tabela
 
     def nome_da_coluna(valor, metrica):
         if len(metricas) == 1 or metrica == metrica_sem_prefixo:
@@ -427,6 +450,11 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
     if "rca_nome" in colunas_base and "rca" in colunas_base:
         colunas_base.remove("rca")
 
+    # A chave interna da empresa ("03995515") já aparece formatada no
+    # "CNPJ (início)".
+    if "empresa_nome" in colunas_base and "empresa" in colunas_base:
+        colunas_base.remove("empresa")
+
     # Se só tem UM ano nos dados, tira a coluna "ano" da tabela — ela
     # já aparece na legenda acima ("Ano: 2025"), repetir em toda
     # linha é redundante. Só mantém quando há vários anos misturados.
@@ -539,8 +567,9 @@ def descrever_periodo(dados_tabela, texto_referencia):
 
 
 COLUNAS_DE_IDENTIFICACAO = {
-    "Estado", "Filial", "RCA", "Código", "Código RCA", "Ano", "Mês",
-    "Período", "Forma de Pagamento", "Dia",
+    "Estado", "Filial", "RCA", "Código", "Código RCA", "Código Cliente",
+    "Ano", "Mês", "Período", "Forma de Pagamento", "Dia",
+    *ATRIBUTOS_DA_TABELA.values(),
 }
 
 

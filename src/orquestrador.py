@@ -31,6 +31,19 @@ from src.variacao_utils import (
 
 _ORDEM_RESOLUCAO_DIMENSOES = ("filial", "rca", "supervisor")
 
+# Resolvedores que recebem as filiais já resolvidas da consulta (pra
+# desempatar nomes iguais em filiais diferentes) e devolvem uma LISTA de
+# valores (ex: um nome de empresa vira todas as lojas dela).
+_RESOLVEDORES_COM_FILIAL = ("rca", "supervisor", "cliente", "empresa")
+
+# Campos que descrevem o item agrupado (nome/CNPJ/cidade do cliente...)
+# — identificação, não métrica: vão sempre pra tabela.
+_CAMPOS_DE_ATRIBUTO = tuple(
+    campo
+    for atributos in catalogo.ATRIBUTOS_DIMENSAO.values()
+    for campo in atributos
+)
+
 # Dimensões em que os indicadores usam o MESMO valor nas bases (o nome
 # padrão da filial, o mês, o ano) — só por elas dá pra juntar dois
 # indicadores. "rca" fica de fora: faturamento usa o código e a meta de
@@ -175,6 +188,23 @@ def validar_consulta(consulta: dict) -> None:
                 f"'ordenar_por' para o indicador '{indicador}'."
             )
 
+        grupo = ordenar_por.get("por")
+
+        if grupo is not None:
+            if grupo not in (consulta.get("agrupar_por") or []):
+                raise ConsultaInvalida(
+                    f"'ordenar_por.por' ('{grupo}') precisa estar em 'agrupar_por'."
+                )
+
+            if (
+                consulta.get("comparar_com") or consulta.get("comparar_filtros")
+                or consulta.get("cruzar_com")
+            ):
+                raise ConsultaInvalida(
+                    "'ordenar_por.por' não funciona junto com comparação "
+                    "nem com cruzamento de indicadores."
+                )
+
 
 def _campos_do_indicador(indicador_def: dict) -> list[str]:
     """Campos somados + campos calculados (derivados) de um indicador."""
@@ -227,7 +257,7 @@ def _linhas_da_tabela(
             f"{coluna}_anterior", f"diferenca_{coluna}", f"percentual_{coluna}"
         )
     }
-    fixas = {*catalogo.DIMENSOES_VALIDAS, "rca_nome"}
+    fixas = {*catalogo.DIMENSOES_VALIDAS, "rca_nome", *_CAMPOS_DE_ATRIBUTO}
 
     def manter(chave: str) -> bool:
         return (
@@ -603,7 +633,7 @@ def _aplicar_filtros(
             valores_resolvidos = []
 
             for item in valores:
-                if dimensao in ("rca", "supervisor"):
+                if dimensao in _RESOLVEDORES_COM_FILIAL:
                     encontrados = resolvedor(
                         item, filiais=filtros_resolvidos.get("filial")
                     )
@@ -682,11 +712,10 @@ def buscar_dados_brutos(
     """
     carregar = indicador_def.get("carregar")
 
-    if (
-        ("forma_pagamento" in agrupar_por or "forma_pagamento" in filtros)
-        and indicador_def.get("carregar_forma_pagamento")
-    ):
-        carregar = indicador_def["carregar_forma_pagamento"]
+    for dimensao, fonte in indicador_def.get("fontes_por_dimensao", {}).items():
+        if dimensao in agrupar_por or dimensao in filtros:
+            carregar = fonte
+            break
 
     if carregar is None:
         raise ConsultaInvalida(
@@ -845,7 +874,7 @@ def _aplicar_agrupamento(
         for dimensao, coluna in zip(agrupar_por, colunas_agrupamento):
             valor = linha[coluna]
 
-            if dimensao in ("mes", "ano", "rca", "supervisor"):
+            if dimensao in ("mes", "ano", "rca", "supervisor", "cliente"):
                 # "rca" é código numérico na maioria das bases, mas é
                 # NOME (texto) na base de meta de tonelada — tenta
                 # converter, e se não der, trata como texto mesmo.
@@ -870,6 +899,23 @@ def _aplicar_agrupamento(
             item[nome_campo] = _numero(linha[nome_campo], nome_campo in inteiros)
 
         resultados.append(item)
+
+    for dimensao, coluna in zip(agrupar_por, colunas_agrupamento):
+        atributos = catalogo.ATRIBUTOS_DIMENSAO.get(dimensao, {})
+
+        if not atributos:
+            continue
+
+        colunas_atributo = [coluna_df for coluna_df, _ in atributos.values()]
+        primeiro = dados.groupby(coluna)[colunas_atributo].first()
+
+        for item in resultados:
+            chave = item[dimensao]
+            linha = primeiro.loc[chave] if chave in primeiro.index else None
+
+            for campo, (coluna_df, _) in atributos.items():
+                valor = None if linha is None else linha[coluna_df]
+                item[campo] = None if pd.isna(valor) else str(valor)
 
     mapa_rca_nome_func = indicador_def.get("rca_nome_mapa")
 
@@ -933,6 +979,38 @@ def _filtros_efetivos(
     return filtros
 
 
+def _itens_filtrados(
+    dados: pd.DataFrame, indicador_def: dict, filtros: dict
+) -> dict:
+    """
+    Pra cada filtro numa dimensão com atributos (cliente, empresa), os
+    itens que sobraram com o nome/CNPJ — até 10 por dimensão.
+    """
+    itens = {}
+
+    for dimensao in filtros:
+        atributos = catalogo.ATRIBUTOS_DIMENSAO.get(dimensao)
+        coluna = indicador_def["dimensoes"].get(dimensao)
+
+        if not atributos or coluna is None:
+            continue
+
+        colunas_atributo = {campo: col for campo, (col, _) in atributos.items()}
+        primeiro = dados.groupby(coluna)[list(colunas_atributo.values())].first()
+        itens[dimensao] = [
+            {
+                dimensao: chave.item() if hasattr(chave, "item") else chave,
+                **{
+                    campo: None if pd.isna(linha[col]) else str(linha[col])
+                    for campo, col in colunas_atributo.items()
+                },
+            }
+            for chave, linha in primeiro.head(10).iterrows()
+        ]
+
+    return itens
+
+
 def _consultar_periodo(
     indicador_def: dict,
     consulta: dict,
@@ -940,7 +1018,21 @@ def _consultar_periodo(
     periodo_personalizado: dict | None,
     agrupar_por: list[str],
     rcas_validos: set[int] | None = None,
+    extras: dict | None = None,
 ) -> tuple[list[dict], set[int] | None]:
+    """
+    `extras`, quando informado, é preenchido com:
+    - "itens_filtrados": nome/CNPJ dos itens filtrados (ex: a empresa
+      de um filtro "empresa") — pra resposta citar o nome oficial;
+    - "total" (só se `extras["calcular_total"]`): o total de TODAS as
+      linhas agrupadas (mesmos dados, sem agrupamento) — pra IA nunca
+      precisar somar a lista de cabeça (ex: o desconto da empresa
+      inteira junto com a tabela por loja);
+    - "totais_por_grupo" (só se `extras["total_por"]`): os mesmos dados
+      agrupados só por essa dimensão (ex: o total de cada RCA, pra
+      escolher os N RCAs com mais desconto — ver
+      _aplicar_ordenacao_por_grupo).
+    """
     filtros = _filtros_efetivos(
         indicador_def, consulta, periodo, periodo_personalizado
     )
@@ -959,6 +1051,20 @@ def _consultar_periodo(
     resultado = _aplicar_derivados(
         _aplicar_agrupamento(dados, indicador_def, agrupar_por), indicador_def
     )
+
+    if extras is not None:
+        extras["itens_filtrados"] = _itens_filtrados(dados, indicador_def, filtros)
+
+        if agrupar_por and extras.get("calcular_total"):
+            extras["total"] = _aplicar_derivados(
+                _aplicar_agrupamento(dados, indicador_def, []), indicador_def
+            )[0]
+
+        if extras.get("total_por"):
+            extras["totais_por_grupo"] = _aplicar_derivados(
+                _aplicar_agrupamento(dados, indicador_def, [extras["total_por"]]),
+                indicador_def,
+            )
 
     # Quem pergunta por código de filial precisa ver o código de cada
     # linha — sem ele a IA adivinha o código pelo nome e erra.
@@ -1004,6 +1110,7 @@ def _consultar_indicadores(
     periodo_personalizado: dict | None,
     agrupar_por: list[str],
     rcas_validos: set[int] | None = None,
+    extras: dict | None = None,
 ) -> tuple[list[dict], set[int] | None]:
     """
     Consulta o indicador principal e, se a consulta tiver "cruzar_com",
@@ -1014,7 +1121,7 @@ def _consultar_indicadores(
 
     resultado, rcas_validos = _consultar_periodo(
         definicoes[0], consulta, periodo, periodo_personalizado,
-        agrupar_por, rcas_validos,
+        agrupar_por, rcas_validos, extras,
     )
     campos_resultado = _campos_do_indicador(definicoes[0])
 
@@ -1112,12 +1219,12 @@ def _aplicar_variacao_temporal(
       mês com o mês imediatamente anterior dentro do mesmo ano (campos
       "diferenca_mes_anterior", "percentual_mes_anterior").
 
-    Usa o campo definido em indicador_def["campo_principal"] — o
-    indicador que faz sentido acompanhar ao longo do tempo (ex:
-    faturamento realizado, não a meta em si). Indicadores sem esse
-    campo definido não recebem essa variação automática.
+    Usa o campo definido em indicador_def["campo_variacao"] ou, sem ele,
+    em "campo_principal" — o indicador que faz sentido acompanhar ao
+    longo do tempo (ex: faturamento realizado, não a meta em si).
+    Indicadores sem esses campos não recebem essa variação automática.
     """
-    campo = indicador_def.get("campo_principal")
+    campo = indicador_def.get("campo_variacao") or indicador_def.get("campo_principal")
 
     if not campo or not resultado or not {"mes", "ano"} & set(agrupar_por):
         return resultado
@@ -1257,6 +1364,36 @@ def _aplicar_ordenacao(resultado: list[dict], ordenar_por: dict | None) -> list[
     return itens_ordenados
 
 
+def _aplicar_ordenacao_por_grupo(
+    resultado: list[dict], ordenar_por: dict, grupos: list
+) -> list[dict]:
+    """
+    "Os N maiores e, dentro de cada um, os principais" (ex: os 5 RCAs que
+    mais deram desconto e os 3 clientes de cada): `grupos` já vem na
+    ordem do total de cada grupo (ver executar_consulta); aqui as linhas
+    de cada grupo são ordenadas e cortadas em "limite" — nunca os N
+    maiores PARES (RCA, cliente), que deixavam de fora um RCA com
+    desconto alto espalhado em muitos clientes.
+
+    Sem "limite" (ex: "o histórico mês a mês dos 3 maiores RCAs"), as
+    linhas de cada grupo ficam na ordem natural (janeiro → dezembro) —
+    reordenar pelo valor embaralhava os meses.
+    """
+    grupo = ordenar_por["por"]
+    limite = ordenar_por.get("limite")
+    por_ordem_e_limite = {
+        "campo": ordenar_por["campo"],
+        "ordem": ordenar_por.get("ordem", "desc"),
+        "limite": limite,
+    }
+
+    def linhas_do_grupo(valor):
+        linhas = [item for item in resultado if item.get(grupo) == valor]
+        return _aplicar_ordenacao(linhas, por_ordem_e_limite) if limite else linhas
+
+    return [linha for valor in grupos for linha in linhas_do_grupo(valor)]
+
+
 def _aplicar_filtro_calculado(resultado: list[dict], filtro: dict) -> list[dict]:
     campo = filtro["campo"]
     operador_nome = filtro["operador"]
@@ -1310,7 +1447,10 @@ def executar_consulta(consulta: dict) -> dict:
       (ex: NPS cruzado com meta, pra "maior NPS que bateu a meta").
     - ordenar_por (opcional): {"campo": ..., "ordem": "desc"|"asc"
       (padrão "desc"), "limite": N} — ordena o resultado por um campo
-      e corta pros N primeiros, de forma exata. Use pra "os N
+      e corta pros N primeiros, de forma exata. Com "por" (uma dimensão
+      de agrupar_por) e "limite_grupos": M, escolhe os M grupos com
+      maior total e corta em N linhas DENTRO de cada grupo (ex: os 5
+      RCAs que mais deram desconto e os 3 clientes de cada). Use pra "os N
       maiores/menores" em vez de confiar na IA pra comparar uma lista
       grande de itens "de olho".
     """
@@ -1324,7 +1464,9 @@ def executar_consulta(consulta: dict) -> dict:
             **consulta,
             "colunas": [
                 coluna for coluna in consulta["colunas"]
-                if coluna not in (*catalogo.DIMENSOES_VALIDAS, "rca_nome")
+                if coluna not in (
+                    *catalogo.DIMENSOES_VALIDAS, "rca_nome", *_CAMPOS_DE_ATRIBUTO
+                )
             ],
         }
 
@@ -1332,9 +1474,39 @@ def executar_consulta(consulta: dict) -> dict:
 
     indicador = consulta["indicador"]
     indicador_def = catalogo.INDICADORES[indicador]
+
+    periodo_consultado = _descrever_periodo(
+        _filtros_efetivos(
+            indicador_def, consulta, consulta.get("periodo"),
+            consulta.get("periodo_personalizado"),
+        )
+    )
+
+    # Sem período, o resultado somaria todo o histórico (desde 2020) —
+    # ex: "desconto do Mateus em Timon" dava R$ 205 mil, quase tudo de
+    # 2020. Pra esses indicadores a IA tem que perguntar o período.
+    if periodo_consultado is None and indicador_def.get("periodo_obrigatorio"):
+        raise ConsultaInvalida(
+            "Falta o período. Pergunte ao usuário qual período ele quer "
+            "(ex: este ano, mês passado, 2025) antes de consultar."
+        )
     agrupar_por = consulta.get("agrupar_por") or []
     cruzar_com = consulta.get("cruzar_com") or []
     indicadores = [indicador, *cruzar_com]
+
+    comparar_com = consulta.get("comparar_com")
+    comparar_filtros = consulta.get("comparar_filtros")
+
+    # Total de todas as linhas: só na consulta simples (um indicador,
+    # sem comparação e sem filtro sobre a métrica, que deixariam o
+    # total diferente da soma das linhas mostradas).
+    extras = {
+        "calcular_total": not (
+            cruzar_com or comparar_com or comparar_filtros
+            or consulta.get("filtros_calculados")
+        ),
+        "total_por": (consulta.get("ordenar_por") or {}).get("por"),
+    }
 
     resultado, rcas_validos = _consultar_indicadores(
         indicadores,
@@ -1342,10 +1514,8 @@ def executar_consulta(consulta: dict) -> dict:
         consulta.get("periodo"),
         consulta.get("periodo_personalizado"),
         agrupar_por,
+        extras=extras,
     )
-
-    comparar_com = consulta.get("comparar_com")
-    comparar_filtros = consulta.get("comparar_filtros")
 
     if comparar_com:
         # Reaproveita o MESMO conjunto de RCAs válidos calculado pro
@@ -1397,22 +1567,58 @@ def executar_consulta(consulta: dict) -> dict:
     for filtro_calculado in consulta.get("filtros_calculados") or []:
         resultado = _aplicar_filtro_calculado(resultado, filtro_calculado)
 
-    resultado = _aplicar_ordenacao(resultado, consulta.get("ordenar_por"))
+    resultado_antes_do_limite = resultado
+    ordenar_por = consulta.get("ordenar_por")
+    totais_por_grupo = None
+
+    if ordenar_por and ordenar_por.get("por"):
+        # O ranking dos grupos usa o total de CADA GRUPO (os mesmos dados
+        # agrupados só por ele), não a soma das linhas — assim um campo
+        # calculado (ex: % de desconto) também ordena certo.
+        grupo = ordenar_por["por"]
+        totais_por_grupo = _aplicar_ordenacao(
+            extras.get("totais_por_grupo", []),
+            {
+                "campo": ordenar_por["campo"],
+                "ordem": ordenar_por.get("ordem", "desc"),
+                "limite": ordenar_por.get("limite_grupos"),
+            },
+        )
+        resultado = _aplicar_ordenacao_por_grupo(
+            resultado, ordenar_por, [linha[grupo] for linha in totais_por_grupo]
+        )
+    else:
+        resultado = _aplicar_ordenacao(resultado, ordenar_por)
 
     resposta = {
         "encontrado": bool(resultado),
         "indicador": indicador,
         "cruzado_com": cruzar_com or None,
         "filtros_aplicados": consulta.get("filtros"),
-        "periodo_consultado": _descrever_periodo(
-            _filtros_efetivos(
-                indicador_def, consulta, consulta.get("periodo"),
-                consulta.get("periodo_personalizado"),
-            )
-        ),
+        "periodo_consultado": periodo_consultado or {
+            "descricao": "todo o histórico disponível (sem filtro de período)"
+        },
         "agrupar_por": agrupar_por or None,
         "resultados": resultado,
     }
+
+    if totais_por_grupo is not None:
+        resposta["totais_por_grupo"] = totais_por_grupo
+
+    if extras.get("itens_filtrados"):
+        resposta["itens_filtrados"] = extras["itens_filtrados"]
+
+    if extras.get("total"):
+        resposta["total_de_todas_as_linhas"] = {
+            **extras["total"],
+            "quantidade_de_linhas": len(resultado_antes_do_limite),
+            # ex: 149 linhas = 37 lojas x 2 anos — a IA não deve dizer
+            # "149 lojas".
+            "quantidade_por_dimensao": {
+                dimensao: len({linha.get(dimensao) for linha in resultado_antes_do_limite})
+                for dimensao in agrupar_por
+            },
+        }
 
     if comparar_com:
         resposta["periodo_comparado"] = _descrever_periodo(

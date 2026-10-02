@@ -217,3 +217,22 @@ def test_nps_das_filiais_comparadas_fica_lado_a_lado_antes_das_outras_colunas():
         "Mês", "LOURIVAL — NPS", "SANTA INÊS — NPS",
         "LOURIVAL — Respostas", "SANTA INÊS — Respostas",
     ]
+
+
+def test_tabela_esparsa_nao_vira_colunas():
+    """
+    5 pares RCA x cliente, cada cliente de um RCA só: virar os RCAs em
+    colunas deixava quase todas as células "sem dados" — fica em linhas.
+    """
+    dados = [
+        {"rca": 1, "rca_nome": "VITOR", "cliente": 10, "cliente_nome": "A", "valor_desconto": 30.0},
+        {"rca": 2, "rca_nome": "PAULO", "cliente": 11, "cliente_nome": "B", "valor_desconto": 21.0},
+        {"rca": 2, "rca_nome": "PAULO", "cliente": 12, "cliente_nome": "C", "valor_desconto": 20.0},
+        {"rca": 2, "rca_nome": "PAULO", "cliente": 13, "cliente_nome": "D", "valor_desconto": 19.0},
+        {"rca": 3, "rca_nome": "EDMILSON", "cliente": 14, "cliente_nome": "E", "valor_desconto": 13.0},
+    ]
+
+    tabela = preparar_tabela(dados, "desconto por rca e cliente", "consultar_dados_comerciais")
+
+    assert len(tabela) == 5
+    assert list(tabela["RCA"]) == ["VITOR", "PAULO", "PAULO", "PAULO", "EDMILSON"]

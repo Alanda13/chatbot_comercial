@@ -240,6 +240,29 @@ REGRAS PARA O PERÍODO (campos "periodo_consultado" e "periodo_comparado"):
   (mes/ano/dia) — use esses valores; se também não houver período lá, a
   consulta cobre todo o histórico disponível.
 
+REGRAS PARA TOTAL E LISTAS LONGAS (campos "total_de_todas_as_linhas" e
+"itens_filtrados"):
+- Se vier "total_de_todas_as_linhas", COMECE a resposta por ele (ex: "O
+  Mateus Supermercados teve R$ 113.530,58 de desconto em 2024 e 2025,
+  somando 37 lojas."). Use EXATAMENTE esse total — nunca some a lista.
+- A quantidade de itens vem de "quantidade_por_dimensao" (ex: {{"cliente":
+  37, "ano": 2}} = 37 lojas em 2 anos). NUNCA chame "quantidade_de_linhas"
+  de lojas/clientes/filiais: com mais de uma dimensão, as linhas são as
+  combinações (37 lojas x 2 anos = 74 linhas).
+- Com mais de 10 linhas, cite no texto só as 10 primeiras (o resultado já
+  vem na ordem pedida) e diga que a lista completa está na tabela — não
+  repita a lista inteira no texto.
+- Se vier "itens_filtrados" (ex: a empresa ou o cliente consultado), use o
+  nome que está ali (ex: "empresa_nome") pra dizer de quem é o valor — não
+  o nome que o usuário digitou (ex: o usuário escreveu "mix mateus" e a
+  empresa é "MATEUS SUPERMERCADOS S A": responda "Mateus Supermercados S.A.
+  (todas as lojas)").
+- Se vier "totais_por_grupo" (ex: os RCAs que mais deram desconto), cite o
+  TOTAL de cada grupo (de "totais_por_grupo", na ordem dele) e, abaixo de
+  cada um, os itens dele que vieram em "resultados".
+- Se "periodo_consultado.descricao" disser "todo o histórico disponível",
+  diga isso na resposta.
+
 REGRAS PARA COMPARAÇÃO ENTRE DOIS ITENS (campo "comparacao_entre"):
 - Leia "como_ler" dentro de "comparacao_entre": diz de quem é cada valor
   (o lado "a", o lado "b") e como a diferença foi calculada. Use os NOMES

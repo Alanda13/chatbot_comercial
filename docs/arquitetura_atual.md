@@ -606,6 +606,78 @@ vez de mês, e a forma de pagamento (`CODCOB`, presente nessas views).
 - Dimensões: filial, estado, RCA, supervisor, mês, ano. Validado: Timon
   ago/2026 = R$ 310.567,19 / R$ 9.920.150,98, igual ao banco.
 
+### Desconto por cliente (02/10/2026)
+
+- **Fonte:** `src/cliente_data.py` gera dois CSVs (cache de 1h, igual aos
+  outros, desde 2020), lidos SÓ quando a pergunta pede cliente/empresa
+  (`fontes_por_dimensao` no catálogo — a mesma regra que antes era só da
+  forma de pagamento):
+  - `desconto_cliente.csv` (~1,15 milhão de linhas, 43 MB): desconto e
+    faturamento de tabela por filial/ano/mês/RCA/supervisor/cliente — só
+    códigos e números. Desconto com 4 casas (com 2, o arredondamento por
+    linha somava até R$ 10/ano de diferença).
+  - `clientes.csv` (~192 mil): cadastro (`PCCLIENT`) de quem comprou desde
+    2020 — nome, fantasia, CNPJ, cidade, empresa.
+  Gerar do Oracle leva ~2,5 min; ler, ~2,3 s. Totais por ano batem com o
+  `faturamento_mensal.csv` (diferença de centavos, arredondamento do mensal).
+- **Empresa = início do CNPJ** (8 primeiros dígitos). Cada loja é um
+  cadastro (código próprio) com o seu CNPJ; as lojas da mesma empresa só
+  mudam o final (ex: as lojas Mix, Eletro, Hiper e Mateus Supermercados
+  começam com 03.995.515). Sem CNPJ válido (CPF, em branco, "000…") o
+  cliente fica sozinho ("CLI<código>"). Empresas diferentes do mesmo grupo
+  (Mateus Supermercados x Armazém Mateus) NÃO são juntadas automaticamente.
+- **Duas dimensões:** "empresa" (todas as lojas) e "cliente" (o código, UMA
+  loja). Nome → empresa; se o nome acha várias empresas, a consulta para
+  com a lista (a que mais compra primeiro, até 10) e a IA pergunta qual.
+  Ranking de clientes = agrupar por empresa (cada uma aparece uma vez).
+- **Filial = filial da Ferronorte que vendeu**, não a cidade do cliente —
+  é o filtro que o controle de acesso vai usar.
+- **Nome/CNPJ/cidade** vêm junto ao agrupar (`ATRIBUTOS_DIMENSAO` no
+  catálogo): são identificação, nunca viram coluna no pivô da tabela.
+- **Total de todas as linhas:** toda consulta agrupada simples traz
+  `total_de_todas_as_linhas` (antes do limite) — a IA usa esse total em vez
+  de somar a lista (ex: desconto da empresa + tabela por loja).
+- **Período obrigatório no desconto** (`periodo_obrigatorio` no catálogo):
+  sem período a consulta somaria desde 2020 e enganava (ex: "desconto do
+  Mateus em Timon" dava R$ 205.100,63, sendo R$ 204.332 de 2020 e R$ 576 em
+  2026). Agora o motor recusa e a IA pergunta o período. Nos outros
+  indicadores, consulta sem período descreve "todo o histórico disponível"
+  em `periodo_consultado` (antes vinha nulo e a IA omitia).
+- **Respostas longas** (teste de 02/10/2026: "Mateus por loja em 2024 e
+  2025" listou 149 linhas no texto, 116 com R$ 0,00, sem total): a resposta
+  começa pelo total, cita só as 10 primeiras (ordenadas pelo desconto) e
+  conta itens por `quantidade_por_dimensao` (95 lojas x 2 anos = 149
+  linhas). `itens_filtrados` traz o nome oficial da empresa/cliente
+  filtrado ("mix mateus" → "MATEUS SUPERMERCADOS S A").
+- **Mesmo CPF = mesmo cliente** (02/10/2026): CPF válido também vira a
+  "empresa" (o CPF inteiro). Junta 172 pessoas cadastradas mais de uma vez e
+  os 5 cadastros "CONSUMIDOR FINAL" (todos com CPF 111.111.111-11 — o
+  balcão sem cliente identificado), que apareciam duas vezes no ranking.
+  Consumidor Final em 2026: R$ ~958 mil, uma linha só.
+- **"Os N maiores e, dentro de cada um, os principais"**: `ordenar_por`
+  aceita `"por"` (dimensão de `agrupar_por`) e `"limite_grupos"`. Os grupos
+  são escolhidos pelo TOTAL de cada um (`totais_por_grupo`, mesmos dados
+  agrupados só pela dimensão), e `limite` corta dentro de cada grupo. Antes,
+  "RCAs que mais deram desconto e pra quais clientes" cortava nos 5 maiores
+  PARES (RCA, cliente) e deixava de fora a Adriana Moraes, 2ª maior em
+  set/2026.
+  Sem `limite`, as linhas de cada grupo ficam na ordem natural (antes, "o
+  histórico mês a mês dos 3 maiores RCAs" saía com os meses ordenados pelo
+  valor: agosto, maio, julho…).
+- **Variação mês a mês do desconto é em R$** (`campo_variacao` no catálogo):
+  antes era a variação do % (Paulo Sergio, mai→jun/2026: % de 9,05 para
+  9,07 = "+0,22%", enquanto o desconto caiu de R$ 115.561 para R$ 19.218,
+  -83%).
+- **Tabela esparsa não pivota** (`app._pivotar`): se menos da metade das
+  células teria valor, a tabela fica em linhas.
+- Prompt: "pedir_esclarecimento" pergunta só o que falta (sem listar os
+  assuntos disponíveis); lista sem quantidade usa limite 10; erro de
+  digitação provável vira "você quis dizer…?"; a lista de empresas parecidas
+  é numerada, com CNPJ/"pessoa física", sem códigos internos.
+- Vendas para a própria Ferronorte (cadastros "Comercial Ferronorte")
+  entram, por decisão de 02/10/2026. "CONSUMIDOR FINAL" (CPF genérico) é
+  um cliente só e lidera rankings por filial.
+
 ## Período sempre explícito na resposta + trava contra número inventado
 
 - **"mês passado" saía como o mês errado:** o resultado não dizia qual
