@@ -1,4 +1,4 @@
-from app import preparar_tabela, vale_a_pena_mostrar_tabela
+from app import descrever_periodo, preparar_tabela, vale_a_pena_mostrar_tabela
 
 _DADOS_FILIAL_2_ANOS = [
     {"filial": "FERRONORTE LOURIVAL", "ano": 2024, "faturamento": 74414711.88},
@@ -236,3 +236,13 @@ def test_tabela_esparsa_nao_vira_colunas():
 
     assert len(tabela) == 5
     assert list(tabela["RCA"]) == ["VITOR", "PAULO", "PAULO", "PAULO", "EDMILSON"]
+
+
+def test_legenda_nao_confunde_codigo_com_ano():
+    """'(código 1901)' e '(código 2360)' são códigos de RCA, não anos."""
+    texto = (
+        "Os RCAs que mais faturaram de 28/09/2026 a 04/10/2026: AURORA "
+        "ANDRADE-F01 (código 1901) e LUANA SOUSA ALMEIDA - F27 (código 2360)."
+    )
+
+    assert descrever_periodo([{"rca": 1901, "faturamento": 1.0}], texto) == "Ano: 2026"

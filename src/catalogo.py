@@ -73,8 +73,13 @@ DIMENSOES_VALIDAS = [
 # Colunas que DESCREVEM o item de uma dimensão (vêm junto quando se
 # agrupa por ela, mas não são agrupamentos novos): nome do campo no
 # resultado -> (coluna do DataFrame, título na tabela). Ex: agrupar por
-# "cliente" (o código) traz também nome, CNPJ e cidade da loja.
+# "cliente" (o código) traz também nome, CNPJ e cidade da loja. Só entram
+# as colunas que existem na base do indicador (o arquivo de cliente, por
+# exemplo, não tem o nome do supervisor).
 ATRIBUTOS_DIMENSAO = {
+    "supervisor": {
+        "supervisor_nome": ("NOME_SUPERVISOR", "Supervisor"),
+    },
     "cliente": {
         "cliente_nome": ("CLIENTE", "Cliente"),
         "cnpj": ("CNPJ", "CNPJ"),
@@ -169,6 +174,9 @@ INDICADORES = {
         },
     },
     "meta": {
+        # Acumulado do ano corrente = só meses fechados; o mês em andamento
+        # vem à parte (ver orquestrador._separar_mes_em_andamento).
+        "acumulado_so_meses_fechados": True,
         "carregar": carregar_faturamento_mensal,
         "granularidade_periodo": "mensal",
         "campos": {
@@ -212,6 +220,9 @@ INDICADORES = {
     },
 
     "meta_tonelada": {
+        # Acumulado do ano corrente = só meses fechados; o mês em andamento
+        # vem à parte (ver orquestrador._separar_mes_em_andamento).
+        "acumulado_so_meses_fechados": True,
         "carregar": carregar_meta_tonelada,
         "granularidade_periodo": "mensal",
         "campos": {
@@ -350,6 +361,46 @@ INDICADORES = {
         # A variação mês a mês/ano a ano é do desconto em R$: a variação do
         # % (9,05% → 9,07% = "+0,22%") escondia uma queda de R$ 115 mil
         # pra R$ 19 mil, lida ao lado das colunas em R$.
+        "campo_variacao": "valor_desconto",
+        "unidade": "%",
+        "exibicao": {
+            "percentual_desconto": {"tipo": "percentual", "rotulo": "% Desconto", "sempre": True},
+            "valor_desconto": {"tipo": "moeda", "rotulo": "Desconto", "palavras": ["descont"]},
+            "faturamento_tabela": {"tipo": "moeda", "rotulo": "Faturamento de Tabela", "palavras": ["tabela"]},
+        },
+    },
+    # Desconto por DIA (hoje, ontem, semana, datas): mesma conta da 8302,
+    # vinda do arquivo diário (GFN_MVIEW_VENDAS_ATUAL, onde VLDESCONTO já
+    # vem multiplicado pela quantidade — bate com o "desconto" mensal:
+    # Timon ago/2026 = R$ 310.567,19 nos dois). Sem supervisor/cliente:
+    # o arquivo diário não tem essas colunas.
+    "desconto_diario": {
+        "carregar": carregar_faturamento_diario,
+        "granularidade_periodo": "diaria",
+        "periodo_obrigatorio": True,
+        "campos": {
+            "valor_desconto": ("VALORDESC", "sum"),
+            "faturamento_tabela": ("VENDA_TABELA", "sum"),
+        },
+        "dimensoes": {
+            "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
+            "dia": "DATA",
+        },
+        "resolver_dimensao": {
+            "filial": resolver_nome_filial,
+            "estado": resolver_estado,
+            "rca": resolver_codigos_rca,
+        },
+        "rca_nome_mapa": construir_mapa_rca_nome,
+        "rca_requer_meta_cadastrada": True,
+        "derivados": [
+            {
+                "nome": "percentual_desconto",
+                "formula": "calcular_desconto",
+                "campos": ("valor_desconto", "faturamento_tabela"),
+            },
+        ],
+        "campo_principal": "percentual_desconto",
         "campo_variacao": "valor_desconto",
         "unidade": "%",
         "exibicao": {

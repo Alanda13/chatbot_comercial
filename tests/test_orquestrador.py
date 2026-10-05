@@ -1257,3 +1257,134 @@ def test_rca_com_meta_zero_numa_filial_nao_vaza_de_outra_filial_onde_tem_meta(
 
     assert por_filial["CAMPOS SALES"] == [1]
     assert por_filial["TIMON"] == [8403]  # o código 1 NÃO aparece aqui
+
+
+# --- correções de 05/10/2026 (teste de faturamento) ---
+
+def test_agrupado_por_2_anos_ignora_comparar_com(monkeypatch):
+    """
+    Agrupada por ano (2024 e 2025), a consulta já traz a variação ano a
+    ano; um "comparar_com" a mais comparava cada ano com ele mesmo
+    (2024 x 2024 = +0,00%, 2025 "sem dados").
+    """
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"], "carregar", _dados_faturamento)
+
+    resultado = orq.executar_consulta({
+        "indicador": "faturamento",
+        "filtros": {"ano": [2024, 2025]},
+        "agrupar_por": ["ano"],
+        "comparar_com": "ano_anterior_ao_filtro",
+    })["resultados"]
+
+    assert [(linha["ano"], linha.get("faturamento_anterior")) for linha in resultado] == [
+        (2024, None), (2025, None),
+    ]
+    assert resultado[1]["percentual_ano_anterior"] == 25.0
+
+
+def test_comparacao_com_periodo_principal_sem_venda_mostra_o_outro(monkeypatch):
+    """10/08/2025 (domingo, sem venda) x 20/08/2025: antes sumia tudo."""
+    dados = pd.DataFrame([
+        {"FILIAL": "TIMON", "DATA": pd.Timestamp("2025-08-20"), "VENDA_LIQ": 100.0,
+         "VENDA_BRUTA": 110.0, "VALORDESC": 1.0, "QT_NOTAS": 3, "COD_RCA": 1},
+    ])
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento_diario"], "carregar", lambda: dados)
+
+    resposta = orq.executar_consulta({
+        "indicador": "faturamento_diario",
+        "periodo": "personalizado",
+        "periodo_personalizado": {"data_inicial": "2025-08-10", "data_final": "2025-08-10"},
+        "comparar_com": "personalizado",
+        "comparar_com_personalizado": {"data_inicial": "2025-08-20", "data_final": "2025-08-20"},
+    })
+
+    assert resposta["encontrado"] is True
+    assert resposta["resultados"][0]["faturamento"] is None
+    assert resposta["resultados"][0]["faturamento_anterior"] == 100.0
+
+
+def test_agrupar_por_supervisor_traz_o_nome(monkeypatch):
+    dados = _dados_meta().assign(NOME_SUPERVISOR=["SUPERVISOR TIMON", "SUPERVISOR TIBIRI"][: len(_dados_meta())])
+    monkeypatch.setitem(catalogo.INDICADORES["meta"], "carregar", lambda: dados)
+
+    resultado = orq.executar_consulta({
+        "indicador": "meta", "filtros": {"ano": [2025]}, "agrupar_por": ["supervisor"],
+    })["resultados"]
+
+    assert {linha["supervisor"]: linha["supervisor_nome"] for linha in resultado}[9] == "SUPERVISOR TIMON"
+
+
+def test_desconto_diario_por_rca_na_semana(monkeypatch):
+    """'Qual RCA mais concedeu desconto semana passada?' — o desconto
+    mensal recusava; o diário responde com R$ e % (sobre as somas)."""
+    dados = pd.DataFrame([
+        {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": 1, "DATA": pd.Timestamp(dia),
+         "VALORDESC": desconto, "VENDA_TABELA": tabela}
+        for dia, desconto, tabela in [
+            ("2026-09-28", 10.0, 100.0), ("2026-09-29", 30.0, 100.0), ("2026-09-20", 99.0, 100.0),
+        ]
+    ])
+    monkeypatch.setitem(catalogo.INDICADORES["desconto_diario"], "carregar", lambda: dados)
+    monkeypatch.setitem(catalogo.INDICADORES["desconto_diario"], "rca_requer_meta_cadastrada", False)
+
+    resposta = orq.executar_consulta({
+        "indicador": "desconto_diario",
+        "periodo": "personalizado",
+        "periodo_personalizado": {"data_inicial": "2026-09-28", "data_final": "2026-10-04"},
+        "agrupar_por": ["rca"],
+    })
+
+    linha = resposta["resultados"][0]
+    assert (linha["valor_desconto"], linha["percentual_desconto"]) == (40.0, 20.0)
+
+
+def test_desconto_diario_sem_periodo_pede_o_periodo():
+    with pytest.raises(ConsultaInvalida, match="Falta o período"):
+        orq.executar_consulta({"indicador": "desconto_diario", "agrupar_por": ["rca"]})
+
+
+class _Hoje5DeOutubro(date):
+    @classmethod
+    def today(cls):
+        return cls(2026, 10, 5)
+
+
+def _meta_set_out_2026():
+    return pd.DataFrame([
+        {"FILIAL": "TIMON", "COD_RCA": 8403, "COD_SUPERVISOR": 9, "MES": mes, "ANO": 2026,
+         "VENDA_LIQ": venda, "VALOR_META": meta}
+        for mes, venda, meta in [(9, 100.0, 100.0), (10, 8.0, 100.0)]
+    ])
+
+
+def test_acumulado_do_ano_usa_so_meses_fechados(monkeypatch):
+    """
+    Em 05/10, "atingimento de 2026" somava a meta de outubro inteira contra
+    5 dias de venda (Timon: 97,0% até setembro virava 86,1%). O acumulado
+    usa só os meses fechados e o mês em andamento vem à parte.
+    """
+    monkeypatch.setattr(orq, "date", _Hoje5DeOutubro)
+    monkeypatch.setitem(catalogo.INDICADORES["meta"], "carregar", _meta_set_out_2026)
+
+    resposta = orq.executar_consulta({"indicador": "meta", "filtros": {"ano": [2026]}})
+
+    assert resposta["periodo_consultado"]["descricao"] == "de janeiro a setembro de 2026"
+    assert resposta["resultados"][0]["percentual_atingimento"] == 100.0
+    andamento = resposta["mes_em_andamento"]
+    assert andamento["descricao"].startswith("outubro de 2026")
+    assert andamento["resultados"][0]["percentual_atingimento"] == 8.0
+
+
+def test_mes_pedido_ou_mes_a_mes_nao_separa(monkeypatch):
+    monkeypatch.setattr(orq, "date", _Hoje5DeOutubro)
+    monkeypatch.setitem(catalogo.INDICADORES["meta"], "carregar", _meta_set_out_2026)
+
+    este_mes = orq.executar_consulta({"indicador": "meta", "filtros": {"ano": [2026], "mes": [10]}})
+    mes_a_mes = orq.executar_consulta(
+        {"indicador": "meta", "filtros": {"ano": [2026]}, "agrupar_por": ["mes"]}
+    )
+
+    assert "mes_em_andamento" not in este_mes
+    assert este_mes["resultados"][0]["percentual_atingimento"] == 8.0
+    assert "mes_em_andamento" not in mes_a_mes
+    assert [linha["mes"] for linha in mes_a_mes["resultados"]] == [9, 10]

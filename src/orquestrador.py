@@ -576,6 +576,14 @@ def _descrever_periodo(filtros: dict) -> dict | None:
         meses = [_NOMES_MESES[int(mes) - 1] for mes in _como_lista(periodo.get("mes", []))]
         anos = [str(int(ano)) for ano in _como_lista(periodo.get("ano", []))]
 
+        numeros = sorted(int(mes) for mes in _como_lista(periodo.get("mes", [])))
+
+        # Meses seguidos viram intervalo: "de janeiro a setembro de 2026".
+        if len(numeros) > 2 and numeros == list(range(numeros[0], numeros[-1] + 1)):
+            meses = [
+                f"de {_NOMES_MESES[numeros[0] - 1]} a {_NOMES_MESES[numeros[-1] - 1]}"
+            ]
+
         if meses and anos:
             descricao = f"{_juntar_com_e(meses)} de {_juntar_com_e(anos)}"
         elif anos:
@@ -584,6 +592,48 @@ def _descrever_periodo(filtros: dict) -> dict | None:
             descricao = f"{_juntar_com_e(meses)} (todos os anos)"
 
     return {**periodo, "descricao": descricao}
+
+
+def _separar_mes_em_andamento(consulta: dict, indicadores: list[str]) -> dict | None:
+    """
+    "Atingimento de 2026" no começo de outubro somava a meta de outubro
+    INTEIRA contra 5 dias de venda (Timon: 97,0% até setembro virava
+    86,1%; Parnaíba, que bateu a meta, aparecia com 91%). Pros indicadores
+    com meta ("acumulado_so_meses_fechados"), o acumulado do ano corrente
+    usa só os meses fechados; quem chama consulta o mês em andamento à
+    parte e devolve junto (resposta["mes_em_andamento"]).
+
+    Só vale pro ano corrente sozinho, sem mês/dia pedidos, sem agrupar
+    por mês (aí cada mês já aparece separado) e sem comparação. Devolve
+    os filtros só com os meses fechados, ou None se a regra não se aplica.
+    """
+    if not any(
+        catalogo.INDICADORES[nome].get("acumulado_so_meses_fechados")
+        for nome in indicadores
+    ):
+        return None
+
+    if (
+        "mes" in (consulta.get("agrupar_por") or [])
+        or consulta.get("comparar_com") or consulta.get("comparar_filtros")
+    ):
+        return None
+
+    indicador_def = catalogo.INDICADORES[indicadores[0]]
+    filtros = _filtros_efetivos(
+        indicador_def, consulta, consulta.get("periodo"),
+        consulta.get("periodo_personalizado"),
+    )
+    hoje = date.today()
+
+    if (
+        "mes" in filtros or "dia" in filtros
+        or _como_lista(filtros.get("ano", [])) != [hoje.year]
+        or hoje.month == 1
+    ):
+        return None
+
+    return {**filtros, "mes": list(range(1, hoje.month))}
 
 
 def _intervalo_do_mes(ano: int, mes: int) -> dict:
@@ -669,8 +719,17 @@ def _rcas_com_meta_cadastrada(
     Essa definição usa sempre a base de metas como referência, mesmo
     quando o indicador consultado é outro (faturamento) — é uma regra
     compartilhada entre indicadores, não específica de um.
+
+    Contas da empresa ("COMERCIAL FERRONORTE LTDA-F09-TIMON",
+    "FERROLESTE F08"...) têm meta (parte da meta da filial, somada pela
+    rotina 8139), mas não são vendedores: ficam fora das listas de RCA.
+    Pedidas pelo nome/código, continuam respondendo (esse filtro só vale
+    quando a consulta agrupa por RCA sem RCA específico).
     """
     dados_meta = catalogo.INDICADORES["meta"]["carregar"]()
+
+    if "CONTA_EMPRESA" in dados_meta.columns:
+        dados_meta = dados_meta[~dados_meta["CONTA_EMPRESA"].astype(bool)]
 
     if filiais:
         dados_meta = dados_meta[dados_meta["FILIAL"].isin(filiais)]
@@ -901,7 +960,11 @@ def _aplicar_agrupamento(
         resultados.append(item)
 
     for dimensao, coluna in zip(agrupar_por, colunas_agrupamento):
-        atributos = catalogo.ATRIBUTOS_DIMENSAO.get(dimensao, {})
+        atributos = {
+            campo: definicao
+            for campo, definicao in catalogo.ATRIBUTOS_DIMENSAO.get(dimensao, {}).items()
+            if definicao[0] in dados.columns
+        }
 
         if not atributos:
             continue
@@ -989,7 +1052,11 @@ def _itens_filtrados(
     itens = {}
 
     for dimensao in filtros:
-        atributos = catalogo.ATRIBUTOS_DIMENSAO.get(dimensao)
+        atributos = {
+            campo: definicao
+            for campo, definicao in catalogo.ATRIBUTOS_DIMENSAO.get(dimensao, {}).items()
+            if definicao[0] in dados.columns
+        }
         coluna = indicador_def["dimensoes"].get(dimensao)
 
         if not atributos or coluna is None:
@@ -1490,7 +1557,46 @@ def executar_consulta(consulta: dict) -> dict:
             "Falta o período. Pergunte ao usuário qual período ele quer "
             "(ex: este ano, mês passado, 2025) antes de consultar."
         )
+
     agrupar_por = consulta.get("agrupar_por") or []
+
+    filtros_meses_fechados = _separar_mes_em_andamento(
+        consulta, [indicador, *(consulta.get("cruzar_com") or [])]
+    )
+    mes_em_andamento = None
+
+    if filtros_meses_fechados is not None:
+        hoje = date.today()
+        # Sem ordenar/limite: o parcial mostra os MESMOS itens do resultado
+        # principal (filtrado mais abaixo), não o "top N" do mês.
+        consulta_do_mes = {
+            **consulta, "periodo": None, "periodo_personalizado": None,
+            "filtros": {**filtros_meses_fechados, "mes": [hoje.month]},
+            "ordenar_por": None,
+        }
+        parcial = executar_consulta(consulta_do_mes)
+        mes_em_andamento = {
+            "descricao": (
+                f"{parcial['periodo_consultado']['descricao']} — mês em "
+                f"andamento, com vendas até {hoje.strftime('%d/%m/%Y')}"
+            ),
+            "resultados": parcial["resultados"],
+        }
+        consulta = {
+            **consulta, "periodo": None, "periodo_personalizado": None,
+            "filtros": filtros_meses_fechados,
+        }
+        periodo_consultado = _descrever_periodo(filtros_meses_fechados)
+
+    # Agrupada por 2+ anos, a consulta já traz a variação de um ano pro
+    # outro (_aplicar_variacao_temporal). Um "comparar_com" a mais
+    # comparava cada ano com ELE MESMO (Timon 2024 x 2024 = +0,00%, e
+    # 2025 "sem dados") — então é descartado.
+    anos_consultados = _como_lista((periodo_consultado or {}).get("ano", []))
+
+    if consulta.get("comparar_com") and "ano" in agrupar_por and len(anos_consultados) >= 2:
+        consulta = {**consulta, "comparar_com": None, "comparar_com_personalizado": None}
+
     cruzar_com = consulta.get("cruzar_com") or []
     indicadores = [indicador, *cruzar_com]
 
@@ -1526,8 +1632,12 @@ def executar_consulta(consulta: dict) -> dict:
             rcas_validos=rcas_validos,
         )
         campos_comparaveis = _campos_da_consulta(indicadores)
+        # Período principal sem nenhuma venda (ex: 10/08/2025, um domingo,
+        # contra 20/08/2025): mostra o outro lado com o principal vazio,
+        # em vez de descartar a comparação inteira.
         resultado = _combinar_comparacao(
             resultado, resultado_comparacao, agrupar_por, campos_comparaveis,
+            incluir_so_do_outro_lado=not resultado,
         )
     elif comparar_filtros:
         # Comparação ENTRE ITENS (ex: filial A x filial B, mês a mês): a
@@ -1604,6 +1714,19 @@ def executar_consulta(consulta: dict) -> dict:
 
     if totais_por_grupo is not None:
         resposta["totais_por_grupo"] = totais_por_grupo
+
+    if mes_em_andamento is not None:
+        def chave(linha):
+            return tuple(linha.get(dimensao) for dimensao in agrupar_por)
+
+        mostradas = {chave(linha) for linha in resultado}
+        resposta["mes_em_andamento"] = {
+            **mes_em_andamento,
+            "resultados": [
+                linha for linha in mes_em_andamento["resultados"]
+                if chave(linha) in mostradas
+            ],
+        }
 
     if extras.get("itens_filtrados"):
         resposta["itens_filtrados"] = extras["itens_filtrados"]

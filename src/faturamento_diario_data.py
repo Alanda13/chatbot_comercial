@@ -58,7 +58,7 @@ _SEGUNDOS_ENTRE_TENTATIVAS = 5
 # leem desse arquivo — nada além disso precisa ser gerado.
 COLUNAS_SAIDA = [
     "CODFILIAL", "DATA", "COD_RCA", "NOME_RCA",
-    "VENDA_BRUTA", "VALORDESC", "VENDA_LIQ", "QT_NOTAS",
+    "VENDA_BRUTA", "VALORDESC", "VENDA_LIQ", "QT_NOTAS", "VENDA_TABELA",
 ]
 
 COLUNAS_SAIDA_COBRANCA = [
@@ -74,7 +74,8 @@ def _consultar_vendas(cursor, desde: date) -> pd.DataFrame:
                MAX(NOME) NOME_RCA,
                COUNT(DISTINCT NUMTRANSVENDA) QT_NOTAS,
                ROUND(SUM(VLVENDA), 2) VENDA_BRUTA,
-               ROUND(SUM(VLDESCONTO), 2) VALORDESC
+               ROUND(SUM(VLTABELA), 2) VENDA_TABELA,
+               ROUND(SUM(VLDESCONTO), 4) VALORDESC
         FROM GFN_MVIEW_VENDAS_ATUAL
         WHERE DTMOV >= :desde
         GROUP BY CODFILIAL, TRUNC(DTMOV), CODUSUR

@@ -5,6 +5,9 @@ status: em migração. este documento descreve o que já esta implementado e rod
 antes, cada pergunta comercial virava uma ferramenta python nova e específica
 isso nao escalaa o projeto real, prevê 7 indicadores comerciais e perguntas
 que cruzam mais de um, exigiram programar cada combinação nova a mao.
+status: em migração, este documwento descreve o que ja esta implementado e rodando
+(testado contra dados reais), separado do que "ainda falta"
+antes, cada pergunta comercial virava uma ferramenta pytghon nova e especifica
 
 Status: em migração. Este documento descreve o que **já está implementado e
 rodando** (testado contra dados reais), separado do que **ainda falta**.

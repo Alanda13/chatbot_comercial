@@ -48,8 +48,18 @@ _SEGUNDOS_ENTRE_TENTATIVAS = 5
 COLUNAS_SAIDA = [
     "CODFILIAL", "ANO", "MES", "COD_RCA", "COD_SUPERVISOR",
     "NOME_SUPERVISOR", "VENDA_BRUTA", "VALORDESC", "VENDA_LIQ",
-    "PESOLIQ", "QT_NOTAS", "VALOR_META", "VENDA_TABELA",
+    "PESOLIQ", "QT_NOTAS", "VALOR_META", "VENDA_TABELA", "CONTA_EMPRESA",
 ]
+
+# Códigos de RCA que são CONTAS DA EMPRESA, não vendedores (ex:
+# "COMERCIAL FERRONORTE LTDA-F09-TIMON", "FERROLESTE F08"): guardam parte
+# da meta da filial (a rotina 8139 soma) e, alguns, vendas de balcão.
+# Entram na meta/faturamento da filial, mas ficam fora das listas de RCA
+# (ver orquestrador._rcas_com_meta_cadastrada).
+_NOME_CONTA_EMPRESA = (
+    r"COMERCIAL FERRONORTE|FERRONORTE COM DE FERRAGENS|FERROLESTE|"
+    r"METALURGICA FERRONORTE"
+)
 
 # Mesmos filtros de negócio usados para achar venda válida (nota não
 # cancelada, tipo de nota, código fiscal, condição de venda) — validados
@@ -166,11 +176,25 @@ def _consultar_meta(cursor, desde: date) -> pd.DataFrame:
     return pd.DataFrame(cursor.fetchall(), columns=colunas)
 
 
+def _consultar_cadastro_rca(cursor) -> pd.DataFrame:
+    cursor.execute(
+        """
+        SELECT U.CODUSUR, U.NOME NOME_RCA, U.CODSUPERVISOR COD_SUPERVISOR_CAD,
+               S.NOME NOME_SUPERVISOR_CAD
+        FROM PCUSUARI U
+        LEFT JOIN PCSUPERV S ON (S.CODSUPERVISOR = U.CODSUPERVISOR)
+        """
+    )
+    colunas = [d[0] for d in cursor.description]
+    return pd.DataFrame(cursor.fetchall(), columns=colunas)
+
+
 def gerar_tabela(ano_inicio: int = ANO_INICIO_PADRAO) -> pd.DataFrame:
     """
     Busca venda, peso, devolução e meta no Oracle (quatro consultas
     simples, cada uma já agregada no banco) e junta em Python por
-    filial/ano/mês/vendedor — ver docstring do módulo pras fontes.
+    filial/ano/mês/vendedor — ver docstring do módulo pras fontes. A
+    meta entra mesmo sem venda no mês (mesma soma da rotina 8139).
     """
     desde = date(ano_inicio, 1, 1)
     conexao = get_connection()
@@ -181,13 +205,36 @@ def gerar_tabela(ano_inicio: int = ANO_INICIO_PADRAO) -> pd.DataFrame:
         peso = _consultar_peso(cursor, desde)
         devolucao = _consultar_devolucao(cursor, desde)
         meta = _consultar_meta(cursor, desde)
+        cadastro = _consultar_cadastro_rca(cursor)
     finally:
         conexao.close()
 
     chave = ["CODFILIAL", "ANO", "MES", "CODUSUR"]
     dados = vendas.merge(peso, on=chave, how="left")
     dados = dados.merge(devolucao, on=chave, how="left")
-    dados = dados.merge(meta, on=chave, how="left")
+    # "outer": a meta de quem NÃO vendeu no mês também entra (ex: a conta
+    # "COMERCIAL FERRONORTE LTDA-F09-TIMON", R$ 466 mil em set/2026) — igual
+    # à rotina 8139. Com "left" essa meta sumia e a meta da filial ficava
+    # menor que a do banco (R$ 67 mi a menos em jan-out/2026).
+    meta = meta[meta["VALOR_META"] > 0]
+    # Meta de mês que ainda não chegou (nov/dez) fica fora: senão "a meta
+    # de 2026" somaria o ano inteiro contra o realizado só até hoje (o
+    # atingimento das filiais caía pra 53%-76% em out/2026).
+    hoje = date.today()
+    meta = meta[(meta["ANO"] * 100 + meta["MES"]) <= hoje.year * 100 + hoje.month]
+    dados = dados.merge(meta, on=chave, how="outer")
+
+    # Linha só de meta: sem venda (zero) e com o supervisor do cadastro do
+    # RCA (o da venda não existe).
+    dados = dados.merge(cadastro, on="CODUSUR", how="left")
+    for coluna in ("VENDA_BRUTA", "VENDA_TABELA", "QT_NOTAS"):
+        dados[coluna] = dados[coluna].fillna(0)
+    dados["QT_NOTAS"] = dados["QT_NOTAS"].astype(int)
+    dados["CODSUPERVISOR"] = dados["CODSUPERVISOR"].fillna(dados["COD_SUPERVISOR_CAD"])
+    dados["NOME_SUPERVISOR"] = dados["NOME_SUPERVISOR"].fillna(dados["NOME_SUPERVISOR_CAD"])
+    dados["CONTA_EMPRESA"] = (
+        dados["NOME_RCA"].fillna("").str.upper().str.contains(_NOME_CONTA_EMPRESA)
+    )
 
     dados["CODFILIAL"] = dados["CODFILIAL"].astype(int)
     dados["ANO"] = dados["ANO"].astype(int)

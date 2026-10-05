@@ -196,6 +196,7 @@ ATRIBUTOS_DA_TABELA = {
 RENOMEAR_COLUNAS = {
     **ATRIBUTOS_DA_TABELA,
     "cliente": "Código Cliente",
+    "supervisor": "Código Supervisor",
     "filial": "Filial",
     "estado": "Estado",
     "rca_nome": "RCA",
@@ -284,7 +285,7 @@ def formatar_coluna_numerica(serie):
 
 # Colunas que identificam a linha (em vez de medir alguma coisa).
 DIMENSOES_DA_TABELA = (
-    "estado", "filial", "rca_nome", "rca", "codigo", "cliente",
+    "estado", "filial", "rca_nome", "rca", "supervisor", "codigo", "cliente",
     "empresa", *ATRIBUTOS_DA_TABELA, "ano", "mes", "periodo",
     "forma_pagamento", "dia",
 )
@@ -455,6 +456,9 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
     if "empresa_nome" in colunas_base and "empresa" in colunas_base:
         colunas_base.remove("empresa")
 
+    if "supervisor_nome" in colunas_base and "supervisor" in colunas_base:
+        colunas_base.remove("supervisor")
+
     # Se só tem UM ano nos dados, tira a coluna "ano" da tabela — ela
     # já aparece na legenda acima ("Ano: 2025"), repetir em toda
     # linha é redundante. Só mantém quando há vários anos misturados.
@@ -559,7 +563,11 @@ def descrever_periodo(dados_tabela, texto_referencia):
     if len(anos_nos_dados) > 1:
         return f"Anos: {', '.join(str(ano) for ano in anos_nos_dados)}"
 
-    anos_completos = re.findall(r"\b(?:19|20)\d{2}\b", texto_referencia)
+    # Só 20xx (os dados começam em 2020) e nunca um número logo depois de
+    # "código" — "AURORA ANDRADE-F01 (código 1901)" virava "Ano: 1901".
+    anos_completos = re.findall(
+        r"(?<!código )(?<!codigo )\b20\d{2}\b", texto_referencia, flags=re.IGNORECASE
+    )
     if anos_completos:
         return f"Ano: {', '.join(sorted(set(anos_completos)))}"
 
@@ -568,6 +576,7 @@ def descrever_periodo(dados_tabela, texto_referencia):
 
 COLUNAS_DE_IDENTIFICACAO = {
     "Estado", "Filial", "RCA", "Código", "Código RCA", "Código Cliente",
+    "Código Supervisor",
     "Ano", "Mês", "Período", "Forma de Pagamento", "Dia",
     *ATRIBUTOS_DA_TABELA.values(),
 }

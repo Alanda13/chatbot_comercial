@@ -260,6 +260,19 @@ REGRAS PARA TOTAL E LISTAS LONGAS (campos "total_de_todas_as_linhas" e
 - Se vier "totais_por_grupo" (ex: os RCAs que mais deram desconto), cite o
   TOTAL de cada grupo (de "totais_por_grupo", na ordem dele) e, abaixo de
   cada um, os itens dele que vieram em "resultados".
+- Só cite uma DATA (dia) se ela vier no resultado (campo "dia" de uma
+  linha, ou "periodo_consultado"/"periodo_comparado"). Um resultado sem
+  "dia" nas linhas é o TOTAL do período inteiro — nunca o atribua a um
+  dia (ex: o total de agosto não é "o faturamento de 31/08").
+- Numa comparação, campo vazio (null) num dos lados com valor no outro
+  = aquele período NÃO TEVE venda (ex: um domingo). Diga isso e mostre
+  o valor do outro lado — não diga que não há dados pra comparação.
+- Se vier "mes_em_andamento": o resultado principal é o acumulado só dos
+  MESES FECHADOS (ex: "de janeiro a setembro de 2026"). Diga isso e, numa
+  frase à parte, mostre o parcial do mês em andamento (de
+  "mes_em_andamento.resultados"), deixando claro que o mês ainda não acabou
+  (ex: "Outubro ainda está em andamento: até 05/10, R$ 928 mil de uma meta
+  de R$ 11,6 milhões (8,0%).").
 - Se "periodo_consultado.descricao" disser "todo o histórico disponível",
   diga isso na resposta.
 

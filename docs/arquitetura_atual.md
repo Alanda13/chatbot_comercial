@@ -811,3 +811,48 @@ falta" — já existiam antes da migração). As 3 falhas antigas de NPS foram
 consertadas antes de migrar o NPS (testes que ainda usavam `ano=` em vez de
 `anos=[...]`). O total de testes oscila porque os das funções mortas são
 removidos junto com elas — não é perda de cobertura.
+
+## Correções do teste de faturamento (05/10/2026)
+
+- **"Dia de menor faturamento de Timon em ago/2025"** respondeu "31/08/2025,
+  R$ 10.133.670,17" — era o TOTAL do mês (a IA não agrupou por dia) com a
+  data final do período. Certo: 02/08/2025, R$ 64.485,37. Regras novas: dia/mês
+  de maior/menor = agrupar por dia/mês + ordenar com limite 1; a resposta só
+  cita uma data que veio no resultado.
+- **Comparação com um lado sem venda** (10/08/2025, domingo, x 20/08/2025)
+  descartava tudo ("não há faturamento"). Agora o período principal vazio
+  entra com os campos nulos e o outro lado aparece (R$ 257.846,53).
+  "Compare os dias 10 e 20" = dois dias soltos, nunca o intervalo 10→20.
+- **Agrupado por 2+ anos com `comparar_com`**: cada ano era comparado com ele
+  mesmo (2024 x 2024 = +0,00%). O `comparar_com` é descartado — a variação ano
+  a ano já vem de `_aplicar_variacao_temporal`.
+- **Supervisor sem nome** ("supervisor com código 9"): `ATRIBUTOS_DIMENSAO`
+  ganhou "supervisor" → `supervisor_nome` (`NOME_SUPERVISOR`). Atributo só entra
+  se a coluna existir na base (o arquivo de cliente não tem o nome do supervisor).
+- **Desconto por dia/semana** ("qual RCA mais concedeu desconto semana
+  passada?" era recusado: o indicador desconto é mensal). Novo indicador
+  `desconto_diario` (filial, estado, RCA, dia), lendo o `faturamento_diario.csv`
+  — que passou a ter `VENDA_TABELA` (`SUM(VLTABELA)`) e o desconto com 4 casas.
+  Fonte `GFN_MVIEW_VENDAS_ATUAL` (a da 8302): Timon ago/2026 = R$ 310.567,19 /
+  R$ 9.920.150,98, idêntico ao indicador mensal. Sem supervisor e cliente.
+- **Meta igual à rotina 8139** (05/10/2026): o `faturamento_mensal.csv` era
+  montado a partir das VENDAS (merge "left"), então a meta de código sem
+  venda no mês sumia — quase sempre contas da empresa que guardam parte da
+  meta da filial (ex: "COMERCIAL FERRONORTE LTDA-F09-TIMON", R$ 466 mil em
+  set/2026). Faltavam R$ 67 mi (7,4%) em jan-out/2026 (Maiobão -29,5%). Agora
+  a meta entra com "outer" (venda zero, supervisor do cadastro `PCUSUARI`):
+  jan-out/2026 = R$ 905.598.248, igual à 8139. Meta de mês futuro fica fora.
+- **Contas da empresa** (nome com COMERCIAL FERRONORTE, FERRONORTE COM DE
+  FERRAGENS, FERROLESTE ou METALURGICA FERRONORTE): coluna `CONTA_EMPRESA`.
+  Entram na meta/faturamento da filial, mas saem das listas de RCA
+  (`_rcas_com_meta_cadastrada`). Pedidas pelo nome/código, respondem.
+  Inclui o código 1 ("COMERCIAL FERRONORTE LTDA-F01-MATRIZ").
+- **Mês em andamento fora do acumulado do ano** (`acumulado_so_meses_fechados`
+  em meta e meta_tonelada; `orquestrador._separar_mes_em_andamento`): em
+  05/10/2026, "atingimento de 2026" somava a meta de outubro inteira contra 5
+  dias de venda (Timon 97,0% → 86,1%; Parnaíba, que bateu a meta até setembro,
+  aparecia com 91%). Agora, pro ano corrente sozinho (sem mês pedido, sem
+  agrupar por mês, sem comparação), o resultado é de janeiro ao mês anterior e
+  o mês em andamento vem em `mes_em_andamento` (mesmos itens do resultado), que
+  a resposta cita à parte. Vale também quando a meta está cruzada com outro
+  indicador. Decisão provisória até o supervisor responder.
