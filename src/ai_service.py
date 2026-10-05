@@ -3,7 +3,7 @@ Serviço responsável pela comunicação com a API do Gemini.
 """
 import json
 import os
-from datetime import date
+from datetime import date, timedelta
 
 from dotenv import load_dotenv
 from google import genai
@@ -20,6 +20,37 @@ from src.logger import obter_logger
 load_dotenv()
 
 logger = obter_logger(__name__)
+
+_DIAS_DA_SEMANA = (
+    "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira",
+    "sexta-feira", "sábado", "domingo",
+)
+
+
+def calendario_recente(hoje: date | None = None) -> str:
+    """
+    A data de cada dia desta semana e da semana passada (segunda a
+    domingo). Sem isso a IA não sabia que "sexta da semana passada" era
+    02/10/2026 e consultava a semana inteira, respondendo como se fosse
+    a sexta.
+    """
+    hoje = hoje or date.today()
+    segunda = hoje - timedelta(days=hoje.weekday())
+
+    def semana(inicio: date) -> str:
+        return "; ".join(
+            f"{_DIAS_DA_SEMANA[i]} {(inicio + timedelta(days=i)).strftime('%d/%m/%Y')}"
+            for i in range(7)
+        )
+
+    return (
+        f"Hoje é {_DIAS_DA_SEMANA[hoje.weekday()]}, {hoje.strftime('%d/%m/%Y')}.\n"
+        f"Esta semana: {semana(segunda)}.\n"
+        f"Semana passada: {semana(segunda - timedelta(days=7))}.\n"
+        "Um dia da semana citado (ex: 'sexta da semana passada') é UM dia: "
+        "use periodo_personalizado com data_inicial = data_final = esse dia, "
+        "nunca a semana inteira."
+    )
 
 def criar_cliente_gemini() -> genai.Client:
     """
@@ -78,7 +109,7 @@ def interpretar_pergunta(
 
     instrucao_sistema = (
         f"{PROMPT_SISTEMA}\n\nFerramentas disponíveis:\n\n{catalogo}"
-        f"\n\nData atual: {date.today().isoformat()}"
+        f"\n\nData atual: {date.today().isoformat()}\n{calendario_recente()}"
     )
     conteudos_historico = _montar_historico_gemini(historico)
 
@@ -273,6 +304,18 @@ REGRAS PARA TOTAL E LISTAS LONGAS (campos "total_de_todas_as_linhas" e
   "mes_em_andamento.resultados"), deixando claro que o mês ainda não acabou
   (ex: "Outubro ainda está em andamento: até 05/10, R$ 928 mil de uma meta
   de R$ 11,6 milhões (8,0%).").
+- Se vier "sem_desconto" (numa lista de quem MENOS deu desconto): diga
+  primeiro quantos NÃO concederam desconto e quem são (de "itens"), e
+  depois, "entre os que concederam desconto", quem menos concedeu (a
+  lista em "resultados"). Nunca chame de "menor desconto" quem está em
+  "sem_desconto".
+- NUNCA diga um período diferente de "periodo_consultado.descricao". Se a
+  pergunta era sobre um dia (ex: a sexta, 02/10) e o período consultado é
+  outro (ex: a semana inteira), NÃO atribua o resultado ao dia pedido:
+  diga o período que foi consultado de fato.
+- Numa lista ordenada pelo PERCENTUAL (ex: quem menos deu desconto), cite o
+  percentual de cada item — é o critério da ordem; o valor em R$ pode vir
+  junto. Percentual abaixo de 0,01 = "menos de 0,01%".
 - Se "periodo_consultado.descricao" disser "todo o histórico disponível",
   diga isso na resposta.
 
@@ -620,6 +663,7 @@ Histórico recente da conversa:
 {historico_formatado}
 
 Data atual: {date.today().isoformat()}
+{calendario_recente()}
 
 Pergunta original do usuário:
 {pergunta}

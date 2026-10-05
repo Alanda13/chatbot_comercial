@@ -246,3 +246,11 @@ def test_legenda_nao_confunde_codigo_com_ano():
     )
 
     assert descrever_periodo([{"rca": 1901, "faturamento": 1.0}], texto) == "Ano: 2026"
+
+
+def test_percentual_muito_pequeno_nao_aparece_como_zero():
+    from app import formatar_percentual_atingimento
+
+    assert formatar_percentual_atingimento(0.0034) == "menos de 0,01%"
+    assert formatar_percentual_atingimento(0.0) == "0,00%"
+    assert formatar_percentual_atingimento(3.1307) == "3,13%"

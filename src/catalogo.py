@@ -318,6 +318,11 @@ INDICADORES = {
     # O % é calculado sobre as SOMAS (desconto total ÷ tabela total),
     # nunca a média dos % de cada filial/RCA.
     "desconto": {
+        # "Quem MENOS deu desconto": abaixo de R$ 1,00 é arredondamento
+        # (meio centavo por item vendido em kg/metro), não desconto — esses
+        # itens saem da lista e vêm à parte como "sem desconto". Só muda a
+        # lista; os totais seguem iguais aos do WinThor (8302).
+        "menor_ignora_abaixo_de": ("valor_desconto", 1.0),
         "carregar": carregar_faturamento_mensal,
         # Sem período a consulta somaria desde 2020 — a IA pergunta.
         "periodo_obrigatorio": True,
@@ -375,6 +380,11 @@ INDICADORES = {
     # Timon ago/2026 = R$ 310.567,19 nos dois). Sem supervisor/cliente:
     # o arquivo diário não tem essas colunas.
     "desconto_diario": {
+        # "Quem MENOS deu desconto": abaixo de R$ 1,00 é arredondamento
+        # (meio centavo por item vendido em kg/metro), não desconto — esses
+        # itens saem da lista e vêm à parte como "sem desconto". Só muda a
+        # lista; os totais seguem iguais aos do WinThor (8302).
+        "menor_ignora_abaixo_de": ("valor_desconto", 1.0),
         "carregar": carregar_faturamento_diario,
         "granularidade_periodo": "diaria",
         "periodo_obrigatorio": True,

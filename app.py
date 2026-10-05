@@ -241,6 +241,10 @@ def formatar_percentual_atingimento(valor):
     if valor is None or (isinstance(valor, float) and pd.isna(valor)):
         return "sem dados"
 
+    # Ex: desconto de R$ 17,17 sobre R$ 500 mil — "0,00%" parecia zero.
+    if 0 < abs(valor) < 0.005:
+        return "menos de 0,01%"
+
     return f"{valor:.2f}%".replace(".", ",")
 
 

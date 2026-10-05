@@ -1388,3 +1388,53 @@ def test_mes_pedido_ou_mes_a_mes_nao_separa(monkeypatch):
     assert este_mes["resultados"][0]["percentual_atingimento"] == 8.0
     assert "mes_em_andamento" not in mes_a_mes
     assert [linha["mes"] for linha in mes_a_mes["resultados"]] == [9, 10]
+
+
+def test_menos_desconto_separa_quem_nao_deu_e_mantem_o_total(monkeypatch):
+    """
+    'Quem menos deu desconto na sexta' respondia um RCA com R$ 0,00 — ou
+    com centavos de arredondamento (meio centavo por item em kg). Abaixo
+    de R$ 1,00 sai da lista e vem em "sem_desconto"; o total segue somando
+    tudo (igual ao WinThor).
+    """
+    dados = pd.DataFrame([
+        {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": codigo, "DATA": pd.Timestamp("2026-10-02"),
+         "VALORDESC": desconto, "VENDA_TABELA": 1000.0}
+        for codigo, desconto in [(1, 0.0), (2, 0.07), (3, 17.89), (4, 50.0)]
+    ])
+    monkeypatch.setitem(catalogo.INDICADORES["desconto_diario"], "carregar", lambda: dados)
+    monkeypatch.setitem(catalogo.INDICADORES["desconto_diario"], "rca_requer_meta_cadastrada", False)
+    monkeypatch.setitem(catalogo.INDICADORES["desconto_diario"], "rca_nome_mapa", None)
+
+    resposta = orq.executar_consulta({
+        "indicador": "desconto_diario",
+        "periodo": "personalizado",
+        "periodo_personalizado": {"data_inicial": "2026-10-02", "data_final": "2026-10-02"},
+        "agrupar_por": ["rca"],
+        "ordenar_por": {"campo": "percentual_desconto", "ordem": "asc", "limite": 1},
+    })
+
+    assert [linha["rca"] for linha in resposta["resultados"]] == [3]
+    assert resposta["sem_desconto"]["quantidade"] == 2
+    assert resposta["total_de_todas_as_linhas"]["valor_desconto"] == 67.96
+
+
+def test_mais_desconto_nao_separa(monkeypatch):
+    dados = pd.DataFrame([
+        {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": codigo, "DATA": pd.Timestamp("2026-10-02"),
+         "VALORDESC": desconto, "VENDA_TABELA": 1000.0}
+        for codigo, desconto in [(1, 0.0), (4, 50.0)]
+    ])
+    monkeypatch.setitem(catalogo.INDICADORES["desconto_diario"], "carregar", lambda: dados)
+    monkeypatch.setitem(catalogo.INDICADORES["desconto_diario"], "rca_requer_meta_cadastrada", False)
+
+    resposta = orq.executar_consulta({
+        "indicador": "desconto_diario",
+        "periodo": "personalizado",
+        "periodo_personalizado": {"data_inicial": "2026-10-02", "data_final": "2026-10-02"},
+        "agrupar_por": ["rca"],
+        "ordenar_por": {"campo": "valor_desconto"},
+    })
+
+    assert "sem_desconto" not in resposta
+    assert len(resposta["resultados"]) == 2

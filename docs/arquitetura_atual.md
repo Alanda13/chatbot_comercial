@@ -856,3 +856,23 @@ removidos junto com elas — não é perda de cobertura.
   o mês em andamento vem em `mes_em_andamento` (mesmos itens do resultado), que
   a resposta cita à parte. Vale também quando a meta está cruzada com outro
   indicador. Decisão provisória até o supervisor responder.
+- **"Quem MENOS deu desconto"** (`menor_ignora_abaixo_de` em desconto e
+  desconto_diario; `orquestrador._separar_sem_valor`): em ordem crescente,
+  quem tem desconto abaixo de R$ 1,00 sai da lista e vem em `sem_desconto`
+  (quantos e quais). Abaixo de R$ 1,00 é arredondamento: item vendido em
+  kg/metro dá meio centavo (21,9 kg x R$ 10,35 = R$ 226,665 → R$ 226,67 na
+  tabela, R$ 226,66 na nota → "desconto" de R$ 0,005). Só muda a lista; os
+  totais somam tudo, iguais à 8302. "Menos desconto" ordena pelo % (R$ só se
+  a pergunta pedir valor). Ex 02/10/2026: 7 RCAs sem desconto; menor de
+  verdade Dalva F05, R$ 17,89 (0,02%).
+- **Total de lista de RCAs ≠ total da filial**: ao agrupar por RCA (só
+  vendedores com meta), `total_de_todas_as_linhas` ganha uma `observacao`
+  pra IA não apresentá-lo como total da filial/empresa do WinThor.
+- **Dia da semana relativo** ("sexta da semana passada"): a IA não sabia a
+  data e consultava a semana inteira, respondendo como se fosse a sexta.
+  `ai_service.calendario_recente()` vai nos dois prompts com a data de cada
+  dia desta semana e da passada (segunda a domingo); a resposta não pode
+  citar período diferente de `periodo_consultado`.
+- **% de desconto com 4 casas** (`motor_metricas.calcular_desconto`): com 2,
+  quem quase não teve desconto empatava em 0,00% e a ordem de "menos
+  desconto" ficava aleatória. A tela mostra "menos de 0,01%" abaixo disso.

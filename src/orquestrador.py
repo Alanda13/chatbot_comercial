@@ -1461,6 +1461,51 @@ def _aplicar_ordenacao_por_grupo(
     return [linha for valor in grupos for linha in linhas_do_grupo(valor)]
 
 
+_CAMPOS_DE_NOME = (
+    "rca_nome", "supervisor_nome", "empresa_nome", "cliente_nome", "filial",
+    "estado", "rca", "supervisor", "empresa", "cliente",
+)
+
+
+def _separar_sem_valor(
+    resultado: list[dict], indicador_def: dict, ordenar_por: dict | None
+) -> tuple[list[dict], dict | None]:
+    """
+    "Quem MENOS deu desconto" (ordem "asc") listava quem não deu desconto
+    nenhum — ou só centavos de arredondamento (meio centavo por item
+    vendido em kg/metro: 21,9 kg x R$ 10,35 = R$ 226,665 vira R$ 226,67 na
+    tabela e R$ 226,66 na nota). Pros indicadores com
+    "menor_ignora_abaixo_de" (campo, limite), quem fica abaixo do limite
+    sai da lista e volta à parte (quantos e quais). Só muda a LISTA: os
+    totais continuam somando tudo, iguais ao WinThor.
+    """
+    regra = indicador_def.get("menor_ignora_abaixo_de")
+
+    if not regra or not ordenar_por or ordenar_por.get("ordem") != "asc" or ordenar_por.get("por"):
+        return resultado, None
+
+    campo, limite = regra
+    sem_valor = [linha for linha in resultado if (linha.get(campo) or 0) < limite]
+
+    if not sem_valor:
+        return resultado, None
+
+    def nome(linha):
+        return next((str(linha[c]) for c in _CAMPOS_DE_NOME if linha.get(c) is not None), "")
+
+    return (
+        [linha for linha in resultado if (linha.get(campo) or 0) >= limite],
+        {
+            "quantidade": len(sem_valor),
+            "itens": [nome(linha) for linha in sem_valor[:20]],
+            "explicacao": (
+                f"{campo} abaixo de R$ {limite:.2f} — nenhum desconto ou só "
+                "centavos de arredondamento; ficaram fora da lista de 'menor'."
+            ),
+        },
+    )
+
+
 def _aplicar_filtro_calculado(resultado: list[dict], filtro: dict) -> list[dict]:
     campo = filtro["campo"]
     operador_nome = filtro["operador"]
@@ -1677,6 +1722,9 @@ def executar_consulta(consulta: dict) -> dict:
     for filtro_calculado in consulta.get("filtros_calculados") or []:
         resultado = _aplicar_filtro_calculado(resultado, filtro_calculado)
 
+    resultado, sem_desconto = _separar_sem_valor(
+        resultado, indicador_def, consulta.get("ordenar_por")
+    )
     resultado_antes_do_limite = resultado
     ordenar_por = consulta.get("ordenar_por")
     totais_por_grupo = None
@@ -1715,6 +1763,9 @@ def executar_consulta(consulta: dict) -> dict:
     if totais_por_grupo is not None:
         resposta["totais_por_grupo"] = totais_por_grupo
 
+    if sem_desconto is not None:
+        resposta["sem_desconto"] = sem_desconto
+
     if mes_em_andamento is not None:
         def chave(linha):
             return tuple(linha.get(dimensao) for dimensao in agrupar_por)
@@ -1742,6 +1793,21 @@ def executar_consulta(consulta: dict) -> dict:
                 for dimensao in agrupar_por
             },
         }
+
+        # Lista de RCAs = só vendedores com meta (sem canal único e sem
+        # contas da empresa): a soma dela NÃO é o total da filial/empresa
+        # do WinThor (ex: 02/10/2026, R$ 60.004,71 na lista x R$ 63.066,11
+        # no dia). Avisa pra IA não apresentar uma pela outra.
+        if (
+            "rca" in agrupar_por and "rca" not in (consulta.get("filtros") or {})
+            and indicador_def.get("rca_requer_meta_cadastrada")
+        ):
+            resposta["total_de_todas_as_linhas"]["observacao"] = (
+                "Soma só dos RCAs listados (vendedores com meta). NÃO é o "
+                "total da filial/empresa: esse inclui também contas da "
+                "empresa e canal único. Não apresente esta soma como total "
+                "da filial ou da empresa."
+            )
 
     if comparar_com:
         resposta["periodo_comparado"] = _descrever_periodo(

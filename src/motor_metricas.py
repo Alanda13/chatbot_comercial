@@ -65,7 +65,10 @@ def calcular_desconto(
     """
     if not fat_tabela or desconto_concedido is None:
         return None
-    return round((desconto_concedido / fat_tabela) * 100, 2)
+    # 4 casas: com 2, clientes que compram muito e quase não têm desconto
+    # empatavam todos em 0,00% e "quem menos teve desconto" saía em ordem
+    # aleatória. A tela formata com 2 casas ("menos de 0,01%").
+    return round((desconto_concedido / fat_tabela) * 100, 4)
 
 
 def calcular_inadimplencia(

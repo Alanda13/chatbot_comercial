@@ -16,7 +16,15 @@ def test_calcular_desconto():
 
 def test_calcular_desconto_agosto_2026():
     # Valores reais (todas as filiais, ago/2026), conferidos no Oracle.
-    assert mm.calcular_desconto(2259420.82, 102510486.55) == 2.2
+    assert mm.calcular_desconto(2259420.82, 102510486.55) == 2.2041
+
+
+def test_calcular_desconto_guarda_4_casas_pra_ordenar_percentuais_pequenos():
+    # R$ 17,17 sobre R$ 500 mil e R$ 1,00 sobre R$ 50 mil: com 2 casas os
+    # dois viravam 0,00% e a ordem de "quem menos teve desconto" ficava
+    # aleatória.
+    assert mm.calcular_desconto(17.17, 500000) == 0.0034
+    assert mm.calcular_desconto(1.00, 50000) == 0.002
 
 
 def test_calcular_desconto_sem_faturamento_tabela_retorna_none():

@@ -184,3 +184,16 @@ def test_gerar_resposta_final_sem_historico_nao_quebra(monkeypatch):
     )
 
     assert resposta == "resposta gerada"
+
+
+def test_calendario_recente_da_a_data_de_cada_dia():
+    """'Sexta da semana passada' em 05/10/2026 = 02/10/2026 — sem isso a IA
+    consultava a semana inteira e dizia que era a sexta."""
+    from datetime import date
+    from src.ai_service import calendario_recente
+
+    texto = calendario_recente(date(2026, 10, 5))
+
+    assert "Hoje é segunda-feira, 05/10/2026." in texto
+    assert "Semana passada: segunda-feira 28/09/2026" in texto
+    assert "sexta-feira 02/10/2026" in texto

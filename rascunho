@@ -108,6 +108,12 @@ resultado das ferramentas antigas linha por linha, não só "parece certo"):
 a base de meta de tonelada tem uma coluna ("meta tonelada - filial") que se repete em toda linha 
 de rca da mesma filial ou mes - spmar direto multiplicaria o valor pela quantisade de rcas em vez de resolver isso so serve pra esclarecer linhas duplicadas sem caso especial por
 considerar um detalhe que so apareceu ao testar antes de somar - funciona agrupando por filial, por rca, por mes, ou sem agruypar mnenhuma.
+a base de meta de tonelada tem uma coluna meta tonelada - filial que se repete em toda linha
+de rca da mesma filial ou mes - spmar direto multiplicaria o valor pela quantidade de rcas em vez de 
+resolver isso so serve pra esclarecer linhas duplicadas sem caso especial por
+considerar um detalhe que so aoareceu ao testar antes de somar - funciona agrupando por filial,
+por rca, por mes ou sem agrupar nenhuma.
+
 
 A base de meta de tonelada tem uma coluna ("Meta Tonelada - Filial") que se
 repete em toda linha de RCA da mesma filial/mês — somar direto multiplicaria
@@ -128,6 +134,11 @@ De quebra, achei e corrigi outro detalhe ao conectar esse indicador: "rca"
 é código numérico nas outras bases, mas é NOME (texto) na base de meta de
 tonelada — o motor tentava converter pra número sempre; agora só converte
 quando dá certo, senão trata como texto.
+
+de quebra, achei e corrigi outro detalhe ao conectar esse indicador: "rca"
+é código numérico nas outras bases, mas é NOME (texto) na base de meta de 
+tonelada - o motor tentava converter pra número sempre, agora só converte
+quandop dá certo, senao trata como texto.
 
 ## RCA: nome automático + filtro "só quem tem meta cadastrada"
 
