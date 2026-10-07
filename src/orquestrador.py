@@ -240,7 +240,10 @@ def _campos_da_consulta(indicadores: list[str]) -> list[str]:
 
 
 def _linhas_da_tabela(
-    resultado: list[dict], colunas: list[str], rotulos: dict | None = None
+    resultado: list[dict],
+    colunas: list[str],
+    rotulos: dict | None = None,
+    comparar: list[str] | None = None,
 ) -> list[dict]:
     """
     As linhas que vão pra tabela da tela: só a identificação (filial, mês,
@@ -249,10 +252,11 @@ def _linhas_da_tabela(
     IA; só a TABELA é enxuta. "_colunas_pedidas" avisa a tela de que a
     escolha foi feita aqui (veja app.preparar_tabela); "_rotulos", quando
     há, troca o título de colunas (ex: os nomes das duas filiais).
+    `comparar`: as colunas que ganham a comparação (padrão: todas).
     """
     comparacoes = {
         nome
-        for coluna in colunas
+        for coluna in (colunas if comparar is None else comparar)
         for nome in (
             f"{coluna}_anterior", f"diferenca_{coluna}", f"percentual_{coluna}"
         )
@@ -631,6 +635,41 @@ def _separar_mes_em_andamento(consulta: dict, indicadores: list[str]) -> dict | 
         or _como_lista(filtros.get("ano", [])) != [hoje.year]
         or hoje.month == 1
     ):
+        return None
+
+    return {**filtros, "mes": list(range(1, hoje.month))}
+
+
+def _mesmos_meses_na_comparacao(consulta: dict, indicador_def: dict) -> dict | None:
+    """
+    Comparar o ano atual (incompleto) com outro ano comparava 9 meses com 12:
+    "as filiais que mais cresceram de 2025 para 2026" (em 06/10/2026) dava
+    quase todas caindo (Timon -27%, Tibiri -40%). Quando a consulta compara
+    o ano atual inteiro com outro ano — "comparar_com" ou agrupando por 2+
+    anos —, todos os anos usam os mesmos meses fechados (jan até o mês
+    anterior). Devolve os filtros com esses meses, ou None.
+    """
+    if indicador_def["granularidade_periodo"] != "mensal":
+        return None
+
+    filtros = _filtros_efetivos(
+        indicador_def, consulta, consulta.get("periodo"),
+        consulta.get("periodo_personalizado"),
+    )
+    anos = _como_lista(filtros.get("ano", []))
+    hoje = date.today()
+
+    if (
+        hoje.year not in anos or "mes" in filtros or "dia" in filtros
+        or hoje.month == 1
+    ):
+        return None
+
+    compara_anos = consulta.get("comparar_com") or (
+        "ano" in (consulta.get("agrupar_por") or []) and len(anos) >= 2
+    )
+
+    if not compara_anos:
         return None
 
     return {**filtros, "mes": list(range(1, hoje.month))}
@@ -1506,6 +1545,111 @@ def _separar_sem_valor(
     )
 
 
+def _colunas_usadas_na_pergunta(consulta: dict, indicador_def: dict) -> list[str] | None:
+    """
+    Sem "colunas" da IA, numa consulta com ordenação ou filtro sobre a
+    métrica (ou num cruzamento), a tabela mostra só o que a pergunta usou:
+    o campo da ordem, os dos filtros e o que resume cada indicador cruzado. Antes a tela escolhia pelas
+    palavras do texto da resposta — "RCAs com mais desconto que não bateram
+    a meta" saía com 7 colunas (até "Faturamento de Tabela", puxado pela
+    palavra "tabela" em "a lista completa está na tabela").
+    """
+    campos = [
+        (consulta.get("ordenar_por") or {}).get("campo"),
+        *(filtro.get("campo") for filtro in consulta.get("filtros_calculados") or []),
+    ]
+
+    # Num cruzamento, também o campo que resume CADA indicador (ex: "NPS e
+    # atingimento por filial" ordenado pelo NPS saía só com a coluna NPS).
+    if consulta.get("cruzar_com"):
+        campos += [
+            catalogo.INDICADORES[nome].get("campo_principal")
+            for nome in [consulta["indicador"], *consulta["cruzar_com"]]
+        ]
+
+    if not any(campos):
+        return None
+
+    return list(dict.fromkeys(campo for campo in campos if campo))
+
+
+def _periodo_curto(filtros: dict) -> str:
+    """Período pra título de coluna: "2025", "set/2026", "jan-set/2026"."""
+    anos = "/".join(str(int(ano)) for ano in _como_lista(filtros.get("ano", [])))
+    meses = sorted(int(mes) for mes in _como_lista(filtros.get("mes", [])))
+
+    if "dia" in filtros:
+        inicio = date.fromisoformat(str(filtros["dia"]["data_inicial"])[:10])
+        fim = date.fromisoformat(str(filtros["dia"].get("data_final") or inicio)[:10])
+        return f"{inicio:%d/%m}–{fim:%d/%m/%Y}" if inicio != fim else f"{inicio:%d/%m/%Y}"
+
+    if not meses:
+        return anos
+
+    nomes = [_NOMES_MESES[mes - 1][:3] for mes in meses]
+    seguidos = meses == list(range(meses[0], meses[-1] + 1))
+
+    if len(meses) == 1:
+        return f"{nomes[0]}/{anos}"
+
+    return f"{nomes[0]}-{nomes[-1]}/{anos}" if seguidos else f"{', '.join(nomes)}/{anos}"
+
+
+def _rotulo_do_campo(campo: str, indicadores: list[str]) -> str:
+    for nome in indicadores:
+        exibicao = catalogo.INDICADORES[nome].get("exibicao", {}).get(campo)
+        if exibicao:
+            return exibicao["rotulo"]
+    return campo.replace("_", " ").capitalize()
+
+
+def _tipo_do_campo(campo: str, indicadores: list[str]) -> str | None:
+    for nome in indicadores:
+        exibicao = catalogo.INDICADORES[nome].get("exibicao", {}).get(campo)
+        if exibicao:
+            return exibicao.get("tipo")
+    return None
+
+
+def _colunas_da_comparacao_de_periodos(
+    colunas: list[str], indicadores: list[str], atual: str, anterior: str
+) -> tuple[list[str], dict]:
+    """
+    Tabela de comparação entre períodos que qualquer um entende: o campo do
+    foco da pergunta nos DOIS períodos, com o período no título, e o quanto
+    cresceu/caiu; os outros campos com o período atual entre parênteses.
+    Antes: "Faturamento (anterior)", "Diferença Faturamento" — não dava pra
+    saber de que período era cada coluna.
+    """
+    conhecidos = set(_campos_da_consulta(indicadores))
+    foco = colunas[0]
+    base = foco
+
+    for prefixo in ("diferenca_", "percentual_"):
+        if foco not in conhecidos and foco.startswith(prefixo):
+            base = foco[len(prefixo):]
+
+    variacao = foco if foco != base else f"percentual_{base}"
+    novas = list(dict.fromkeys([f"{base}_anterior", base, variacao, *colunas[1:]]))
+    rotulo = _rotulo_do_campo(base, indicadores)
+
+    rotulos = {
+        f"{base}_anterior": f"{rotulo} {anterior}",
+        base: f"{rotulo} {atual}",
+        f"diferenca_{base}": (
+            "Cresceu/caiu (R$)" if _tipo_do_campo(base, indicadores) == "moeda"
+            else "Cresceu/caiu"
+        ),
+        f"percentual_{base}": "Cresceu/caiu (%)",
+    }
+
+    for campo in colunas[1:]:
+        if campo not in rotulos:
+            rotulos[campo] = f"{_rotulo_do_campo(campo, indicadores)} ({atual})"
+
+    return novas, rotulos
+
+
 def _aplicar_filtro_calculado(resultado: list[dict], filtro: dict) -> list[dict]:
     campo = filtro["campo"]
     operador_nome = filtro["operador"]
@@ -1596,14 +1740,36 @@ def executar_consulta(consulta: dict) -> dict:
 
     # Sem período, o resultado somaria todo o histórico (desde 2020) —
     # ex: "desconto do Mateus em Timon" dava R$ 205 mil, quase tudo de
-    # 2020. Pra esses indicadores a IA tem que perguntar o período.
-    if periodo_consultado is None and indicador_def.get("periodo_obrigatorio"):
-        raise ConsultaInvalida(
-            "Falta o período. Pergunte ao usuário qual período ele quer "
-            "(ex: este ano, mês passado, 2025) antes de consultar."
+    # 2020. Pros indicadores com "periodo_padrao", usa esse período (o ano
+    # atual) e a resposta avisa. Vale pra TODOS os indicadores da consulta:
+    # com o NPS (sem padrão) cruzado com o desconto, somava desde 2020.
+    periodo_padrao = next(
+        (
+            catalogo.INDICADORES[nome]["periodo_padrao"]
+            for nome in [indicador, *(consulta.get("cruzar_com") or [])]
+            if catalogo.INDICADORES[nome].get("periodo_padrao")
+        ),
+        None,
+    )
+    periodo_assumido = periodo_consultado is None and periodo_padrao is not None
+
+    if periodo_assumido:
+        consulta = {**consulta, "periodo": periodo_padrao, "periodo_personalizado": None}
+        periodo_consultado = _descrever_periodo(
+            _filtros_efetivos(indicador_def, consulta, periodo_padrao, None)
         )
 
     agrupar_por = consulta.get("agrupar_por") or []
+
+    filtros_mesmos_meses = _mesmos_meses_na_comparacao(consulta, indicador_def)
+    mesmos_meses = filtros_mesmos_meses is not None
+
+    if mesmos_meses:
+        consulta = {
+            **consulta, "periodo": None, "periodo_personalizado": None,
+            "filtros": filtros_mesmos_meses,
+        }
+        periodo_consultado = _descrever_periodo(filtros_mesmos_meses)
 
     filtros_meses_fechados = _separar_mes_em_andamento(
         consulta, [indicador, *(consulta.get("cruzar_com") or [])]
@@ -1766,6 +1932,19 @@ def executar_consulta(consulta: dict) -> dict:
     if sem_desconto is not None:
         resposta["sem_desconto"] = sem_desconto
 
+    if mesmos_meses:
+        resposta["mesmo_periodo_nos_anos"] = (
+            "O ano atual ainda não terminou: a comparação usa os mesmos meses "
+            "fechados nos anos comparados. Diga isso na resposta (ex: "
+            "\"comparando janeiro a setembro de 2025 e de 2026\")."
+        )
+
+    if periodo_assumido:
+        resposta["periodo_assumido"] = (
+            "A pergunta não disse o período: foi usado o ano atual. Diga isso "
+            "na resposta e que dá pra consultar outro período."
+        )
+
     if mes_em_andamento is not None:
         def chave(linha):
             return tuple(linha.get(dimensao) for dimensao in agrupar_por)
@@ -1835,9 +2014,32 @@ def executar_consulta(consulta: dict) -> dict:
         [indicador_def["campo_principal"]]
         if comparar_filtros and indicador_def.get("campo_principal") else None
     )
+    # Colunas escolhidas pelo sistema: a comparação (anterior/diferença/
+    # variação) só pro 1º campo, o foco da pergunta. Antes cada campo ganhava
+    # 3 colunas ("crescimento x desconto" saía com 9, até "Variação % Desconto").
+    comparar = None
+
+    rotulos = None
+
+    if not colunas:
+        colunas = _colunas_usadas_na_pergunta(consulta, indicador_def)
+        comparar = colunas[:1] if colunas else None
+
+        if colunas and comparar_com:
+            colunas, rotulos = _colunas_da_comparacao_de_periodos(
+                colunas, indicadores,
+                _periodo_curto(_filtros_efetivos(
+                    indicador_def, consulta, consulta.get("periodo"),
+                    consulta.get("periodo_personalizado"),
+                )),
+                _periodo_curto(_filtros_efetivos(
+                    indicador_def, consulta, comparar_com,
+                    consulta.get("comparar_com_personalizado"),
+                )),
+            )
+            comparar = []
 
     if colunas:
-        rotulos = None
 
         if comparar_filtros:
             rotulos = {}
@@ -1848,6 +2050,6 @@ def executar_consulta(consulta: dict) -> dict:
                 rotulos[f"diferenca_{coluna}"] = f"Diferença ({lado_a} − {lado_b})"
                 rotulos[f"percentual_{coluna}"] = f"Diferença % ({lado_a} vs {lado_b})"
 
-        resposta["tabela"] = _linhas_da_tabela(resultado, colunas, rotulos)
+        resposta["tabela"] = _linhas_da_tabela(resultado, colunas, rotulos, comparar)
 
     return resposta

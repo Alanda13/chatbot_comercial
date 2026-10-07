@@ -21,6 +21,16 @@ Regras:
   (mesmo que pareça relacionada ao negócio, como "quantos vendedores
   existem" ou "qual o CNPJ da filial X"), NUNCA responda com base em
   conhecimento próprio. Escolha "fora_do_escopo".
+- Pergunta que RELACIONA indicadores que existem (ex: "as filiais com
+  NPS acima de 90 dão mais ou menos desconto?", "quem bateu a meta dá
+  menos desconto?", "quem fatura mais dá mais desconto?") NÃO é fora do
+  escopo: use "cruzar_com" agrupando por filial (ou RCA/supervisor) e
+  ordenando pelo indicador da condição (ex: {"indicador": "nps",
+  "cruzar_com": ["desconto"], "agrupar_por": ["filial"], "ordenar_por":
+  {"campo": "nps"}}). Traga TODOS os itens: SEM "limite" em
+  "ordenar_por" e sem filtrar pela condição — a resposta compara quem
+  atende com quem não atende, e um corte deixaria um dos lados de fora.
+  (O "limite": 10 por padrão vale só pra listas/rankings.)
 
 REGRAS PARA ESCREVER O CAMPO "mensagem"
 (usado em "pedir_esclarecimento" e "fora_do_escopo"):

@@ -876,3 +876,92 @@ removidos junto com elas — não é perda de cobertura.
 - **% de desconto com 4 casas** (`motor_metricas.calcular_desconto`): com 2,
   quem quase não teve desconto empatava em 0,00% e a ordem de "menos
   desconto" ficava aleatória. A tela mostra "menos de 0,01%" abaixo disso.
+
+## Atualização dos CSVs em segundo plano (06/10/2026)
+
+- **Antes:** o 1º a perguntar depois de 1 hora esperava o Oracle (06/10/2026:
+  ~5 min — diário e mensal regerados um depois do outro na mesma pergunta).
+- **Agora:** `src/atualizador.py` (iniciado pelo `app.py`, só quando roda no
+  Streamlit) atualiza em segundo plano: COMPLETA ao abrir e no 1º ciclo de cada
+  dia (a partir das 7h); PARCIAL (mês atual + anterior, juntando com o
+  histórico do CSV) de hora em hora das 7h às 19h; nada à noite. Medido:
+  parcial das 4 bases = 98 s (mensal 20 s, diário 10 s, forma de pagamento
+  13 s, cliente 54 s) contra ~6-7 min da completa; o pico de ~500 MB do
+  cliente some na parcial. Parcial x completa: idênticas em todos os meses
+  fechados (só o dia/mês corrente difere, por vendas novas entre as duas).
+- `src/arquivos_oracle.py` reúne o que antes era copiado em 4 módulos
+  (tentativas no Oracle, gravação, leitura): grava num `.novo` e troca com
+  `os.replace` sob uma trava comum com a leitura. `garantir()` só espera o
+  Oracle se o CSV não existir; sem o atualizador (scripts, testes) mantém a
+  regra antiga de 1 hora.
+- Cada resposta mostra "Dados atualizados em DD/MM/AAAA às HH:MM" (o CSV mais
+  antigo entre os 4; "(atualizando agora…)" durante uma atualização) —
+  guardado com a mensagem, então o histórico mostra de quando era cada dado.
+- **Desconto sem período = ano atual, avisando** (decisão de 06/10/2026, troca
+  o "pergunte o período" de 02/10): `periodo_padrao: "ano_atual"` em desconto e
+  desconto_diario. Vale também quando o desconto vem cruzado (NPS + desconto
+  sem período somava desde 2020). O resultado leva `periodo_assumido` e a
+  resposta diz "Em 2026 (você não informou o período)… posso consultar outro".
+- **Perguntas de relação** ("filiais com NPS acima de 90 dão mais desconto?"):
+  sem recurso novo no motor — só instrução: cruzar todos os itens (sem limite)
+  e analisar usando apenas os números de cada item (sem média/soma de grupo),
+  com exemplos dos dois lados, exceções e linguagem de tendência.
+
+## Análise com execução de código na resposta (06/10/2026)
+
+- Perguntas de relação ("as filiais com NPS acima de 90 dão mais ou menos
+  desconto?") pediam contas que a IA não pode fazer de cabeça (% de cada
+  grupo, média, mediana, correlação). Sem recurso novo no motor: a resposta
+  final (`ai_service.gerar_resposta_final`) liga a **execução de código** do
+  Gemini — as contas são feitas por Python sobre os dados do sistema. Se o
+  recurso falhar (outro modelo/chave), cai pra chamada sem ferramentas (resposta
+  sem contas, nunca erro). Temperatura 0.
+- Formato: conclusão → resumo dos grupos (% sobre as somas como principal,
+  média simples identificada, mediana, total) → cuidados (correlação, item que
+  puxa a média, exceções calculadas no código, sem causa, poucos itens) →
+  conclusão prática. Ex 2026: 3,14% x 1,74%, correlação 0,26, sem Parnaíba
+  2,70%; exceções Picos (NPS 99,1, 1,21%) e Araguaína (NPS 87,4, 3,64%).
+- Testado em 5 execuções seguidas: números principais e exceções certos em
+  todas; 1 em 5 trouxe um número secundário não conferido — o modelo
+  (gemini-3.5-flash-lite) ainda varia um pouco. Perguntas simples não ficam
+  mais lentas (~3-4 s); as de análise levam ~10 s.
+- A regra antiga "você pode realizar cálculos simples" foi trocada por "nunca de
+  cabeça: use os campos prontos do resultado ou execute código".
+- **Linguagem de negócio** (pedido da usuária, 06/10/2026: a 1ª versão só
+  "soltava" média, mediana e correlação): as contas continuam no código, mas o
+  texto traduz — "quase o dobro", "a relação é fraca: muitas filiais fogem do
+  padrão", "mesmo sem Parnaíba continua maior (2,70%)", exceção com o que ela
+  sugere —, sem termos técnicos; % de grupo dito como "juntas"; NPS como nota;
+  grupo com 1-2 itens → avisa que a comparação é frágil.
+- **Conferência dos números da resposta** (`src/conferencia_numeros.py`): todo
+  número do texto tem que ser arredondamento/abreviação de um valor dos dados
+  (resultado, saída do código, pergunta, histórico); senão a resposta é refeita
+  (código, código, sem código — sem código a IA não pode calcular nada). Se
+  nenhuma passar, não mostra número nenhum (fica a tabela). Testado: pegou
+  2,74%/2,75%/3,12% e totais de grupo errados; perguntas comuns sem alarme falso
+  (3-10 s). Limite achado: o gemini-3.5-flash-lite erra muito na análise com
+  vários números (3 tentativas erradas seguidas → 18-84 s), e a chave está no
+  plano gratuito (3.6-flash: 5 pedidos/min, "alta demanda").
+- **Análise enxuta** (opção A, 06/10/2026, até decidir sobre um plano pago do
+  Gemini): só 3 números calculados por código — o % de cada grupo e a
+  correlação (dita em palavras: fraca/moderada/forte) — e as exceções
+  escolhidas pelo código (só o nome; números da tabela). Sem totais de grupo,
+  médias ou "sem o item X", que eram os números que o flash-lite errava.
+  Testado: números certos e exceções certas (Picos e Araguaína) em 4 de 4;
+  8-11 s (uma de 43 s, quando a conferência mandou refazer).
+- **Mesmos meses ao comparar o ano atual** (`_mesmos_meses_na_comparacao`):
+  "comparar_com" ou agrupar por 2+ anos com o ano atual (incompleto) usa jan até
+  o mês anterior em todos os anos. Antes, "filiais que mais cresceram de 2025
+  pra 2026" comparava 9 meses com 12 (Timon -27%; agora -5,43%; Parnaíba de
+  -12,75% para +18,29%). O resultado leva `mesmo_periodo_nos_anos` e a resposta
+  avisa.
+- **Tabela de cruzamento**: além do campo da ordem e dos filtros, o campo que
+  resume cada indicador (`campo_principal`). O da meta passou a ser o
+  atingimento (a variação continua no faturamento, via `campo_variacao`).
+- **Tabela de comparação entre períodos intuitiva** (`_colunas_da_comparacao_de_periodos`):
+  quando o sistema escolhe as colunas numa comparação entre períodos, o campo do
+  foco aparece nos DOIS períodos, com o período no título ("Faturamento
+  jan-set/2025", "Faturamento jan-set/2026"), e o quanto mudou como "Cresceu/caiu
+  (R$)" (com sinal: +R$ / −R$) ou "Cresceu/caiu (%)"; os outros campos levam o
+  período atual entre parênteses ("% Desconto (jan-set/2026)"). Antes:
+  "Faturamento (anterior)", "Diferença Faturamento".

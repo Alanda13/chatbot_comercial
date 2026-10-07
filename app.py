@@ -1,4 +1,5 @@
 import base64
+import html
 import io
 import json
 import re
@@ -11,7 +12,7 @@ from src.chatbot import processar_pergunta
 from src.exceptions import ChatbotError
 from src.logger import obter_logger
 from src.perguntas_log import registrar_pergunta
-from src import catalogo
+from src import atualizador, catalogo
 
 logger = obter_logger(__name__)
 
@@ -68,9 +69,11 @@ def escapar_para_markdown(texto):
     return texto.replace("$", "&#36;")
 
 
-def botao_copiar(texto):
+def botao_copiar(texto, legenda=None):
     """
-    Botão de copiar o texto de uma mensagem.
+    Botão de copiar o texto de uma mensagem — com `legenda` (ex: "Dados
+    atualizados em…") pequena ao lado dele, no mesmo iframe (fora dele,
+    ela ficaria numa linha separada embaixo).
 
     Roda dentro de components.html (iframe isolado) de propósito: um
     botão colado direto via st.markdown fica embaixo do "toolbar" que
@@ -82,6 +85,9 @@ def botao_copiar(texto):
     liberada de verdade.
     """
     texto_js = json.dumps(texto).replace("</", "<\\/")
+    legenda_html = (
+        f'<span class="legenda">{html.escape(legenda)}</span>' if legenda else ""
+    )
     components.html(
         f"""
         <style>
@@ -90,6 +96,15 @@ def botao_copiar(texto):
                 padding: 0;
                 background: transparent;
                 overflow: hidden;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }}
+            .legenda {{
+                font-family: "Source Sans Pro", sans-serif;
+                font-size: 11px;
+                color: #6b7480;
+                white-space: nowrap;
             }}
         </style>
         <button id="botao-copiar" title="Copiar mensagem" style="
@@ -105,6 +120,7 @@ def botao_copiar(texto):
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
             </svg>
         </button>
+        {legenda_html}
         <script>
         document.getElementById("botao-copiar").addEventListener("click", function () {{
             navigator.clipboard.writeText({texto_js});
@@ -227,6 +243,15 @@ def formatar_moeda(valor):
     return f"R$ {texto}"
 
 
+def formatar_moeda_com_sinal(valor):
+    """Diferença em R$ com sinal: +R$ 14.287.298,37 / −R$ 963.253,53."""
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return "sem dados"
+
+    sinal = "+" if valor >= 0 else "−"
+    return sinal + formatar_moeda(abs(valor))
+
+
 def formatar_percentual_com_sinal(valor):
     """Formata um percentual com sinal + explícito (ex: +5,64%)."""
     if valor is None or (isinstance(valor, float) and pd.isna(valor)):
@@ -262,6 +287,7 @@ def formatar_numero_com_sinal(valor):
 # nenhum formatador — ficam com o valor cru.
 FORMATADORES_POR_TIPO = {
     "moeda": formatar_moeda,
+    "moeda_com_sinal": formatar_moeda_com_sinal,
     "percentual": formatar_percentual_atingimento,
     "percentual_com_sinal": formatar_percentual_com_sinal,
     "numero_com_sinal": formatar_numero_com_sinal,
@@ -405,47 +431,11 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
         if campo in df.columns and df[campo].nunique() == 1:
             valores_para_rotulo[campo] = df[campo].iloc[0]
 
-    # Se a resposta em texto só menciona ALGUMAS das filiais que vieram
-    # na consulta (ex: "qual filial teve o maior NPS" — a IA já filtrou
-    # pra responder só a vencedora), a tabela segue o mesmo filtro, em
-    # vez de mostrar a lista crua com todas as filiais da consulta.
-    #
-    # Nomes mais LONGOS são checados primeiro, e o trecho encontrado é
-    # "consumido" do texto — sem isso, um nome curto que é prefixo de
-    # outro (ex: "FERRONORTE AREINHA" dentro de "FERRONORTE AREINHA
-    # LOGISTICA") apareceria como falso positivo.
-    if "filial" in df.columns:
-        texto_restante = texto_referencia.lower()
-        nomes_ordenados = sorted(
-            df["filial"].unique(), key=lambda nome: -len(str(nome))
-        )
-        filiais_na_resposta = []
-
-        for nome_filial in nomes_ordenados:
-            nome_lower = str(nome_filial).lower()
-            if nome_lower in texto_restante:
-                filiais_na_resposta.append(nome_filial)
-                texto_restante = texto_restante.replace(nome_lower, "")
-
-        if filiais_na_resposta and len(filiais_na_resposta) < df["filial"].nunique():
-            df = df[df["filial"].isin(filiais_na_resposta)]
-
-    if "rca_nome" in df.columns:
-        texto_restante = texto_referencia.lower()
-        nomes_ordenados = sorted(
-            df["rca_nome"].dropna().unique(), key=lambda nome: -len(str(nome))
-        )
-        rcas_na_resposta = []
-
-        for nome_rca in nomes_ordenados:
-            nome_lower = str(nome_rca).lower()
-            if nome_lower in texto_restante:
-                rcas_na_resposta.append(nome_rca)
-                texto_restante = texto_restante.replace(nome_lower, "")
-
-        if rcas_na_resposta and len(rcas_na_resposta) < df["rca_nome"].nunique():
-            df = df[df["rca_nome"].isin(rcas_na_resposta)]
-
+    # A tabela mostra tudo o que a consulta trouxe. (Antes ela era cortada
+    # pelas filiais/RCAs citados no texto — pensado pra "qual filial teve o
+    # maior NPS", que hoje já vem cortado pelo motor via ordenar_por. Numa
+    # pergunta de relação, que precisa de todas as filiais, a tabela ficava
+    # só com as citadas, e "Parnaíba" no texto não casava com "PARNAIBA".)
     colunas_base = [
         coluna for coluna in DIMENSOES_DA_TABELA if coluna in df.columns
     ]
@@ -592,10 +582,9 @@ def vale_a_pena_mostrar_tabela(dados_tabela, texto_referencia, nome_ferramenta=N
     precisam ser verdadeiras ao mesmo tempo:
     1. Ter pelo menos uma coluna de valor/métrica (não só
        identificação como nome, código, filial...);
-    2. Sobrar mais de 1 linha DEPOIS de qualquer filtro (ex: quando a
-       pergunta é "qual filial teve o maior NPS", a tabela é filtrada
-       pra só a vencedora — se sobra 1 linha só, é a mesma coisa que
-       um valor único, e o texto já basta).
+    2. Ter mais de 1 linha (ex: "qual filial teve o maior NPS" já vem
+       cortado pelo motor pra só a vencedora — 1 linha só é a mesma
+       coisa que um valor único, e o texto já basta).
     """
     tabela = preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta)
 
@@ -711,6 +700,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Atualiza os CSVs do Oracle em segundo plano (uma vez por processo, não
+# a cada rerun do Streamlit) — ninguém espera o Oracle pra ter resposta.
+if st.runtime.exists():  # não roda quando o app é só importado (testes)
+    atualizador.iniciar()
+
 if "mensagens" not in st.session_state:
     st.session_state.mensagens = []
 
@@ -808,7 +802,7 @@ for indice_mensagem, mensagem in enumerate(st.session_state.mensagens):
         mensagem["papel"], avatar=AVATAR_POR_PAPEL.get(mensagem["papel"])
     ):
         st.text(mensagem["conteudo"])
-        botao_copiar(mensagem["conteudo"])
+        botao_copiar(mensagem["conteudo"], legenda=mensagem.get("atualizado_em"))
 
         if mensagem.get("dados_tabela") and vale_a_pena_mostrar_tabela(
             mensagem["dados_tabela"],
@@ -883,7 +877,10 @@ if pergunta:
                 historico=historico,
             )
             placeholder.text(resposta)
-            botao_copiar(resposta)
+
+            # De quando são os dados desta resposta (fica guardado com ela).
+            atualizado_em = atualizador.descrever_ultima_atualizacao()
+            botao_copiar(resposta, legenda=atualizado_em)
 
             if dados_tabela and vale_a_pena_mostrar_tabela(
                 dados_tabela, resposta, nome_ferramenta
@@ -902,6 +899,7 @@ if pergunta:
                     "conteudo": resposta,
                     "dados_tabela": dados_tabela,
                     "nome_ferramenta": nome_ferramenta,
+                    "atualizado_em": atualizado_em,
                 }
             )
 

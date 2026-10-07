@@ -153,13 +153,25 @@ def test_empresa_soma_as_lojas_e_por_loja_traz_nome_cnpj_cidade(motor):
     }
 
 
-def test_desconto_sem_periodo_pede_o_periodo(motor):
+def test_desconto_sem_periodo_usa_o_ano_atual_e_avisa(motor, monkeypatch):
     # sem período somaria desde 2020 (ex: Mateus em Timon: R$ 205 mil,
-    # quase tudo de 2020) — a IA tem que perguntar
-    with pytest.raises(orq.ConsultaInvalida, match="Falta o período"):
-        orq.executar_consulta({
-            "indicador": "desconto", "filtros": {"empresa": ["03995515"]},
-        })
+    # quase tudo de 2020) — usa o ano atual e a resposta avisa
+    from datetime import date
+
+    class Hoje(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 10, 6)
+
+    monkeypatch.setattr(orq, "date", Hoje)
+
+    resposta = orq.executar_consulta({
+        "indicador": "desconto", "filtros": {"empresa": ["03995515"]},
+    })
+
+    assert resposta["periodo_consultado"]["descricao"] == "2026"
+    assert "periodo_assumido" in resposta
+    assert resposta["resultados"][0]["valor_desconto"] == 40.0
 
 
 def test_ranking_por_empresa_e_filial_da_venda(motor):

@@ -131,8 +131,9 @@ class _ModelsFalso:
         self._texto_resposta = texto_resposta
         self.chamadas = []
 
-    def generate_content(self, model, contents):
+    def generate_content(self, model, contents, config=None):
         self.chamadas.append(contents)
+        self.configuracoes = getattr(self, "configuracoes", []) + [config]
         return SimpleNamespace(text=self._texto_resposta)
 
 
@@ -197,3 +198,52 @@ def test_calendario_recente_da_a_data_de_cada_dia():
     assert "Hoje é segunda-feira, 05/10/2026." in texto
     assert "Semana passada: segunda-feira 28/09/2026" in texto
     assert "sexta-feira 02/10/2026" in texto
+
+
+def test_resposta_final_liga_execucao_de_codigo_e_cai_pro_jeito_antigo_se_falhar(monkeypatch):
+    """
+    Com "executar código", as contas de análise (% de grupo, média,
+    correlação) são feitas por Python. Se o recurso falhar (outro modelo,
+    outra chave), a resposta sai sem ele em vez de dar erro.
+    """
+    from src import ai_service
+
+    class ModelsSemCodigo(_ModelsFalso):
+        def generate_content(self, model, contents, config=None):
+            if config is not None:
+                raise RuntimeError("code execution indisponível")
+            return super().generate_content(model, contents, config)
+
+    modelos = ModelsSemCodigo("resposta sem contas")
+    monkeypatch.setattr(
+        ai_service, "criar_cliente_gemini", lambda: SimpleNamespace(models=modelos)
+    )
+
+    texto = ai_service.gerar_resposta_final(
+        pergunta="as filiais com nps acima de 90 dão mais desconto?",
+        nome_ferramenta="consultar_dados_comerciais",
+        resultado={"resultados": []},
+    )
+
+    assert texto == "resposta sem contas"
+    assert modelos.configuracoes == [None]
+
+
+def test_resposta_com_numero_inventado_nunca_chega_a_tela(monkeypatch):
+    """O código calculou 2,70%, mas o texto sempre sai com 2,75% (caso
+    real): depois das tentativas, não mostra número nenhum."""
+    from src import ai_service
+
+    modelos = _ModelsFalso("Sem Parnaíba, o grupo cai para 2,75%.")
+    monkeypatch.setattr(
+        ai_service, "criar_cliente_gemini", lambda: SimpleNamespace(models=modelos)
+    )
+
+    texto = ai_service.gerar_resposta_final(
+        pergunta="as filiais com nps acima de 90 dão mais desconto?",
+        nome_ferramenta="consultar_dados_comerciais",
+        resultado={"resultados": [{"filial": "PARNAIBA", "percentual_desconto": 6.5931}]},
+    )
+
+    assert "2,75" not in texto
+    assert texto == ai_service._RESPOSTA_SEM_NUMEROS_CONFERIDOS

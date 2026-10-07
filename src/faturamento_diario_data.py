@@ -1,10 +1,9 @@
 """
 Carregamento e preparação dos dados de Faturamento por dia.
 
-O CSV (`faturamento_diario.csv`) funciona como um cache em disco: se
-tiver menos de 1 hora, é só lido; se estiver mais velho (ou não
-existir ainda), o Oracle é consultado de novo e o CSV é reescrito antes
-de ler — mesmo mecanismo do faturamento mensal (`faturamento_data.py`).
+O CSV (`faturamento_diario.csv`) funciona como um cache em disco,
+atualizado em segundo plano por `src/atualizador.py` — mesmo mecanismo
+do faturamento mensal (ver `src/arquivos_oracle.py`).
 
 Fonte dos dados (Oracle, schema FNORTE, só leitura — ver
 docs/arquitetura_atual.md):
@@ -19,12 +18,17 @@ nome) reproduz exatamente o valor por forma de pagamento, incluindo a
 devolução (validado nos 2 anos que o CSV antigo cobria, 0 de
 diferença).
 """
-import time
 from datetime import date
 from pathlib import Path
 
 import pandas as pd
 
+from src.arquivos_oracle import (
+    garantir,
+    gravar_csv,
+    inicio_da_janela_parcial,
+    ler_csv,
+)
 from src.connection import get_connection
 from src.filiais import padronizar_filiais
 from src.filial_utils import (
@@ -50,9 +54,6 @@ ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO = (
 )
 
 DESDE_PADRAO = date(2020, 1, 1)
-_SEGUNDOS_CACHE = 3600
-_TENTATIVAS_ORACLE = 3
-_SEGUNDOS_ENTRE_TENTATIVAS = 5
 
 # Colunas que src/faturamento_diario_data.py e src/catalogo.py de fato
 # leem desse arquivo — nada além disso precisa ser gerado.
@@ -192,93 +193,30 @@ def gerar_tabela_cobranca(desde: date = DESDE_PADRAO) -> pd.DataFrame:
     return dados[COLUNAS_SAIDA_COBRANCA]
 
 
-def _gravar_csv(tabela: pd.DataFrame) -> None:
-    ARQUIVO_FATURAMENTO_DIARIO.parent.mkdir(parents=True, exist_ok=True)
-    tabela.to_csv(
-        ARQUIVO_FATURAMENTO_DIARIO, sep=";", encoding="latin1", decimal=",", index=False,
-    )
-
-
-def _gravar_csv_cobranca(tabela: pd.DataFrame) -> None:
-    ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO.parent.mkdir(parents=True, exist_ok=True)
-    tabela.to_csv(
-        ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO, sep=";", encoding="latin1", decimal=",",
-        index=False,
-    )
-
-
-def _atualizar_se_necessario() -> None:
+def _atualizar_arquivo(arquivo: Path, gerar, completa: bool) -> None:
     """
-    Mantém `ARQUIVO_FATURAMENTO_DIARIO` com no máximo 1 hora de idade. Se o Oracle
-    estiver fora do ar, tenta de novo algumas vezes antes de desistir e
-    seguir usando o CSV que já existe (mesmo desatualizado) — melhor
-    responder com um dado velho do que não responder nada. Se o
-    arquivo nem existe ainda e o Oracle não responde, a falha sobe (não
-    tem o que servir).
+    Completa: tudo desde 2020. Parcial: busca no Oracle só o mês atual e
+    o anterior e junta com os dias mais antigos do CSV que já existe.
     """
-    if ARQUIVO_FATURAMENTO_DIARIO.exists():
-        idade = time.time() - ARQUIVO_FATURAMENTO_DIARIO.stat().st_mtime
-        if idade < _SEGUNDOS_CACHE:
-            return
-
-    ultimo_erro = None
-    for tentativa in range(1, _TENTATIVAS_ORACLE + 1):
-        try:
-            tabela = gerar_tabela()
-            _gravar_csv(tabela)
-            return
-        except Exception as erro:
-            ultimo_erro = erro
-            logger.warning(
-                "Falha ao atualizar faturamento diário do Oracle "
-                f"(tentativa {tentativa}/{_TENTATIVAS_ORACLE}): {erro}"
-            )
-            if tentativa < _TENTATIVAS_ORACLE:
-                time.sleep(_SEGUNDOS_ENTRE_TENTATIVAS)
-
-    if ARQUIVO_FATURAMENTO_DIARIO.exists():
-        logger.warning(
-            "Não foi possível atualizar o faturamento diário — "
-            "seguindo com o CSV existente (pode estar desatualizado)."
-        )
+    if completa or not arquivo.exists():
+        gravar_csv(gerar(), arquivo)
         return
 
-    raise ultimo_erro
+    desde = inicio_da_janela_parcial()
+    antigo = ler_csv(arquivo)
+    antigo["DATA"] = pd.to_datetime(antigo["DATA"])
+    antigo = antigo[antigo["DATA"] < pd.Timestamp(desde)]
+    gravar_csv(pd.concat([antigo, gerar(desde)], ignore_index=True), arquivo)
 
 
-def _atualizar_cobranca_se_necessario() -> None:
-    """
-    Mesma lógica de `_atualizar_se_necessario`, pro arquivo de forma de
-    pagamento (`ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO`).
-    """
-    if ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO.exists():
-        idade = time.time() - ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO.stat().st_mtime
-        if idade < _SEGUNDOS_CACHE:
-            return
+def atualizar(completa: bool) -> None:
+    _atualizar_arquivo(ARQUIVO_FATURAMENTO_DIARIO, gerar_tabela, completa)
 
-    ultimo_erro = None
-    for tentativa in range(1, _TENTATIVAS_ORACLE + 1):
-        try:
-            tabela = gerar_tabela_cobranca()
-            _gravar_csv_cobranca(tabela)
-            return
-        except Exception as erro:
-            ultimo_erro = erro
-            logger.warning(
-                "Falha ao atualizar forma de pagamento do Oracle "
-                f"(tentativa {tentativa}/{_TENTATIVAS_ORACLE}): {erro}"
-            )
-            if tentativa < _TENTATIVAS_ORACLE:
-                time.sleep(_SEGUNDOS_ENTRE_TENTATIVAS)
 
-    if ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO.exists():
-        logger.warning(
-            "Não foi possível atualizar a forma de pagamento — "
-            "seguindo com o CSV existente (pode estar desatualizado)."
-        )
-        return
-
-    raise ultimo_erro
+def atualizar_forma_pagamento(completa: bool) -> None:
+    _atualizar_arquivo(
+        ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO, gerar_tabela_cobranca, completa
+    )
 
 
 def _carregar_csv_8302(caminho: Path) -> pd.DataFrame:
@@ -287,12 +225,7 @@ def _carregar_csv_8302(caminho: Path) -> pd.DataFrame:
             f"Arquivo não encontrado: {caminho}"
         )
 
-    dados = pd.read_csv(
-        caminho,
-        sep=";",
-        encoding="latin1",
-        decimal=",",
-    )
+    dados = ler_csv(caminho)
 
     dados.columns = dados.columns.str.strip()
 
@@ -312,10 +245,10 @@ def _carregar_csv_8302(caminho: Path) -> pd.DataFrame:
 
 def carregar_faturamento_diario() -> pd.DataFrame:
     """
-    Carrega o faturamento diário, atualizando do Oracle primeiro se o
-    CSV estiver com mais de 1 hora (ver `_atualizar_se_necessario`).
+    Carrega o faturamento diário (CSV atualizado em segundo plano — ver
+    `src/arquivos_oracle.garantir`).
     """
-    _atualizar_se_necessario()
+    garantir([ARQUIVO_FATURAMENTO_DIARIO], atualizar, "faturamento diário")
     return _carregar_csv_8302(ARQUIVO_FATURAMENTO_DIARIO)
 
 
@@ -324,10 +257,13 @@ def carregar_faturamento_diario_forma_pagamento() -> pd.DataFrame:
     Carrega o faturamento diário agrupado por forma de pagamento,
     usado SOMENTE quando a pergunta filtra/agrupa por forma de
     pagamento — o arquivo principal (ARQUIVO_FATURAMENTO_DIARIO) não tem essa
-    granularidade. Atualiza do Oracle primeiro se o CSV estiver com
-    mais de 1 hora (mesmo mecanismo do arquivo principal).
+    granularidade. Atualizado em segundo plano, como o arquivo
+    principal.
     """
-    _atualizar_cobranca_se_necessario()
+    garantir(
+        [ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO], atualizar_forma_pagamento,
+        "faturamento por forma de pagamento",
+    )
     return _carregar_csv_8302(ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO)
 
 

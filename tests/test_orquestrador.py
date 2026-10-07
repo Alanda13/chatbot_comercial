@@ -1338,9 +1338,20 @@ def test_desconto_diario_por_rca_na_semana(monkeypatch):
     assert (linha["valor_desconto"], linha["percentual_desconto"]) == (40.0, 20.0)
 
 
-def test_desconto_diario_sem_periodo_pede_o_periodo():
-    with pytest.raises(ConsultaInvalida, match="Falta o período"):
-        orq.executar_consulta({"indicador": "desconto_diario", "agrupar_por": ["rca"]})
+def test_desconto_diario_sem_periodo_usa_do_comeco_do_ano_ate_hoje(monkeypatch):
+    dados = pd.DataFrame([
+        {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": 1, "DATA": pd.Timestamp(dia),
+         "VALORDESC": 10.0, "VENDA_TABELA": 100.0}
+        for dia in ("2025-12-31", "2026-01-02", "2026-10-02")
+    ])
+    monkeypatch.setattr(orq, "date", _Hoje5DeOutubro)
+    monkeypatch.setitem(catalogo.INDICADORES["desconto_diario"], "carregar", lambda: dados)
+
+    resposta = orq.executar_consulta({"indicador": "desconto_diario"})
+
+    assert resposta["periodo_consultado"]["descricao"] == "de 01/01/2026 a 05/10/2026"
+    assert "periodo_assumido" in resposta
+    assert resposta["resultados"][0]["valor_desconto"] == 20.0
 
 
 class _Hoje5DeOutubro(date):
@@ -1438,3 +1449,106 @@ def test_mais_desconto_nao_separa(monkeypatch):
 
     assert "sem_desconto" not in resposta
     assert len(resposta["resultados"]) == 2
+
+
+def test_periodo_padrao_vale_tambem_pro_indicador_cruzado(monkeypatch):
+    """Faturamento (sem período padrão) cruzado com desconto: sem período,
+    somava o desconto desde 2020 — agora usa o ano atual e avisa."""
+
+    class Hoje(date):
+        @classmethod
+        def today(cls):
+            return cls(2025, 10, 6)
+
+    monkeypatch.setattr(orq, "date", Hoje)
+    def base_mensal():
+        return _dados_faturamento().assign(VENDA_TABELA=1000.0, ESTADO="MA")
+
+    # Mesma base nos dois (como o faturamento_mensal.csv real).
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"], "carregar", base_mensal)
+    monkeypatch.setitem(catalogo.INDICADORES["desconto"], "carregar", base_mensal)
+
+    resposta = orq.executar_consulta({
+        "indicador": "faturamento", "cruzar_com": ["desconto"], "agrupar_por": ["filial"],
+    })
+
+    assert resposta["periodo_consultado"]["descricao"] == "2025"
+    assert "periodo_assumido" in resposta
+    assert resposta["resultados"][0]["faturamento"] == 100.0
+
+
+def test_tabela_mostra_so_os_campos_da_ordem_e_dos_filtros(monkeypatch):
+    """'RCAs com mais desconto que não bateram a meta' saía com 7 colunas
+    (até "Faturamento de Tabela"): sem "colunas" da IA, só os campos
+    usados na ordem e nos filtros."""
+    monkeypatch.setitem(catalogo.INDICADORES["desconto"], "carregar", _dados_desconto)
+
+    resposta = orq.executar_consulta({
+        "indicador": "desconto", "filtros": {"mes": [8], "ano": [2026]}, "agrupar_por": ["filial"],
+        "filtros_calculados": [{"campo": "valor_desconto", "operador": ">", "valor": 0}],
+        "ordenar_por": {"campo": "percentual_desconto"},
+    })
+
+    assert resposta["tabela"][0]["_colunas_pedidas"] == ["percentual_desconto", "valor_desconto"]
+
+
+def test_comparar_ano_atual_usa_os_mesmos_meses_nos_dois_anos(monkeypatch):
+    """Em 05/10/2026, 2026 (9 meses) x 2025 (12) dava quase toda filial
+    caindo. Agora os dois anos usam jan-set."""
+    dados = pd.DataFrame([
+        {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": 1, "ANO": ano, "MES": mes,
+         "VENDA_LIQ": 100.0, "VENDA_BRUTA": 100.0, "VALORDESC": 0.0, "PESOLIQ": 0.0, "QT_NOTAS": 1}
+        for ano in (2025, 2026) for mes in range(1, 13) if not (ano == 2026 and mes > 10)
+    ])
+    monkeypatch.setattr(orq, "date", _Hoje5DeOutubro)
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"], "carregar", lambda: dados)
+
+    resposta = orq.executar_consulta({
+        "indicador": "faturamento", "filtros": {"ano": [2025, 2026]}, "agrupar_por": ["ano"],
+    })
+
+    assert resposta["periodo_consultado"]["descricao"] == "de janeiro a setembro de 2025 e 2026"
+    assert "mesmo_periodo_nos_anos" in resposta
+    assert [linha["faturamento"] for linha in resposta["resultados"]] == [900.0, 900.0]
+
+
+def test_cruzamento_mostra_o_campo_que_resume_cada_indicador(monkeypatch):
+    """'NPS e atingimento por filial' ordenado pelo NPS saía só com o NPS."""
+    consulta = {"indicador": "nps", "cruzar_com": ["meta"], "ordenar_por": {"campo": "nps"}}
+
+    assert orq._colunas_usadas_na_pergunta(consulta, catalogo.INDICADORES["nps"]) == [
+        "nps", "percentual_atingimento",
+    ]
+
+
+def test_tabela_escolhida_pelo_sistema_compara_so_o_campo_da_pergunta(monkeypatch):
+    """'Quem mais cresceu deu mais desconto?' saía com 9 colunas: cada campo
+    ganhava anterior/diferença/variação. Só o foco da pergunta é comparado."""
+    linhas = orq._linhas_da_tabela(
+        [{"filial": "TIMON", "faturamento": 100.0, "faturamento_anterior": 90.0,
+          "percentual_faturamento": 11.1, "percentual_desconto": 3.0,
+          "percentual_desconto_anterior": 2.0, "diferenca_percentual_desconto": 1.0}],
+        ["percentual_faturamento", "faturamento", "percentual_desconto"],
+        comparar=["percentual_faturamento"],
+    )
+
+    assert set(linhas[0]) == {
+        "filial", "percentual_faturamento", "faturamento", "percentual_desconto",
+        "_colunas_pedidas",
+    }
+
+
+def test_comparacao_de_periodos_tem_titulos_com_o_periodo():
+    colunas, rotulos = orq._colunas_da_comparacao_de_periodos(
+        ["diferenca_faturamento", "percentual_desconto"],
+        ["faturamento", "desconto"], "jan-set/2026", "jan-set/2025",
+    )
+
+    assert colunas == [
+        "faturamento_anterior", "faturamento", "diferenca_faturamento", "percentual_desconto",
+    ]
+    assert rotulos["faturamento_anterior"] == "Faturamento jan-set/2025"
+    assert rotulos["faturamento"] == "Faturamento jan-set/2026"
+    assert rotulos["diferenca_faturamento"] == "Cresceu/caiu (R$)"
+    assert rotulos["percentual_desconto"] == "% Desconto (jan-set/2026)"
+    assert orq._periodo_curto({"ano": [2026], "mes": [1, 2, 3, 4, 5, 6, 7, 8, 9]}) == "jan-set/2026"

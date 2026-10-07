@@ -10,6 +10,7 @@ from google import genai
 from google.genai import types
 from pydantic import ValidationError
 
+from src.conferencia_numeros import numeros_inventados, valores_permitidos
 from src.filiais import descrever_codigos_somados
 from src.prompts import PROMPT_SISTEMA
 from src.schemas import SolicitacaoFerramenta
@@ -200,6 +201,36 @@ def _formatar_historico_para_resposta(
     return "\n".join(linhas)
 
 
+# Na tentativa sem execução de código, a IA não pode fazer conta nenhuma
+# (sem isso, ela calculava "de cabeça" o % dos grupos e errava).
+_SEM_CODIGO = (
+    "\n\nATENÇÃO: nesta resposta você NÃO pode executar código. Então NÃO "
+    "calcule nada (nem % de grupo, nem média, nem total): use só os números "
+    "que estão nos dados, item por item."
+)
+
+_RESPOSTA_SEM_NUMEROS_CONFERIDOS = (
+    "Não consegui montar essa análise com segurança agora — os números que "
+    "eu calculei não bateram com os dados do sistema. Os valores de cada "
+    "item estão na tabela abaixo. Se quiser, tente de novo em instantes ou "
+    "pergunte sobre um item específico."
+)
+
+
+def _saidas_de_codigo(resposta) -> list[str]:
+    """O que o código executado pela IA imprimiu (pra conferir os números)."""
+    saidas = []
+
+    for candidato in getattr(resposta, "candidates", None) or []:
+        conteudo = getattr(candidato, "content", None)
+        for parte in getattr(conteudo, "parts", None) or []:
+            resultado = getattr(parte, "code_execution_result", None)
+            if resultado is not None and getattr(resultado, "output", None):
+                saidas.append(resultado.output)
+
+    return saidas
+
+
 def gerar_resposta_final(
     pergunta: str,
     nome_ferramenta: str,
@@ -271,6 +302,48 @@ REGRAS PARA O PERÍODO (campos "periodo_consultado" e "periodo_comparado"):
   (mes/ano/dia) — use esses valores; se também não houver período lá, a
   consulta cobre todo o histórico disponível.
 
+REGRAS PARA ANÁLISE (perguntas de relação ou tendência, ex: "as filiais
+com NPS acima de 90 dão mais ou menos desconto?", "quem bateu a meta dá
+menos desconto?"):
+- Quem lê é gerente/diretor. Apresente FATOS, em linguagem simples — sem
+  opinião, sem lição e sem recomendação (NUNCA frases como "isso mostra que
+  é possível…", "o desconto não é o principal motor…", "vale avaliar a
+  estratégia…"). Quem tira conclusões de gestão é o leitor.
+- Análise ENXUTA — só 3 números calculados, e só por CÓDIGO (Python), nunca
+  de cabeça: o % de cada grupo SOBRE AS SOMAS (ex: soma do desconto ÷ soma
+  do faturamento de tabela x 100 — critério do WinThor) e a correlação.
+  Imprima os três e COPIE do jeito que o código imprimiu (com 2 casas). NÃO
+  calcule nem cite totais em R$ de grupo, médias, "sem o item X" ou outras
+  contas — cada número a mais é uma chance de erro.
+- As EXCEÇÕES também saem do código (imprima só os NOMES): no grupo de
+  valor MAIOR, o item com o valor MENOR; no grupo de valor MENOR, o item
+  com o valor MAIOR (ex: NPS acima de 90 dá mais desconto → exceções = a
+  filial desse grupo com o MENOR desconto e a filial do outro grupo com o
+  MAIOR desconto). Cite só essas duas como "quem foge do padrão", com os
+  números delas que estão no resultado. Um item que confirma a conclusão
+  (ex: o maior desconto dentro do grupo que dá mais) NÃO é exceção.
+- Sem termos técnicos no texto ("correlação", "sobre as somas", "média").
+  Traduza a correlação: até 0,3 → "a relação é fraca"; até 0,6 →
+  "moderada"; acima → "forte" (sem citar o número). Compare os grupos com
+  palavras ("quase o dobro", "um pouco mais", "parecido").
+- Formato (o chat mostra texto simples: linhas curtas, sem tabela):
+  1. Conclusão direta, em 1 frase (ex: "Dão mais desconto: as 7 filiais
+     com NPS acima de 90 dão, juntas, quase o dobro das outras 10.").
+  2. Os dois grupos, uma linha cada (ex: "NPS acima de 90 (7 filiais):
+     3,14% de desconto" / "NPS 90 ou menos (10 filiais): 1,74%").
+  3. "Pontos de atenção:" com fatos, um por linha — a relação é fraca/
+     moderada/forte; quem foge do padrão (as exceções, com os números de
+     cada uma); que os dados não mostram causa; com poucos itens, que é um
+     indício, não uma prova.
+  4. Fechamento oferecendo aprofundar (ex: "Se quiser, posso detalhar
+     alguma filial.") — sem opinião.
+  A tabela com todos os itens já aparece na tela: não repita a lista.
+- O % de um grupo é do grupo inteiro: diga "juntas" ("as demais dão,
+  juntas, 1,74%"), NUNCA "em média" nem "desconto médio".
+- NPS é uma nota (ex: "NPS de 99,1"), nunca escreva com "%".
+- Itens sem dado num dos indicadores (ex: filial sem NPS) ficam de fora
+  da comparação — diga quais.
+
 REGRAS PARA TOTAL E LISTAS LONGAS (campos "total_de_todas_as_linhas" e
 "itens_filtrados"):
 - Se vier "total_de_todas_as_linhas", COMECE a resposta por ele (ex: "O
@@ -309,6 +382,14 @@ REGRAS PARA TOTAL E LISTAS LONGAS (campos "total_de_todas_as_linhas" e
   depois, "entre os que concederam desconto", quem menos concedeu (a
   lista em "resultados"). Nunca chame de "menor desconto" quem está em
   "sem_desconto".
+- Se vier "mesmo_periodo_nos_anos": diga que, como o ano atual ainda não
+  terminou, a comparação usa os mesmos meses nos anos comparados (o período
+  está em "periodo_consultado.descricao").
+- Se vier "periodo_assumido": a pergunta não tinha período e foi usado o
+  ano atual. É OBRIGATÓRIO dizer que o usuário não informou o período —
+  não basta citar as datas. Diga isso logo no começo (ex: "Em 2026 (você não
+  informou o período), …") e, no fim, que dá pra consultar outro período
+  (ex: "Se quiser, consulto outro ano ou mês.").
 - NUNCA diga um período diferente de "periodo_consultado.descricao". Se a
   pergunta era sobre um dia (ex: a sexta, 02/10) e o período consultado é
   outro (ex: a semana inteira), NÃO atribua o resultado ao dia pedido:
@@ -347,25 +428,28 @@ REGRAS PARA CÓDIGO DE FILIAL:
   códigos juntos, e nunca só o código que o usuário digitou.
 
 REGRAS PARA ANÁLISE E COMPARAÇÃO:
-- Você pode realizar cálculos matemáticos simples utilizando
-  exclusivamente os valores retornados pelo sistema, quando esses
-  cálculos forem necessários para responder à pergunta do usuário.
-- Quando o usuário perguntar "quanto cresceu", "quanto aumentou",
-  "qual foi o crescimento" ou expressão equivalente, calcule:
-  1. a diferença entre o valor final e o valor inicial;
-  2. o percentual de crescimento em relação ao valor inicial.
-- Quando o usuário perguntar "quanto caiu", "quanto reduziu",
-  "qual foi a queda" ou expressão equivalente, calcule:
-  1. a diferença entre o valor final e o valor inicial;
-  2. o percentual de redução em relação ao valor inicial.
+- NUNCA faça contas "de cabeça". Diferença e variação já vêm prontas no resultado
+  ("diferenca_{{campo}}" e "percentual_{{campo}}" numa comparação;
+  "percentual_mes_anterior"/"percentual_ano_anterior" mês a mês/ano a
+  ano), calculadas igual ao WinThor — use esses valores.
+- Quando o usuário perguntar quanto cresceu/aumentou/caiu/reduziu, diga a
+  diferença e o percentual desses campos prontos.
+- Campo que JÁ É um percentual (atingimento, % de desconto, NPS): diga a
+  diferença em PONTOS PERCENTUAIS ("diferenca_{{campo}}", ex: "28,97
+  pontos percentuais") e NÃO cite "percentual_{{campo}}" (seria "33,65% a
+  mais" sobre um percentual, o que confunde).
+- Se o resultado não trouxer a diferença pronta e ela for necessária,
+  calcule-a EXECUTANDO CÓDIGO sobre os dados do resultado (nunca de
+  cabeça); se não puder executar código, mostre os valores e diga qual é
+  o maior.
 - Quando o usuário pedir uma comparação, apresente somente as
   informações necessárias para realizar a comparação.
 - IMPORTANTE — COMPARAÇÃO ENTRE DOIS OU TRÊS ITENS (filiais, RCAs,
   meses ou anos): não se limite a listar o valor de cada item. Depois
   de apresentar os valores, diga explicitamente qual item teve o
   maior valor (ou se houve empate) e informe a diferença entre eles
-  — em valor absoluto e, quando fizer sentido, em percentual em
-  relação ao menor valor. Isso vale para qualquer indicador
+  quando ela vier pronta no resultado ("diferenca_{{campo}}" e
+  "percentual_{{campo}}"). Isso vale para qualquer indicador
   (faturamento, toneladas, NPS, etc.), não só faturamento em reais.
   Exemplo: "A filial Tibiri teve o maior faturamento em toneladas em
   2024, com 8.692,88 toneladas, contra 7.620,28 toneladas de Campos
@@ -676,26 +760,68 @@ Dados reais retornados pelo sistema:
 
 Responda diretamente ao usuário.
 """
-    resposta = None
     ultimo_erro = None
+    ultimo_texto = None
+
+    # Com "executar código": contas de análise (% de um grupo, média,
+    # mediana, correlação) são feitas por Python sobre os dados do sistema,
+    # não "de cabeça". Se o recurso falhar (outro modelo, outra chave),
+    # tenta sem ele: a resposta sai sem contas, nunca dá erro.
+    com_codigo = types.GenerateContentConfig(
+        tools=[types.Tool(code_execution=types.ToolCodeExecution())],
+        temperature=0,
+    )
+    # Trava contra número inventado: o código calculava certo, mas o texto
+    # às vezes saía com outro número (06/10/2026: "sem Parnaíba" 2,70% no
+    # código e 2,75%/2,23%/3,17% no texto). Todo número do texto tem que
+    # existir nos dados (resultado, saída do código, pergunta, histórico);
+    # senão tenta de novo e, por último, sem execução de código.
+    dados_conhecidos = (resultado, pergunta, historico or [])
+    tentativas = [com_codigo, com_codigo, None]
 
     for modelo in modelos:
-        try:
-            resposta = cliente.models.generate_content(
-                model=modelo,
-                contents=prompt_resposta,
+        for configuracao in tentativas:
+            try:
+                resposta = cliente.models.generate_content(
+                    model=modelo,
+                    contents=(
+                        prompt_resposta if configuracao is not None
+                        else prompt_resposta + _SEM_CODIGO
+                    ),
+                    config=configuracao,
+                )
+            except Exception as error:
+                ultimo_erro = error
+                logger.warning(
+                    "Falha ao consultar o modelo %s (%s): %s", modelo,
+                    "com execução de código" if configuracao else "sem ferramentas",
+                    error,
+                )
+                continue
+
+            texto = (getattr(resposta, "text", None) or "").strip().replace("`", "")
+            if not texto:
+                continue
+
+            ultimo_texto = texto
+            permitidos = valores_permitidos(
+                *dados_conhecidos, saidas_de_codigo=_saidas_de_codigo(resposta)
             )
-            if resposta and resposta.text:
-                break
-        except Exception as error:
-            ultimo_erro = error
+            inventados = numeros_inventados(texto, permitidos)
+
+            if not inventados:
+                return texto
+
             logger.warning(
-                "Falha ao consultar o modelo %s: %s", modelo, error
+                "Resposta com número(s) que não existem nos dados %s — "
+                "gerando de novo.", inventados,
             )
 
-    if resposta is None or not resposta.text:
+    if ultimo_texto is None:
         raise IAIndisponivelError(
             "Não foi possível gerar a resposta final neste momento."
         ) from ultimo_erro
 
-    return resposta.text.strip().replace("`", "")
+    # Nenhuma tentativa passou na conferência: não mostra número nenhum
+    # (a tabela com os números do sistema continua aparecendo na tela).
+    return _RESPOSTA_SEM_NUMEROS_CONFERIDOS

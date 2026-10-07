@@ -1,13 +1,10 @@
 """
 Carregamento e preparação dos dados de Faturamento mensal.
 
-O CSV (`faturamento_mensal.csv`) funciona como um cache em disco: se
-tiver menos de 1 hora, é só lido; se estiver mais velho (ou não
-existir ainda), o Oracle é consultado de novo e o CSV é reescrito antes
-de ler. Assim o dado nunca fica mais que 1 hora desatualizado, sem
-precisar de exportação manual nem de um agendador externo — funciona
-igual em qualquer canal (Streamlit, WhatsApp, etc.), porque não depende
-de nada de tela, só de Python puro + arquivo.
+O CSV (`faturamento_mensal.csv`) funciona como um cache em disco,
+atualizado em segundo plano por `src/atualizador.py` (completa ao abrir
+o chatbot e 1x por dia; parcial — mês atual e anterior — de hora em
+hora). Quem pergunta só lê o CSV; ver `src/arquivos_oracle.py`.
 
 Fonte dos dados (Oracle, schema FNORTE, só leitura — ver
 docs/arquitetura_atual.md, seção "Investigação: ligar o faturamento no
@@ -18,12 +15,18 @@ Oracle"):
 - Devolução: `VIEW_DEVOL_RESUMO_FATURAMENTO`.
 - Meta: `PCMETARCA`.
 """
-import time
 from datetime import date
 from pathlib import Path
 
 import pandas as pd
 
+from src.arquivos_oracle import (
+    antes_da_janela_mensal,
+    garantir,
+    gravar_csv,
+    inicio_da_janela_parcial,
+    ler_csv,
+)
 from src.connection import get_connection
 from src.filiais import padronizar_filiais
 from src.logger import obter_logger
@@ -39,9 +42,6 @@ ARQUIVO_FATURAMENTO_MENSAL = (
 )
 
 ANO_INICIO_PADRAO = 2020
-_SEGUNDOS_CACHE = 3600
-_TENTATIVAS_ORACLE = 3
-_SEGUNDOS_ENTRE_TENTATIVAS = 5
 
 # Colunas que src/*.py de fato lê desse arquivo (catalogo.py e
 # metas_data.py) — nada além disso precisa ser gerado.
@@ -189,14 +189,16 @@ def _consultar_cadastro_rca(cursor) -> pd.DataFrame:
     return pd.DataFrame(cursor.fetchall(), columns=colunas)
 
 
-def gerar_tabela(ano_inicio: int = ANO_INICIO_PADRAO) -> pd.DataFrame:
+def gerar_tabela(
+    ano_inicio: int = ANO_INICIO_PADRAO, desde: date | None = None
+) -> pd.DataFrame:
     """
     Busca venda, peso, devolução e meta no Oracle (quatro consultas
     simples, cada uma já agregada no banco) e junta em Python por
     filial/ano/mês/vendedor — ver docstring do módulo pras fontes. A
     meta entra mesmo sem venda no mês (mesma soma da rotina 8139).
     """
-    desde = date(ano_inicio, 1, 1)
+    desde = desde or date(ano_inicio, 1, 1)
     conexao = get_connection()
 
     try:
@@ -252,69 +254,26 @@ def gerar_tabela(ano_inicio: int = ANO_INICIO_PADRAO) -> pd.DataFrame:
     return dados[COLUNAS_SAIDA]
 
 
-def _gravar_csv(tabela: pd.DataFrame) -> None:
-    ARQUIVO_FATURAMENTO_MENSAL.parent.mkdir(parents=True, exist_ok=True)
-    tabela.to_csv(
-        ARQUIVO_FATURAMENTO_MENSAL, sep=";", encoding="latin1", decimal=",", index=False,
-    )
-
-
-def _atualizar_se_necessario() -> None:
+def atualizar(completa: bool) -> None:
     """
-    Mantém `ARQUIVO_FATURAMENTO_MENSAL` com no máximo 1 hora de idade. Se o Oracle
-    estiver fora do ar, tenta de novo algumas vezes antes de desistir e
-    seguir usando o CSV que já existe (mesmo desatualizado) — melhor
-    responder com um dado velho do que não responder nada. Se o
-    arquivo nem existe ainda e o Oracle não responde, a falha sobe (não
-    tem o que servir).
+    Completa: tudo desde 2020. Parcial: busca no Oracle só o mês atual e
+    o anterior e junta com os meses mais antigos do CSV que já existe.
     """
-    if ARQUIVO_FATURAMENTO_MENSAL.exists():
-        idade = time.time() - ARQUIVO_FATURAMENTO_MENSAL.stat().st_mtime
-        if idade < _SEGUNDOS_CACHE:
-            return
-
-    ultimo_erro = None
-    for tentativa in range(1, _TENTATIVAS_ORACLE + 1):
-        try:
-            tabela = gerar_tabela()
-            _gravar_csv(tabela)
-            return
-        except Exception as erro:
-            ultimo_erro = erro
-            logger.warning(
-                "Falha ao atualizar faturamento mensal do Oracle "
-                f"(tentativa {tentativa}/{_TENTATIVAS_ORACLE}): {erro}"
-            )
-            if tentativa < _TENTATIVAS_ORACLE:
-                time.sleep(_SEGUNDOS_ENTRE_TENTATIVAS)
-
-    if ARQUIVO_FATURAMENTO_MENSAL.exists():
-        logger.warning(
-            "Não foi possível atualizar o faturamento mensal — "
-            "seguindo com o CSV existente (pode estar desatualizado)."
-        )
+    if completa or not ARQUIVO_FATURAMENTO_MENSAL.exists():
+        gravar_csv(gerar_tabela(), ARQUIVO_FATURAMENTO_MENSAL)
         return
 
-    raise ultimo_erro
+    desde = inicio_da_janela_parcial()
+    antigo = antes_da_janela_mensal(ler_csv(ARQUIVO_FATURAMENTO_MENSAL), desde)
+    gravar_csv(
+        pd.concat([antigo, gerar_tabela(desde=desde)], ignore_index=True),
+        ARQUIVO_FATURAMENTO_MENSAL,
+    )
 
 
 def carregar_faturamento_mensal() -> pd.DataFrame:
-    """
-    Carrega o faturamento mensal, atualizando do Oracle primeiro se o
-    CSV estiver com mais de 1 hora (ver `_atualizar_se_necessario`).
-    """
-    _atualizar_se_necessario()
-
-    if not ARQUIVO_FATURAMENTO_MENSAL.exists():
-        raise FileNotFoundError(
-            f"Arquivo não encontrado: {ARQUIVO_FATURAMENTO_MENSAL}"
-        )
-    dados = pd.read_csv(
-        ARQUIVO_FATURAMENTO_MENSAL,
-        sep=";",
-        encoding="latin1",
-        decimal=",",
-    )
+    garantir([ARQUIVO_FATURAMENTO_MENSAL], atualizar, "faturamento mensal")
+    dados = ler_csv(ARQUIVO_FATURAMENTO_MENSAL)
     #removendo as colunas vazias criadas durante a execução
     dados = dados.loc [
         :,

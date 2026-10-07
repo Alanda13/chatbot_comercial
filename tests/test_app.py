@@ -254,3 +254,10 @@ def test_percentual_muito_pequeno_nao_aparece_como_zero():
     assert formatar_percentual_atingimento(0.0034) == "menos de 0,01%"
     assert formatar_percentual_atingimento(0.0) == "0,00%"
     assert formatar_percentual_atingimento(3.1307) == "3,13%"
+
+
+def test_diferenca_em_reais_mostra_o_sinal():
+    from app import formatar_moeda_com_sinal
+
+    assert formatar_moeda_com_sinal(14287298.37) == "+R$ 14.287.298,37"
+    assert formatar_moeda_com_sinal(-963253.53) == "−R$ 963.253,53"

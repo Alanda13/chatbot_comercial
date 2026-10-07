@@ -1,8 +1,8 @@
 """
 Carregamento dos dados de desconto por cliente.
 
-Dois CSVs, gerados juntos do Oracle e usados como cache de 1 hora (mesma
-regra de `faturamento_data.py`):
+Dois CSVs, gerados juntos do Oracle e atualizados em segundo plano por
+`src/atualizador.py` (mesma regra de `faturamento_data.py`):
 
 - `desconto_cliente.csv`: desconto e faturamento de tabela por
   filial/ano/mês/RCA/supervisor/cliente, desde 2020 (~1,2 milhão de
@@ -22,13 +22,19 @@ Fonte: `VIEW_VENDAS_RESUMO_FATURAMENTO`, mesmos filtros de venda válida
 e mesma conta de desconto do faturamento mensal (igual à rotina 8302).
 """
 import re
-import time
 import unicodedata
 from datetime import date
 from pathlib import Path
 
 import pandas as pd
 
+from src.arquivos_oracle import (
+    antes_da_janela_mensal,
+    garantir,
+    gravar_csv,
+    inicio_da_janela_parcial,
+    ler_csv,
+)
 from src.connection import get_connection
 from src.faturamento_data import (
     ANO_INICIO_PADRAO,
@@ -42,10 +48,6 @@ logger = obter_logger(__name__)
 
 ARQUIVO_DESCONTO_CLIENTE = RAIZ_PROJETO / "dados" / "desconto_cliente.csv"
 ARQUIVO_CLIENTES = RAIZ_PROJETO / "dados" / "clientes.csv"
-
-_SEGUNDOS_CACHE = 3600
-_TENTATIVAS_ORACLE = 3
-_SEGUNDOS_ENTRE_TENTATIVAS = 5
 
 COLUNAS_DESCONTO = [
     "CODFILIAL", "ANO", "MES", "COD_RCA", "COD_SUPERVISOR", "CODCLI",
@@ -139,10 +141,8 @@ def _nome_da_empresa(clientes: pd.DataFrame) -> pd.Series:
     )
 
 
-def gerar_tabelas(
-    ano_inicio: int = ANO_INICIO_PADRAO,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    desde = date(ano_inicio, 1, 1)
+def _buscar(desde: date) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Desconto por cliente desde `desde` + o cadastro inteiro (PCCLIENT)."""
     conexao = get_connection()
 
     try:
@@ -155,6 +155,11 @@ def gerar_tabelas(
     for coluna in ("CODFILIAL", "ANO", "MES", "CODCLI"):
         desconto[coluna] = desconto[coluna].astype(int)
 
+    return desconto[COLUNAS_DESCONTO], cadastro
+
+
+def _montar_clientes(cadastro: pd.DataFrame, desconto: pd.DataFrame) -> pd.DataFrame:
+    """Cadastro de quem aparece no desconto, com empresa, nome e CNPJ dela."""
     clientes = cadastro[cadastro["CODCLI"].isin(desconto["CODCLI"])].copy()
     clientes["CODCLI"] = clientes["CODCLI"].astype(int)
     clientes["EMPRESA"] = [
@@ -172,64 +177,47 @@ def gerar_tabelas(
         desconto.groupby("CODCLI")["VENDA_TABELA"].sum()
     ).fillna(0).round(2)
 
-    return desconto[COLUNAS_DESCONTO], clientes[COLUNAS_CLIENTES]
+    return clientes[COLUNAS_CLIENTES]
 
 
-def _gravar_csv(tabela: pd.DataFrame, arquivo: Path) -> None:
-    arquivo.parent.mkdir(parents=True, exist_ok=True)
-    tabela.to_csv(
-        arquivo, sep=";", encoding="latin1", errors="replace",
-        decimal=",", index=False,
+def gerar_tabelas(
+    ano_inicio: int = ANO_INICIO_PADRAO,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    desconto, cadastro = _buscar(date(ano_inicio, 1, 1))
+    return desconto, _montar_clientes(cadastro, desconto)
+
+
+def atualizar(completa: bool) -> None:
+    """
+    Completa: tudo desde 2020. Parcial: busca no Oracle só o mês atual e
+    o anterior (o pico de memória de ~500 MB da completa some) e junta com
+    os meses mais antigos do CSV; o cadastro é refeito inteiro (cliente
+    novo, CNPJ corrigido).
+    """
+    if completa or not (ARQUIVO_DESCONTO_CLIENTE.exists() and ARQUIVO_CLIENTES.exists()):
+        desconto, clientes = gerar_tabelas()
+    else:
+        desde = inicio_da_janela_parcial()
+        antigo = antes_da_janela_mensal(ler_csv(ARQUIVO_DESCONTO_CLIENTE), desde)
+        novo, cadastro = _buscar(desde)
+        desconto = pd.concat([antigo, novo], ignore_index=True)
+        clientes = _montar_clientes(cadastro, desconto)
+
+    gravar_csv(clientes, ARQUIVO_CLIENTES)
+    gravar_csv(desconto, ARQUIVO_DESCONTO_CLIENTE)
+
+
+def _garantir() -> None:
+    garantir(
+        [ARQUIVO_DESCONTO_CLIENTE, ARQUIVO_CLIENTES], atualizar, "desconto por cliente"
     )
-
-
-def _atualizar_se_necessario() -> None:
-    """
-    Mesma regra de `faturamento_data._atualizar_se_necessario`: até 1
-    hora de idade usa o CSV; depois consulta o Oracle de novo (com
-    algumas tentativas) e, se ele estiver fora do ar, segue com o CSV
-    antigo. Os dois arquivos são sempre regravados juntos.
-    """
-    if ARQUIVO_DESCONTO_CLIENTE.exists() and ARQUIVO_CLIENTES.exists():
-        idade = time.time() - ARQUIVO_DESCONTO_CLIENTE.stat().st_mtime
-        if idade < _SEGUNDOS_CACHE:
-            return
-
-    ultimo_erro = None
-    for tentativa in range(1, _TENTATIVAS_ORACLE + 1):
-        try:
-            desconto, clientes = gerar_tabelas()
-            _gravar_csv(clientes, ARQUIVO_CLIENTES)
-            _gravar_csv(desconto, ARQUIVO_DESCONTO_CLIENTE)
-            return
-        except Exception as erro:
-            ultimo_erro = erro
-            logger.warning(
-                "Falha ao atualizar desconto por cliente do Oracle "
-                f"(tentativa {tentativa}/{_TENTATIVAS_ORACLE}): {erro}"
-            )
-            if tentativa < _TENTATIVAS_ORACLE:
-                time.sleep(_SEGUNDOS_ENTRE_TENTATIVAS)
-
-    if ARQUIVO_DESCONTO_CLIENTE.exists() and ARQUIVO_CLIENTES.exists():
-        logger.warning(
-            "Não foi possível atualizar o desconto por cliente — "
-            "seguindo com o CSV existente (pode estar desatualizado)."
-        )
-        return
-
-    raise ultimo_erro
-
-
-def _ler_csv(arquivo: Path, **opcoes) -> pd.DataFrame:
-    return pd.read_csv(arquivo, sep=";", encoding="latin1", decimal=",", **opcoes)
 
 
 def carregar_clientes() -> pd.DataFrame:
     """Cadastro dos clientes que compraram desde 2020 (ver docstring)."""
-    _atualizar_se_necessario()
+    _garantir()
     # EMPRESA como texto: a raiz "03995515" lida como número perderia o 0.
-    return _ler_csv(ARQUIVO_CLIENTES, dtype={"EMPRESA": str, "CNPJ": str})
+    return ler_csv(ARQUIVO_CLIENTES, dtype={"EMPRESA": str, "CNPJ": str})
 
 
 def carregar_desconto_cliente() -> pd.DataFrame:
@@ -237,8 +225,8 @@ def carregar_desconto_cliente() -> pd.DataFrame:
     Desconto por filial/mês/RCA/cliente, já com os dados do cadastro
     (nome, CNPJ, cidade, empresa) juntados pelo código do cliente.
     """
-    _atualizar_se_necessario()
-    dados = _ler_csv(ARQUIVO_DESCONTO_CLIENTE)
+    _garantir()
+    dados = ler_csv(ARQUIVO_DESCONTO_CLIENTE)
     dados = dados.merge(carregar_clientes(), on="CODCLI", how="left")
     return padronizar_filiais(dados, dados["CODFILIAL"])
 

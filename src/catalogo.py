@@ -207,7 +207,10 @@ INDICADORES = {
                 "campos": ("valor_meta", "faturamento_realizado"),
             },
         ],
-        "campo_principal": "faturamento_realizado",
+        # O que resume a meta numa tabela/comparação é o atingimento; a
+        # variação mês a mês/ano a ano continua sendo a do faturamento.
+        "campo_principal": "percentual_atingimento",
+        "campo_variacao": "faturamento_realizado",
         "necessidade_diaria_campo": "falta_para_meta",
         "unidade": "R$",
         "exibicao": {
@@ -324,8 +327,10 @@ INDICADORES = {
         # lista; os totais seguem iguais aos do WinThor (8302).
         "menor_ignora_abaixo_de": ("valor_desconto", 1.0),
         "carregar": carregar_faturamento_mensal,
-        # Sem período a consulta somaria desde 2020 — a IA pergunta.
-        "periodo_obrigatorio": True,
+        # Sem período a consulta somaria desde 2020 (ex: "desconto do Mateus
+        # em Timon" dava R$ 205 mil, quase tudo de 2020): usa o ano atual e
+        # a resposta avisa (decisão da usuária em 06/10/2026).
+        "periodo_padrao": "ano_atual",
         # Por cliente/empresa: arquivo próprio (~1,2 milhão de linhas,
         # ver src/cliente_data.py), lido só quando a pergunta pede.
         "fontes_por_dimensao": {
@@ -387,7 +392,7 @@ INDICADORES = {
         "menor_ignora_abaixo_de": ("valor_desconto", 1.0),
         "carregar": carregar_faturamento_diario,
         "granularidade_periodo": "diaria",
-        "periodo_obrigatorio": True,
+        "periodo_padrao": "ano_atual",
         "campos": {
             "valor_desconto": ("VALORDESC", "sum"),
             "faturamento_tabela": ("VENDA_TABELA", "sum"),
@@ -577,6 +582,7 @@ def gerar_colunas_tabela() -> list[dict]:
         rotulo = especificacao["rotulo"]
         tipo_diferenca = {
             "percentual": "percentual_com_sinal", "texto": "numero_com_sinal",
+            "moeda": "moeda_com_sinal",
         }.get(tipo, tipo)
         sempre = {"sempre": True} if nome_campo in campos_principais else {}
 
