@@ -34,7 +34,9 @@ _ORDEM_RESOLUCAO_DIMENSOES = ("filial", "rca", "supervisor")
 # Resolvedores que recebem as filiais já resolvidas da consulta (pra
 # desempatar nomes iguais em filiais diferentes) e devolvem uma LISTA de
 # valores (ex: um nome de empresa vira todas as lojas dela).
-_RESOLVEDORES_COM_FILIAL = ("rca", "supervisor", "cliente", "empresa")
+_RESOLVEDORES_COM_FILIAL = (
+    "rca", "supervisor", "cliente", "empresa", "produto", "familia", "grupo",
+)
 
 # Campos que descrevem o item agrupado (nome/CNPJ/cidade do cliente...)
 # — identificação, não métrica: vão sempre pra tabela.
@@ -50,11 +52,11 @@ _CAMPOS_DE_ATRIBUTO = tuple(
 # tonelada usa o nome, então a junção sairia vazia sem avisar.
 _DIMENSOES_DE_CRUZAMENTO = ("filial", "estado", "mes", "ano")
 
-# RCA e supervisor só cruzam quando TODOS os indicadores da consulta os
+# As outras dimensões só cruzam quando TODOS os indicadores da consulta as
 # identificam do mesmo jeito (mesma coluna e mesmo resolvedor) — ex:
 # faturamento, meta e desconto usam o código (COD_RCA), então cruzam por
 # RCA; a meta de tonelada usa o nome, então não cruza com eles por RCA.
-_DIMENSOES_POR_CODIGO = ("rca", "supervisor")
+# Faturamento e desconto têm produto/grupo/cliente; a meta não.
 
 
 def _mesma_identificacao(indicadores: list[str], dimensao: str) -> bool:
@@ -353,17 +355,17 @@ def _validar_cruzamento(indicadores: list[str], agrupar_por: list[str]) -> None:
         if dimensao in _DIMENSOES_DE_CRUZAMENTO:
             continue
 
-        if dimensao in _DIMENSOES_POR_CODIGO and _mesma_identificacao(
-            indicadores, dimensao
-        ):
+        # Qualquer outra (rca, supervisor, cliente, produto, grupo...) cruza
+        # quando TODOS os indicadores a identificam do mesmo jeito.
+        if _mesma_identificacao(indicadores, dimensao):
             continue
 
         raise ConsultaInvalida(
             "Só é possível cruzar indicadores agrupando por "
-            f"{', '.join(_DIMENSOES_DE_CRUZAMENTO)} — ou por "
-            f"{'/'.join(_DIMENSOES_POR_CODIGO)} quando todos os indicadores "
-            f"identificam do mesmo jeito. A dimensão '{dimensao}' não tem o "
-            "mesmo valor em todas as bases desta consulta."
+            f"{', '.join(_DIMENSOES_DE_CRUZAMENTO)} — ou por outra dimensão "
+            "quando todos os indicadores a identificam do mesmo jeito. A "
+            f"dimensão '{dimensao}' não tem o mesmo valor em todas as bases "
+            "desta consulta (ex: a meta não é separada por produto nem cliente)."
         )
 
     # Campo com o mesmo nome em dois indicadores só é aceito quando é o
@@ -598,6 +600,27 @@ def _descrever_periodo(filtros: dict) -> dict | None:
     return {**periodo, "descricao": descricao}
 
 
+def _mes_atual_na_lista(resposta: dict) -> str | None:
+    """
+    "outubro de 2026" quando uma lista mês a mês inclui o mês atual (ex:
+    desconto do Telha mês a mês: outubro, com 7 dias, "caía" 74%).
+    """
+    if "mes" not in (resposta.get("agrupar_por") or []):
+        return None
+
+    hoje = date.today()
+    anos_filtro = [int(ano) for ano in _como_lista((resposta.get("filtros_aplicados") or {}).get("ano", []))]
+
+    for linha in resposta["resultados"]:
+        ano = linha.get("ano")
+        do_ano_atual = int(ano) == hoje.year if ano is not None else anos_filtro == [hoje.year]
+
+        if do_ano_atual and str(linha.get("mes")) == str(hoje.month):
+            return f"{_NOMES_MESES[hoje.month - 1]} de {hoje.year}"
+
+    return None
+
+
 def _separar_mes_em_andamento(consulta: dict, indicadores: list[str]) -> dict | None:
     """
     "Atingimento de 2026" no começo de outubro somava a meta de outubro
@@ -810,10 +833,21 @@ def buscar_dados_brutos(
     """
     carregar = indicador_def.get("carregar")
 
-    for dimensao, fonte in indicador_def.get("fontes_por_dimensao", {}).items():
-        if dimensao in agrupar_por or dimensao in filtros:
-            carregar = fonte
-            break
+    fontes = {
+        fonte
+        for dimensao, fonte in indicador_def.get("fontes_por_dimensao", {}).items()
+        if dimensao in agrupar_por or dimensao in filtros
+    }
+
+    # Cliente e produto vêm de arquivos diferentes (nenhum tem os dois).
+    if len(fontes) > 1:
+        raise ConsultaInvalida(
+            "Ainda não dá pra combinar cliente com produto (ou forma de "
+            "pagamento) na mesma consulta — consulte um de cada vez."
+        )
+
+    if fontes:
+        carregar = fontes.pop()
 
     if carregar is None:
         raise ConsultaInvalida(
@@ -912,7 +946,13 @@ def _aplicar_agrupamento(
     (comparação, derivados, filtros calculados) trabalhando com um
     único formato, sem caso especial.
     """
-    campos = indicador_def["campos"]
+    # Campo cuja coluna o arquivo não tem fica de fora (ex: o faturamento
+    # por produto não tem peso nem nº de notas) — em vez de dar erro.
+    campos = {
+        nome: especificacao
+        for nome, especificacao in indicador_def["campos"].items()
+        if _desempacotar_campo(especificacao)[0] in dados.columns
+    }
     grupos_de_campos = _particionar_campos_por_dedup(campos)
     inteiros = _campos_de_contagem(dados, campos)
 
@@ -972,7 +1012,7 @@ def _aplicar_agrupamento(
         for dimensao, coluna in zip(agrupar_por, colunas_agrupamento):
             valor = linha[coluna]
 
-            if dimensao in ("mes", "ano", "rca", "supervisor", "cliente"):
+            if dimensao in ("mes", "ano", "rca", "supervisor", "cliente", "produto"):
                 # "rca" é código numérico na maioria das bases, mas é
                 # NOME (texto) na base de meta de tonelada — tenta
                 # converter, e se não der, trata como texto mesmo.
@@ -1434,7 +1474,13 @@ def _aplicar_derivados(resultado: list[dict], indicador_def: dict) -> list[dict]
         for derivado in derivados:
             funcao = motor_metricas.FORMULAS[derivado["formula"]]
             argumentos = [item.get(campo) for campo in derivado["campos"]]
-            item[derivado["nome"]] = funcao(*argumentos)
+
+            # Faltando um campo (ex: peso no faturamento por produto), o
+            # calculado fica vazio em vez de dar erro.
+            item[derivado["nome"]] = (
+                None if any(argumento is None for argumento in argumentos)
+                else funcao(*argumentos)
+            )
 
         return item
 
@@ -1834,6 +1880,23 @@ def executar_consulta(consulta: dict) -> dict:
         extras=extras,
     )
 
+    if (
+        cruzar_com and agrupar_por and not comparar_com and not comparar_filtros
+        and not consulta.get("filtros_calculados")
+        # Por RCA a lista é só de quem tem meta: o total sem agrupar
+        # (com canal único e contas da empresa) não seria a soma dela.
+        and "rca" not in agrupar_por
+    ):
+        # Total da consulta cruzada: a mesma consulta sem agrupar (uma linha
+        # com o total de cada indicador). Sem ele a IA somava só as 60
+        # linhas que recebe (ex: "famílias de Metalon": R$ 15,8 mi de R$ 89,5 mi).
+        total, _ = _consultar_indicadores(
+            indicadores, consulta, consulta.get("periodo"),
+            consulta.get("periodo_personalizado"), [], rcas_validos=rcas_validos,
+        )
+        if total:
+            extras["total"] = total[0]
+
     if comparar_com:
         # Reaproveita o MESMO conjunto de RCAs válidos calculado pro
         # período principal — ver docstring de buscar_dados_brutos.
@@ -1937,6 +2000,30 @@ def executar_consulta(consulta: dict) -> dict:
             "O ano atual ainda não terminou: a comparação usa os mesmos meses "
             "fechados nos anos comparados. Diga isso na resposta (ex: "
             "\"comparando janeiro a setembro de 2025 e de 2026\")."
+        )
+
+    if ordenar_por and ordenar_por.get("campo"):
+        # Dito com todas as letras: a IA dizia "maior percentual" numa
+        # lista ordenada pelo valor em R$.
+        sentido = "do menor para o maior" if ordenar_por.get("ordem") == "asc" else "do maior para o menor"
+        dentro = f" dentro de cada {ordenar_por['por']}" if ordenar_por.get("por") else ""
+        tipo = _tipo_do_campo(ordenar_por["campo"], indicadores)
+        medida = " (valor em R$)" if tipo == "moeda" else " (percentual)" if tipo == "percentual" else ""
+        resposta["criterio_da_ordem"] = (
+            f"Ordenado por {_rotulo_do_campo(ordenar_por['campo'], indicadores).lower()}"
+            f"{medida}, {sentido}{dentro}. Mostre ESSE valor de cada item (o "
+            "outro pode vir junto, entre parênteses) e use a palavra certa "
+            "(\"maior valor de desconto\" ≠ \"maior percentual\"), sem "
+            "escrever \"critério da ordem\"."
+        )
+
+    mes_atual = _mes_atual_na_lista(resposta)
+
+    if mes_atual:
+        resposta["mes_atual_incompleto"] = (
+            f"{mes_atual} ainda está em andamento (dados até hoje, "
+            f"{date.today():%d/%m}): diga isso na resposta e que a variação "
+            "desse mês não é comparável com os meses fechados."
         )
 
     if periodo_assumido:

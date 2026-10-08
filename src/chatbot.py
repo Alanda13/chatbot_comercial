@@ -11,6 +11,7 @@ from src.ai_service import gerar_resposta_final
 from src.tool_manager import executar_ferramenta
 from src.exceptions import FerramentaError, RespostaInvalidaError
 from src.logger import obter_logger
+from src import catalogo
 
 logger = obter_logger(__name__)
 
@@ -31,15 +32,59 @@ def _limitar_resultados(resultado: dict) -> dict:
         and len(resultados) > LIMITE_RESULTADOS_RESPOSTA
     ):
         resultado = dict(resultado)
+        criterio = ""
+        campo = _campo_pra_cortar(resultado)
+
+        # Sem ordem pedida, a lista vem em ordem alfabética: cortar nela
+        # mandava pra IA as 60 primeiras do alfabeto como se fossem "as
+        # maiores" (famílias de Metalon, 07/10/2026). Ordena antes.
+        if campo:
+            ordem = sorted(
+                range(len(resultados)),
+                key=lambda i: resultados[i].get(campo) or 0, reverse=True,
+            )
+            resultados = [resultados[i] for i in ordem]
+            criterio = f" (os {LIMITE_RESULTADOS_RESPOSTA} maiores em {campo})"
+            tabela = resultado.get("tabela")
+
+            # A tabela da tela é a mesma lista (linha a linha), só com as
+            # colunas recortadas: mesma ordem, pra mostrar os mesmos itens.
+            if isinstance(tabela, list) and len(tabela) == len(ordem):
+                resultado["tabela"] = [tabela[i] for i in ordem]
+
         resultado["resultados"] = resultados[:LIMITE_RESULTADOS_RESPOSTA]
         resultado["aviso"] = (
             f"Mostrando {LIMITE_RESULTADOS_RESPOSTA} de "
-            f"{len(resultados)} resultados. Peça um filtro mais "
+            f"{len(resultados)} resultados{criterio}. Peça um filtro mais "
             "específico (uma filial, um RCA, ou um período menor) "
-            "para ver o restante."
+            "para ver o restante. Se vier \"total_de_todas_as_linhas\", ele "
+            f"é de TODOS os {len(resultados)} itens, não só dos mostrados: "
+            "nunca o chame de total \"desse grupo\" ou \"dos N maiores\"."
         )
 
     return resultado
+
+
+_DIMENSOES_DE_TEMPO = ("ano", "mes", "dia", "dia_semana", "semana")
+
+
+def _campo_pra_cortar(resultado: dict) -> str | None:
+    """
+    Campo pelo qual ordenar antes de cortar a lista: o valor em R$ do
+    indicador (campo_variacao, ex: valor do desconto) ou o principal. Não
+    reordena lista já ordenada nem lista no tempo (mês a mês fica em ordem).
+    """
+    if resultado.get("criterio_da_ordem"):
+        return None
+
+    if any(dimensao in _DIMENSOES_DE_TEMPO for dimensao in resultado.get("agrupar_por") or []):
+        return None
+
+    definicao = catalogo.INDICADORES.get(resultado.get("indicador"), {})
+    campo = definicao.get("campo_variacao") or definicao.get("campo_principal")
+    linhas = resultado.get("resultados") or []
+
+    return campo if linhas and campo in linhas[0] else None
 
 
 _NUMERO = re.compile(r"\d+(?:[.,]\d+)*")

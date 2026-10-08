@@ -39,3 +39,8 @@ def test_valor_em_reais_inventado_e_pego():
     texto = "O grupo deu R$ 9.100.000,00 de desconto."
 
     assert numeros_inventados(texto, _permitidos()) == ["9.100.000,00"]
+
+
+def test_variacao_negativa_escrita_sem_sinal():
+    permitidos = valores_permitidos({"percentual_mes_anterior": -2.89})
+    assert numeros_inventados("caiu 2,89% em relação a janeiro", permitidos) == []

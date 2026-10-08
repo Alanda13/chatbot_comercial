@@ -51,6 +51,12 @@ from src.cliente_data import (
     resolver_empresas,
 )
 from src.faturamento_data import carregar_faturamento_mensal
+from src.produto_data import (
+    carregar_desconto_produto,
+    resolver_familias,
+    resolver_grupos,
+    resolver_produtos,
+)
 from src.faturamento_diario_data import (
     carregar_faturamento_diario,
     carregar_faturamento_diario_forma_pagamento,
@@ -67,7 +73,7 @@ from src.meta_tonelada_data import (
 
 DIMENSOES_VALIDAS = [
     "filial", "estado", "rca", "supervisor", "mes", "ano", "dia",
-    "forma_pagamento", "cliente", "empresa",
+    "forma_pagamento", "cliente", "empresa", "produto", "familia", "grupo",
 ]
 
 # Colunas que DESCREVEM o item de uma dimensão (vêm junto quando se
@@ -84,6 +90,14 @@ ATRIBUTOS_DIMENSAO = {
         "cliente_nome": ("CLIENTE", "Cliente"),
         "cnpj": ("CNPJ", "CNPJ"),
         "cidade": ("CIDADE", "Cidade"),
+    },
+    "produto": {
+        "produto_nome": ("PRODUTO", "Produto"),
+        "produto_familia": ("FAMILIA", "Família"),
+        "produto_grupo": ("GRUPO", "Grupo"),
+    },
+    "familia": {
+        "familia_grupo": ("GRUPO", "Grupo"),
     },
     "empresa": {
         "empresa_nome": ("NOME_EMPRESA", "Empresa"),
@@ -104,6 +118,16 @@ PERIODOS_VALIDOS = [
 INDICADORES = {
     "faturamento": {
         "carregar": carregar_faturamento_mensal,
+        # Por cliente/produto: os mesmos arquivos do desconto, que trazem a
+        # venda e a devolução (VENDA_LIQ) — sem peso nem nº de notas, que
+        # ficam de fora nessas consultas.
+        "fontes_por_dimensao": {
+            "cliente": carregar_desconto_cliente,
+            "empresa": carregar_desconto_cliente,
+            "produto": carregar_desconto_produto,
+            "familia": carregar_desconto_produto,
+            "grupo": carregar_desconto_produto,
+        },
         "granularidade_periodo": "mensal",
         "campos": {
             "faturamento": ("VENDA_LIQ", "sum"),
@@ -115,11 +139,18 @@ INDICADORES = {
         "dimensoes": {
             "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
             "mes": "MES", "ano": "ANO",
+            "cliente": "CODCLI", "empresa": "EMPRESA",
+            "produto": "CODPROD", "familia": "FAMILIA", "grupo": "GRUPO",
         },
         "resolver_dimensao": {
             "filial": resolver_nome_filial,
             "estado": resolver_estado,
             "rca": resolver_codigos_rca,
+            "cliente": resolver_codigos_cliente,
+            "empresa": resolver_empresas,
+            "produto": resolver_produtos,
+            "familia": resolver_familias,
+            "grupo": resolver_grupos,
         },
         "rca_nome_mapa": construir_mapa_rca_nome,
         "rca_requer_meta_cadastrada": True,
@@ -333,9 +364,14 @@ INDICADORES = {
         "periodo_padrao": "ano_atual",
         # Por cliente/empresa: arquivo próprio (~1,2 milhão de linhas,
         # ver src/cliente_data.py), lido só quando a pergunta pede.
+        # Por produto/família/grupo: outro arquivo (src/produto_data.py) —
+        # grupo e família vêm da planilha BASE_PRODUTOS do comercial.
         "fontes_por_dimensao": {
             "cliente": carregar_desconto_cliente,
             "empresa": carregar_desconto_cliente,
+            "produto": carregar_desconto_produto,
+            "familia": carregar_desconto_produto,
+            "grupo": carregar_desconto_produto,
         },
         "granularidade_periodo": "mensal",
         "campos": {
@@ -344,11 +380,15 @@ INDICADORES = {
             # orquestrador._validar_cruzamento).
             "valor_desconto": ("VALORDESC", "sum"),
             "faturamento_tabela": ("VENDA_TABELA", "sum"),
+            # Valor vendido (antes de devolução): no desconto por produto/
+            # grupo/cliente é "quanto vendeu" — sem precisar cruzar indicador.
+            "venda_bruta": ("VENDA_BRUTA", "sum"),
         },
         "dimensoes": {
             "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
             "supervisor": "COD_SUPERVISOR", "mes": "MES", "ano": "ANO",
             "cliente": "CODCLI", "empresa": "EMPRESA",
+            "produto": "CODPROD", "familia": "FAMILIA", "grupo": "GRUPO",
         },
         "resolver_dimensao": {
             "filial": resolver_nome_filial,
@@ -357,6 +397,9 @@ INDICADORES = {
             "supervisor": resolver_codigos_supervisor,
             "cliente": resolver_codigos_cliente,
             "empresa": resolver_empresas,
+            "produto": resolver_produtos,
+            "familia": resolver_familias,
+            "grupo": resolver_grupos,
         },
         "rca_nome_mapa": construir_mapa_rca_nome,
         "rca_requer_meta_cadastrada": True,
@@ -377,6 +420,7 @@ INDICADORES = {
             "percentual_desconto": {"tipo": "percentual", "rotulo": "% Desconto", "sempre": True},
             "valor_desconto": {"tipo": "moeda", "rotulo": "Desconto", "palavras": ["descont"]},
             "faturamento_tabela": {"tipo": "moeda", "rotulo": "Faturamento de Tabela", "palavras": ["tabela"]},
+            "venda_bruta": {"tipo": "moeda", "rotulo": "Venda Bruta", "palavras": ["venda bruta"]},
         },
     },
     # Desconto por DIA (hoje, ontem, semana, datas): mesma conta da 8302,
@@ -396,6 +440,9 @@ INDICADORES = {
         "campos": {
             "valor_desconto": ("VALORDESC", "sum"),
             "faturamento_tabela": ("VENDA_TABELA", "sum"),
+            # Valor vendido (antes de devolução): no desconto por produto/
+            # grupo/cliente é "quanto vendeu" — sem precisar cruzar indicador.
+            "venda_bruta": ("VENDA_BRUTA", "sum"),
         },
         "dimensoes": {
             "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
@@ -422,6 +469,7 @@ INDICADORES = {
             "percentual_desconto": {"tipo": "percentual", "rotulo": "% Desconto", "sempre": True},
             "valor_desconto": {"tipo": "moeda", "rotulo": "Desconto", "palavras": ["descont"]},
             "faturamento_tabela": {"tipo": "moeda", "rotulo": "Faturamento de Tabela", "palavras": ["tabela"]},
+            "venda_bruta": {"tipo": "moeda", "rotulo": "Venda Bruta", "palavras": ["venda bruta"]},
         },
     },
     # Abaixo, indicadores registrados no catálogo mas SEM fonte real

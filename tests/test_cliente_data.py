@@ -98,13 +98,13 @@ def _desconto_cliente():
         [
             {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": 10, "COD_SUPERVISOR": 1,
              "MES": 8, "ANO": 2026, "CODCLI": 202334,
-             "VALORDESC": 30.0, "VENDA_TABELA": 300.0},
+             "VALORDESC": 30.0, "VENDA_TABELA": 300.0, "VENDA_BRUTA": 300.0},
             {"FILIAL": "LOURIVAL", "ESTADO": "PI", "COD_RCA": 20, "COD_SUPERVISOR": 2,
              "MES": 8, "ANO": 2026, "CODCLI": 191385,
-             "VALORDESC": 10.0, "VENDA_TABELA": 200.0},
+             "VALORDESC": 10.0, "VENDA_TABELA": 200.0, "VENDA_BRUTA": 200.0},
             {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": 10, "COD_SUPERVISOR": 1,
              "MES": 8, "ANO": 2026, "CODCLI": 500,
-             "VALORDESC": 5.0, "VENDA_TABELA": 100.0},
+             "VALORDESC": 5.0, "VENDA_TABELA": 100.0, "VENDA_BRUTA": 100.0},
         ]
     )
     return vendas.merge(_clientes(), on="CODCLI")
@@ -133,6 +133,7 @@ def test_empresa_soma_as_lojas_e_por_loja_traz_nome_cnpj_cidade(motor):
     assert resultado["resultados"] == [
         {
             "cliente": 202334, "valor_desconto": 30.0, "faturamento_tabela": 300.0,
+            "venda_bruta": 300.0,
             "cliente_nome": "MATEUS SUPERMERCADOS S A",
             "cnpj": "03.995.515/0159-46", "cidade": "SAO LUIS",
             "percentual_desconto": 10.0,
@@ -140,7 +141,7 @@ def test_empresa_soma_as_lojas_e_por_loja_traz_nome_cnpj_cidade(motor):
     ]
     # total das 2 lojas, mesmo com o limite mostrando só 1
     assert resultado["total_de_todas_as_linhas"] == {
-        "valor_desconto": 40.0, "faturamento_tabela": 500.0,
+        "valor_desconto": 40.0, "faturamento_tabela": 500.0, "venda_bruta": 500.0,
         "percentual_desconto": 8.0, "quantidade_de_linhas": 2,
         "quantidade_por_dimensao": {"cliente": 2},
     }
@@ -227,7 +228,7 @@ def test_sem_limite_por_grupo_mantem_meses_em_ordem_e_variacao_em_reais(monkeypa
     dados = pd.DataFrame(
         [
             {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": 10, "COD_SUPERVISOR": 1,
-             "MES": mes, "ANO": 2026, "VALORDESC": desconto, "VENDA_TABELA": tabela}
+             "MES": mes, "ANO": 2026, "VALORDESC": desconto, "VENDA_TABELA": tabela, "VENDA_BRUTA": tabela}
             for mes, desconto, tabela in [(5, 100.0, 1000.0), (6, 20.0, 200.0), (7, 50.0, 1000.0)]
         ]
     )

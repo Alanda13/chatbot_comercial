@@ -40,6 +40,7 @@ from src.faturamento_data import (
     ANO_INICIO_PADRAO,
     RAIZ_PROJETO,
     _FILTRO_VENDA_VALIDA,
+    juntar_devolucao,
 )
 from src.filiais import padronizar_filiais
 from src.logger import obter_logger
@@ -51,7 +52,7 @@ ARQUIVO_CLIENTES = RAIZ_PROJETO / "dados" / "clientes.csv"
 
 COLUNAS_DESCONTO = [
     "CODFILIAL", "ANO", "MES", "COD_RCA", "COD_SUPERVISOR", "CODCLI",
-    "VALORDESC", "VENDA_TABELA",
+    "VALORDESC", "VENDA_TABELA", "VENDA_BRUTA", "VALOR_DEV", "VENDA_LIQ",
 ]
 COLUNAS_CLIENTES = [
     "CODCLI", "CLIENTE", "FANTASIA", "CNPJ", "CIDADE", "UF",
@@ -67,7 +68,8 @@ def _consultar_desconto(cursor, desde: date) -> pd.DataFrame:
                EXTRACT(MONTH FROM V.DTSAIDA) MES, V.CODUSUR COD_RCA,
                V.CODSUPERVISOR COD_SUPERVISOR, V.CODCLI,
                ROUND(SUM(V.VLDESCONTO * V.QT), 4) VALORDESC,
-               ROUND(SUM(V.VLTABELA), 2) VENDA_TABELA
+               ROUND(SUM(V.VLTABELA), 2) VENDA_TABELA,
+               ROUND(SUM(V.VLVENDA), 2) VENDA_BRUTA
         FROM VIEW_VENDAS_RESUMO_FATURAMENTO V
         WHERE V.DTSAIDA >= :desde
         {_FILTRO_VENDA_VALIDA}
@@ -147,13 +149,15 @@ def _buscar(desde: date) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     try:
         cursor = conexao.cursor()
-        desconto = _consultar_desconto(cursor, desde)
+        desconto = juntar_devolucao(
+            _consultar_desconto(cursor, desde), cursor, desde,
+            {"COD_RCA": "CODUSUR", "COD_SUPERVISOR": "CODSUPERVISOR", "CODCLI": "CODCLI"},
+        )
         cadastro = _consultar_cadastro(cursor)
     finally:
         conexao.close()
 
-    for coluna in ("CODFILIAL", "ANO", "MES", "CODCLI"):
-        desconto[coluna] = desconto[coluna].astype(int)
+    desconto["CODCLI"] = desconto["CODCLI"].astype(int)
 
     return desconto[COLUNAS_DESCONTO], cadastro
 

@@ -212,6 +212,9 @@ ATRIBUTOS_DA_TABELA = {
 RENOMEAR_COLUNAS = {
     **ATRIBUTOS_DA_TABELA,
     "cliente": "Código Cliente",
+    "produto": "Código Produto",
+    "familia": "Família",
+    "grupo": "Grupo",
     "supervisor": "Código Supervisor",
     "filial": "Filial",
     "estado": "Estado",
@@ -316,6 +319,7 @@ def formatar_coluna_numerica(serie):
 # Colunas que identificam a linha (em vez de medir alguma coisa).
 DIMENSOES_DA_TABELA = (
     "estado", "filial", "rca_nome", "rca", "supervisor", "codigo", "cliente",
+    "grupo", "familia", "produto",
     "empresa", *ATRIBUTOS_DA_TABELA, "ano", "mes", "periodo",
     "forma_pagamento", "dia",
 )
@@ -570,7 +574,7 @@ def descrever_periodo(dados_tabela, texto_referencia):
 
 COLUNAS_DE_IDENTIFICACAO = {
     "Estado", "Filial", "RCA", "Código", "Código RCA", "Código Cliente",
-    "Código Supervisor",
+    "Código Supervisor", "Código Produto",
     "Ano", "Mês", "Período", "Forma de Pagamento", "Dia",
     *ATRIBUTOS_DA_TABELA.values(),
 }

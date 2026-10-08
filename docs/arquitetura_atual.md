@@ -965,3 +965,100 @@ removidos junto com elas — não é perda de cobertura.
   (R$)" (com sinal: +R$ / −R$) ou "Cresceu/caiu (%)"; os outros campos levam o
   período atual entre parênteses ("% Desconto (jan-set/2026)"). Antes:
   "Faturamento (anterior)", "Diferença Faturamento".
+
+## Desconto por produto, família e grupo (07/10/2026)
+
+- **Fonte:** `src/produto_data.py`. `desconto_produto.csv` (~980 mil linhas
+  desde 2020, por filial/mês/produto — sem RCA, decisão da usuária) do Oracle,
+  mesma conta da 8302; `produtos.csv` com descrição (PCPRODUT) + GRUPO e FAMÍLIA.
+  Totais por ano iguais ao desconto mensal (2025 exato).
+- **Grupo e família vêm da planilha** BASE_PRODUTOS (não existem no Oracle),
+  mantida por um gerente em `\10.0.1.213\0002 - comercial\1 - REUNIÕES\1.1 -
+  REUNIÃO SEMANAL\BASE_PRODUTOS` (o "E:" do computador da usuária). Grupo =
+  coluna GRUPO_OU_KPI (confirmado pela supervisora). A planilha é copiada pra
+  `dados/base_produtos.xlsx` quando muda; sem rede, vale a cópia. Produto fora da
+  planilha = "SEM GRUPO" (185 produtos, 0,1% do desconto em 2026); sem família, a
+  família é o próprio produto. No servidor, a TI precisa liberar leitura dessa
+  pasta pro usuário do serviço.
+- **Dimensões** no indicador desconto: "grupo", "familia", "produto" (código =
+  um produto; nome = a família dele — se o nome cair em famílias diferentes, a
+  que tem as palavras no próprio nome; senão pergunta). Produto e cliente não
+  combinam na mesma consulta (arquivos diferentes) — o motor avisa.
+- "Mais desconto" ordena pelo valor em R$ (pelo % subiam itens de R$ 68); pelo %
+  só quando a pergunta pede.
+
+### Ajustes após os testes do desconto por produto (07/10/2026)
+
+- **Venda bruta** (VLVENDA) nos arquivos de produto e cliente → campo `venda_bruta`
+  no desconto. "Os grupos com mais desconto vendem mais?" / "quanto o Mateus
+  comprou?" respondem sem cruzar indicador (faturamento e meta não têm
+  produto nem cliente). Total 2025 igual nos dois arquivos (R$ 1,013 bi).
+- "Produtos sem grupo" = filtro grupo "SEM GRUPO" (instrução na tool).
+- `criterio_da_ordem` na resposta do motor ("Ordenado por desconto (valor em
+  R$), do maior para o menor dentro de cada filial"): a IA dizia "maior
+  percentual" numa lista ordenada pelo valor.
+- `mes_atual_incompleto`: lista mês a mês que inclui o mês atual avisa que ele
+  está em andamento (outubro com 7 dias "caía" 74%).
+- Conferência de números aceita o valor sem sinal ("caiu 2,89%" ← -2,89).
+
+### Faturamento por produto, grupo, família e cliente (07/10/2026)
+
+- `faturamento_data.juntar_devolucao(vendas, cursor, desde, colunas)`: uma função
+  só, usada pelos arquivos de produto e de cliente — soma a devolução
+  (VIEW_DEVOL_RESUMO_FATURAMENTO, por DTENT) e calcula VENDA_LIQ.
+- Catálogo: o indicador faturamento ganhou `fontes_por_dimensao` (os mesmos
+  arquivos do desconto) e as dimensões cliente/empresa/produto/familia/grupo.
+  Motor sem regra nova, só duas genéricas: campo cuja coluna o arquivo não tem
+  fica de fora (peso/notas por produto) e o calculado (toneladas) fica vazio.
+- **Correção no faturamento mensal:** a devolução era juntada só onde o RCA teve
+  venda no mês/filial (`how="left"`) — a de quem não vendeu sumia (2025: 25
+  devoluções, R$ 270.326,73 de faturamento a mais; ex: Timon mar/2025, RCA 8952,
+  R$ 79.500). Agora `how="outer"`, igual à 8280: conferido com a exportação da
+  8280 (2020–2025) por filial e ano, diferença abaixo de R$ 1. Mensal, produto e
+  cliente batem entre si.
+
+### Cruzamento por produto/cliente e análise aberta (07/10/2026)
+
+- `_validar_cruzamento`: além de filial/estado/mês/ano, cruza por QUALQUER
+  dimensão que todos os indicadores identificam igual (mesma coluna e mesmo
+  resolvedor) — antes só RCA e supervisor. Faturamento × desconto cruzam por
+  grupo/família/produto/cliente/empresa; a meta continua recusada.
+- Pedido aberto de análise ("analise X por filial"): regra no prompt — resumo
+  com o total + 3 a 4 destaques (maior valor, maior/menor %, quem foge do
+  padrão, relação entre indicadores), sem listar os itens.
+- Percentuais vão pra IA com 2 casas (`_percentuais_como_na_tabela`): com 4
+  casas ela cortava (5,6574 → 5,65; tabela 5,66%) e a conferência barrava.
+
+### Análises: corte das 60 linhas, total no cruzamento e texto (07/10/2026)
+
+- `chatbot._limitar_resultados`: sem ordem pedida (e fora de lista no tempo),
+  ordena pelo valor em R$ do indicador (`campo_variacao`/`campo_principal`)
+  ANTES de cortar em 60 — antes mandava as 60 primeiras do alfabeto. A tabela da
+  tela é reordenada junto (mesmos itens que a IA analisou). O aviso diz que
+  `total_de_todas_as_linhas` é de TODOS os itens.
+- Consulta cruzada agora traz `total_de_todas_as_linhas` (a mesma consulta sem
+  agrupar), menos por RCA (lista só de quem tem meta).
+- Regras de texto da análise: o índice da relação pode aparecer, explicado em
+  palavras ("numa escala de -1 a 1…"); sem adjetivos de julgamento; exceções da
+  análise aberta calculadas por código (metade de cima/de baixo); lista cortada
+  avisada na 1ª frase; sem rótulos/expressões internas ("sobre as somas").
+
+### Análise sem molde fixo (07/10/2026)
+
+- A regra de análise (ai_service) deixou de ser um formato fixo (duas metades,
+  índice, "quem foge do padrão", "indício, não prova", só 3 números). A IA escolhe
+  as visões que a pergunta pede: visão geral, concentração, faixas, pontos fora
+  da curva, impacto em R$, relação entre indicadores, sazonalidade/tendência.
+  Markdown com título, seções e tabela pequena.
+- Todo número calculado continua saindo do código e passando pela conferência.
+- Fato x suposição (decisão da usuária, opção 2): explicações e próximos passos só
+  no fim, no bloco "Possíveis explicações (não estão nos dados)".
+- tool_manager: "costuma/geralmente/todo ano" → todos os anos desde 2020, por
+  ano e mês, sem acrescentar cliente/produto ("os clientes de Timon" = a filial).
+- Qualidade varia com o modelo: o gemini-3.5-flash-lite às vezes escreve contas
+  sem calcular (barradas pela conferência) ou repete a lista; o gemini-3.6-flash
+  não pôde ser comparado (cota do plano gratuito).
+- Princípio geral no topo da regra de análise: "primeiro, responda à pergunta" —
+  se ela compara, calcular os dois lados e dizer qual é maior; lista solta não é
+  resposta. Sem regra por caso (decisão da usuária: até ter plano pago, só esse
+  princípio).

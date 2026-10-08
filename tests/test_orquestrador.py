@@ -74,14 +74,14 @@ def test_validar_consulta_rejeita_indicador_inexistente():
 def test_validar_consulta_rejeita_dimensao_fora_do_catalogo():
     with pytest.raises(ConsultaInvalida):
         orq.validar_consulta(
-            {"indicador": "faturamento", "agrupar_por": ["produto"]}
+            {"indicador": "meta", "agrupar_por": ["produto"]}
         )
 
 
 def test_validar_consulta_rejeita_filtro_fora_do_catalogo():
     with pytest.raises(ConsultaInvalida):
         orq.validar_consulta(
-            {"indicador": "faturamento", "filtros": {"produto": ["X"]}}
+            {"indicador": "meta", "filtros": {"produto": ["X"]}}
         )
 
 
@@ -182,12 +182,12 @@ def _dados_desconto():
             {
                 "FILIAL": "TIMON", "COD_RCA": 8403, "COD_SUPERVISOR": 9,
                 "MES": 8, "ANO": 2026,
-                "VALORDESC": 30.0, "VENDA_TABELA": 1000.0,
+                "VALORDESC": 30.0, "VENDA_TABELA": 1000.0, "VENDA_BRUTA": 1000.0,
             },
             {
                 "FILIAL": "CAXIAS", "COD_RCA": 8500, "COD_SUPERVISOR": 9,
                 "MES": 8, "ANO": 2026,
-                "VALORDESC": 10.0, "VENDA_TABELA": 1000.0,
+                "VALORDESC": 10.0, "VENDA_TABELA": 1000.0, "VENDA_BRUTA": 1000.0,
             },
         ]
     )
@@ -205,6 +205,7 @@ def test_executar_consulta_desconto_calcula_percentual_sobre_as_somas(monkeypatc
         {
             "valor_desconto": 40.0,
             "faturamento_tabela": 2000.0,
+            "venda_bruta": 2000.0,
             "percentual_desconto": 2.0,
         }
     ]
@@ -1319,7 +1320,7 @@ def test_desconto_diario_por_rca_na_semana(monkeypatch):
     mensal recusava; o diário responde com R$ e % (sobre as somas)."""
     dados = pd.DataFrame([
         {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": 1, "DATA": pd.Timestamp(dia),
-         "VALORDESC": desconto, "VENDA_TABELA": tabela}
+         "VALORDESC": desconto, "VENDA_TABELA": tabela, "VENDA_BRUTA": tabela}
         for dia, desconto, tabela in [
             ("2026-09-28", 10.0, 100.0), ("2026-09-29", 30.0, 100.0), ("2026-09-20", 99.0, 100.0),
         ]
@@ -1341,7 +1342,7 @@ def test_desconto_diario_por_rca_na_semana(monkeypatch):
 def test_desconto_diario_sem_periodo_usa_do_comeco_do_ano_ate_hoje(monkeypatch):
     dados = pd.DataFrame([
         {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": 1, "DATA": pd.Timestamp(dia),
-         "VALORDESC": 10.0, "VENDA_TABELA": 100.0}
+         "VALORDESC": 10.0, "VENDA_TABELA": 100.0, "VENDA_BRUTA": 100.0}
         for dia in ("2025-12-31", "2026-01-02", "2026-10-02")
     ])
     monkeypatch.setattr(orq, "date", _Hoje5DeOutubro)
@@ -1410,7 +1411,7 @@ def test_menos_desconto_separa_quem_nao_deu_e_mantem_o_total(monkeypatch):
     """
     dados = pd.DataFrame([
         {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": codigo, "DATA": pd.Timestamp("2026-10-02"),
-         "VALORDESC": desconto, "VENDA_TABELA": 1000.0}
+         "VALORDESC": desconto, "VENDA_TABELA": 1000.0, "VENDA_BRUTA": 1000.0}
         for codigo, desconto in [(1, 0.0), (2, 0.07), (3, 17.89), (4, 50.0)]
     ])
     monkeypatch.setitem(catalogo.INDICADORES["desconto_diario"], "carregar", lambda: dados)
@@ -1433,7 +1434,7 @@ def test_menos_desconto_separa_quem_nao_deu_e_mantem_o_total(monkeypatch):
 def test_mais_desconto_nao_separa(monkeypatch):
     dados = pd.DataFrame([
         {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": codigo, "DATA": pd.Timestamp("2026-10-02"),
-         "VALORDESC": desconto, "VENDA_TABELA": 1000.0}
+         "VALORDESC": desconto, "VENDA_TABELA": 1000.0, "VENDA_BRUTA": 1000.0}
         for codigo, desconto in [(1, 0.0), (4, 50.0)]
     ])
     monkeypatch.setitem(catalogo.INDICADORES["desconto_diario"], "carregar", lambda: dados)
@@ -1552,3 +1553,37 @@ def test_comparacao_de_periodos_tem_titulos_com_o_periodo():
     assert rotulos["diferenca_faturamento"] == "Cresceu/caiu (R$)"
     assert rotulos["percentual_desconto"] == "% Desconto (jan-set/2026)"
     assert orq._periodo_curto({"ano": [2026], "mes": [1, 2, 3, 4, 5, 6, 7, 8, 9]}) == "jan-set/2026"
+
+
+def test_cruza_por_dimensao_que_todos_identificam_igual_e_recusa_a_que_falta():
+    orq._validar_cruzamento(["desconto", "faturamento"], ["grupo"])
+    orq._validar_cruzamento(["desconto", "faturamento"], ["empresa"])
+
+    with pytest.raises(ConsultaInvalida):
+        orq._validar_cruzamento(["meta", "desconto"], ["grupo"])
+
+
+def test_lista_cortada_pra_ia_fica_com_os_maiores_e_a_tabela_acompanha():
+    from src.chatbot import LIMITE_RESULTADOS_RESPOSTA, _limitar_resultados
+
+    linhas = [{"familia": f"F{i:03d}", "valor_desconto": float(i)} for i in range(100)]
+    resultado = {
+        "indicador": "desconto", "agrupar_por": ["familia"],
+        "resultados": linhas, "tabela": [{"Família": l["familia"]} for l in linhas],
+    }
+
+    cortado = _limitar_resultados(resultado)
+
+    assert len(cortado["resultados"]) == LIMITE_RESULTADOS_RESPOSTA
+    assert cortado["resultados"][0]["familia"] == "F099"
+    assert cortado["tabela"][0] == {"Família": "F099"}
+    assert "maiores" in cortado["aviso"]
+
+
+def test_mes_a_mes_cortado_continua_em_ordem():
+    from src.chatbot import _limitar_resultados
+
+    linhas = [{"mes": m, "valor_desconto": float(100 - m)} for m in range(1, 80)]
+    cortado = _limitar_resultados({"indicador": "desconto", "agrupar_por": ["mes"], "resultados": linhas})
+
+    assert cortado["resultados"][0]["mes"] == 1

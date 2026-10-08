@@ -247,3 +247,15 @@ def test_resposta_com_numero_inventado_nunca_chega_a_tela(monkeypatch):
 
     assert "2,75" not in texto
     assert texto == ai_service._RESPOSTA_SEM_NUMEROS_CONFERIDOS
+
+
+def test_percentuais_vao_pra_ia_com_duas_casas_como_na_tabela():
+    from src.ai_service import _percentuais_como_na_tabela
+
+    dados = {"resultados": [{"percentual_desconto": 5.6574, "valor_desconto": 214235.1934}],
+             "total": {"percentual_desconto": 0.0042}}
+
+    saida = _percentuais_como_na_tabela(dados)
+
+    assert saida["resultados"][0] == {"percentual_desconto": 5.66, "valor_desconto": 214235.1934}
+    assert saida["total"]["percentual_desconto"] == 0.0042

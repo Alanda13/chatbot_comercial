@@ -142,6 +142,49 @@ def _consultar_peso(cursor, desde: date) -> pd.DataFrame:
     return pd.DataFrame(cursor.fetchall(), columns=colunas)
 
 
+def juntar_devolucao(
+    vendas: pd.DataFrame, cursor, desde: date, colunas: dict[str, str]
+) -> pd.DataFrame:
+    """
+    Soma a devolução (mesma view e mesma data de entrada do faturamento
+    mensal) nas vendas e calcula VENDA_LIQ = VENDA_BRUTA − devolução — o
+    "faturamento" do WinThor. `colunas`: nome no CSV → coluna da view de
+    devolução, além de filial/ano/mês (ex: {"CODPROD": "CODPROD"}). Usada
+    pelos arquivos por produto e por cliente.
+    """
+    selecao = ", ".join(f"{origem} {nome}" for nome, origem in colunas.items())
+    agrupamento = ", ".join(colunas.values())
+    cursor.execute(
+        f"""
+        SELECT CODFILIAL, EXTRACT(YEAR FROM DTENT) ANO,
+               EXTRACT(MONTH FROM DTENT) MES, {selecao},
+               ROUND(SUM(VLDEVOLUCAO), 2) VALOR_DEV
+        FROM VIEW_DEVOL_RESUMO_FATURAMENTO
+        WHERE DTENT >= :desde
+        GROUP BY CODFILIAL, EXTRACT(YEAR FROM DTENT),
+                 EXTRACT(MONTH FROM DTENT), {agrupamento}
+        """,
+        desde=desde,
+    )
+    devolucao = pd.DataFrame(cursor.fetchall(), columns=[d[0] for d in cursor.description])
+    chaves = ["CODFILIAL", "ANO", "MES", *colunas]
+
+    for coluna in chaves:
+        vendas[coluna] = vendas[coluna].astype(float)
+        devolucao[coluna] = devolucao[coluna].astype(float)
+
+    # Outer: produto/cliente com devolução num mês sem venda também conta.
+    dados = vendas.merge(devolucao, on=chaves, how="outer")
+    valores = [c for c in dados.columns if c not in chaves]
+    dados[valores] = dados[valores].fillna(0)
+    dados["VENDA_LIQ"] = (dados["VENDA_BRUTA"] - dados["VALOR_DEV"]).round(2)
+
+    for coluna in ("CODFILIAL", "ANO", "MES"):
+        dados[coluna] = dados[coluna].astype(int)
+
+    return dados
+
+
 def _consultar_devolucao(cursor, desde: date) -> pd.DataFrame:
     cursor.execute(
         """
@@ -213,7 +256,11 @@ def gerar_tabela(
 
     chave = ["CODFILIAL", "ANO", "MES", "CODUSUR"]
     dados = vendas.merge(peso, on=chave, how="left")
-    dados = dados.merge(devolucao, on=chave, how="left")
+    # "outer": devolução de quem NÃO vendeu no mês também desconta — igual
+    # à 8280 (ex: Timon mar/2025, RCA 8952 sem venda e R$ 79.500 de
+    # devolução). Com "left" ela sumia: R$ 270 mil a mais de faturamento
+    # em 2025 (25 devoluções). Conferido com a 8280 em 07/10/2026.
+    dados = dados.merge(devolucao, on=chave, how="outer")
     # "outer": a meta de quem NÃO vendeu no mês também entra (ex: a conta
     # "COMERCIAL FERRONORTE LTDA-F09-TIMON", R$ 466 mil em set/2026) — igual
     # à rotina 8139. Com "left" essa meta sumia e a meta da filial ficava

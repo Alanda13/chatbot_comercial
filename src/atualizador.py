@@ -36,7 +36,7 @@ _atualizando = threading.Event()
 def _bases():
     # Import aqui dentro: os módulos de dados importam src.arquivos_oracle,
     # e o atualizador só precisa deles quando roda.
-    from src import cliente_data, faturamento_data, faturamento_diario_data
+    from src import cliente_data, faturamento_data, faturamento_diario_data, produto_data
 
     return [
         ("faturamento mensal", faturamento_data.atualizar,
@@ -47,6 +47,8 @@ def _bases():
          [faturamento_diario_data.ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO]),
         ("desconto por cliente", cliente_data.atualizar,
          [cliente_data.ARQUIVO_DESCONTO_CLIENTE, cliente_data.ARQUIVO_CLIENTES]),
+        ("desconto por produto", produto_data.atualizar,
+         [produto_data.ARQUIVO_DESCONTO_PRODUTO, produto_data.ARQUIVO_PRODUTOS]),
     ]
 
 

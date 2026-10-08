@@ -39,7 +39,8 @@ def _valores(dado, saida: set[float]) -> set[float]:
     if isinstance(dado, bool) or dado is None:
         return saida
     if isinstance(dado, (int, float)):
-        saida.add(float(dado))
+        # Sem o sinal: o texto diz "caiu 2,89%" pra uma variação de -2,89.
+        saida.add(abs(float(dado)))
     elif isinstance(dado, str):
         saida |= {valor for valor, *_ in _numeros_do_texto(dado)}
     elif isinstance(dado, dict):

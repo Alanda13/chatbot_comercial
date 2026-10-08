@@ -231,6 +231,27 @@ def _saidas_de_codigo(resposta) -> list[str]:
     return saidas
 
 
+def _percentuais_como_na_tabela(dado):
+    """
+    Percentuais com 2 casas, iguais aos da tabela, no que vai pra IA: com 4
+    casas ela CORTAVA em vez de arredondar (5,6574 → "5,65", a tabela diz
+    5,66%) e a conferência barrava a resposta. Abaixo de 0,01 fica como
+    está (vira "menos de 0,01%").
+    """
+    if isinstance(dado, dict):
+        return {
+            chave: (
+                round(valor, 2)
+                if "percentual" in str(chave) and isinstance(valor, float) and abs(valor) >= 0.01
+                else _percentuais_como_na_tabela(valor)
+            )
+            for chave, valor in dado.items()
+        }
+    if isinstance(dado, list):
+        return [_percentuais_como_na_tabela(item) for item in dado]
+    return dado
+
+
 def gerar_resposta_final(
     pergunta: str,
     nome_ferramenta: str,
@@ -249,7 +270,7 @@ def gerar_resposta_final(
     modelos = [modelo_principal, modelo_reserva]
 
     dados_formatados = json.dumps(
-        resultado,
+        _percentuais_como_na_tabela(resultado),
         ensure_ascii=False,
         indent=2,
         default=str,
@@ -302,47 +323,65 @@ REGRAS PARA O PERÍODO (campos "periodo_consultado" e "periodo_comparado"):
   (mes/ano/dia) — use esses valores; se também não houver período lá, a
   consulta cobre todo o histórico disponível.
 
-REGRAS PARA ANÁLISE (perguntas de relação ou tendência, ex: "as filiais
-com NPS acima de 90 dão mais ou menos desconto?", "quem bateu a meta dá
-menos desconto?"):
-- Quem lê é gerente/diretor. Apresente FATOS, em linguagem simples — sem
-  opinião, sem lição e sem recomendação (NUNCA frases como "isso mostra que
-  é possível…", "o desconto não é o principal motor…", "vale avaliar a
-  estratégia…"). Quem tira conclusões de gestão é o leitor.
-- Análise ENXUTA — só 3 números calculados, e só por CÓDIGO (Python), nunca
-  de cabeça: o % de cada grupo SOBRE AS SOMAS (ex: soma do desconto ÷ soma
-  do faturamento de tabela x 100 — critério do WinThor) e a correlação.
-  Imprima os três e COPIE do jeito que o código imprimiu (com 2 casas). NÃO
-  calcule nem cite totais em R$ de grupo, médias, "sem o item X" ou outras
-  contas — cada número a mais é uma chance de erro.
-- As EXCEÇÕES também saem do código (imprima só os NOMES): no grupo de
-  valor MAIOR, o item com o valor MENOR; no grupo de valor MENOR, o item
-  com o valor MAIOR (ex: NPS acima de 90 dá mais desconto → exceções = a
-  filial desse grupo com o MENOR desconto e a filial do outro grupo com o
-  MAIOR desconto). Cite só essas duas como "quem foge do padrão", com os
-  números delas que estão no resultado. Um item que confirma a conclusão
-  (ex: o maior desconto dentro do grupo que dá mais) NÃO é exceção.
-- Sem termos técnicos no texto ("correlação", "sobre as somas", "média").
-  Traduza a correlação: até 0,3 → "a relação é fraca"; até 0,6 →
-  "moderada"; acima → "forte" (sem citar o número). Compare os grupos com
-  palavras ("quase o dobro", "um pouco mais", "parecido").
-- Formato (o chat mostra texto simples: linhas curtas, sem tabela):
-  1. Conclusão direta, em 1 frase (ex: "Dão mais desconto: as 7 filiais
-     com NPS acima de 90 dão, juntas, quase o dobro das outras 10.").
-  2. Os dois grupos, uma linha cada (ex: "NPS acima de 90 (7 filiais):
-     3,14% de desconto" / "NPS 90 ou menos (10 filiais): 1,74%").
-  3. "Pontos de atenção:" com fatos, um por linha — a relação é fraca/
-     moderada/forte; quem foge do padrão (as exceções, com os números de
-     cada uma); que os dados não mostram causa; com poucos itens, que é um
-     indício, não uma prova.
-  4. Fechamento oferecendo aprofundar (ex: "Se quiser, posso detalhar
-     alguma filial.") — sem opinião.
-  A tabela com todos os itens já aparece na tela: não repita a lista.
-- O % de um grupo é do grupo inteiro: diga "juntas" ("as demais dão,
-  juntas, 1,74%"), NUNCA "em média" nem "desconto médio".
-- NPS é uma nota (ex: "NPS de 99,1"), nunca escreva com "%".
-- Itens sem dado num dos indicadores (ex: filial sem NPS) ficam de fora
-  da comparação — diga quais.
+REGRAS PARA ANÁLISE (qualquer pergunta que peça análise, relação, padrão,
+tendência ou "por quê" — ex: "analise o desconto do grupo Vergalhão", "os
+clientes que mais compram recebem mais desconto?", "em quais meses costuma
+ter mais desconto?"):
+- PRIMEIRO, RESPONDA À PERGUNTA: antes de escrever, identifique o que ela
+  pergunta e comece por isso, com o número que prova (calculado pelo
+  código). Se ela compara ("dá mais?", "vende menos?", "é maior?", "subiu?"),
+  calcule os DOIS lados e diga qual é maior e quanto — ex: um grupo
+  definido na pergunta contra os demais, este ano contra o anterior. Uma
+  lista de itens soltos NÃO é resposta.
+- Quem lê é gerente/diretor. NÃO existe molde fixo: depois da resposta,
+  acrescente só as visões que ajudam a entendê-la (em geral 1 a 3), entre:
+  • Visão geral: o total, o % do grupo e quantos itens.
+  • Concentração: a participação de cada item no total (item ÷ total de
+    "total_de_todas_as_linhas", quando vier) e quanto os 3 ou 5 primeiros
+    somam (ex: "os 3 primeiros somam 66% do faturamento").
+  • Faixas: itens com % parecido, juntos (ex: "8,0, 5,0, 6,30 e 16,0 ficam
+    entre 2,0% e 2,1%").
+  • Pontos fora da curva: quem está bem acima ou abaixo do % do grupo, com
+    o número dos dois (ex: "25,0 com 4,17%, cerca do dobro dos 2,08% do
+    grupo").
+  • Impacto em R$: quem pesa mais no desconto em reais — nem sempre é quem
+    tem o maior % (ex: o maior produto com o menor % e o maior desconto em
+    R$, pelo volume).
+  • Relação entre dois indicadores: se andam juntos — o índice pode
+    aparecer explicado (ex: "a relação é fraca: índice de -0,03, numa
+    escala de -1 a 1; perto de 0 quer dizer que uma coisa não acompanha a
+    outra"); até 0,3 sem o sinal = fraca, até 0,6 = moderada, acima = forte.
+  • Sazonalidade e tendência: os meses que se repetem como maiores ao
+    longo dos anos; se sobe ou cai de um ano pro outro.
+- NÚMEROS: TODO número calculado (participação, soma dos primeiros, faixa,
+  índice, comparação com o grupo) sai do CÓDIGO (Python) e o texto COPIA o
+  que o código imprimiu (2 casas). Nada de cabeça, nada "estimado", nada
+  "cerca de" sem o código. O % de um grupo é calculado sobre as somas
+  (soma do desconto ÷ soma do faturamento de tabela x 100 — critério do
+  WinThor), nunca a média dos %.
+- FORMATO (o chat mostra markdown):
+  1. Título curto em negrito (ex: "**Desconto no grupo Vergalhão em 2026**").
+  2. Seções curtas com subtítulo em negrito, frases curtas.
+  3. Tabela markdown pequena SÓ quando ajudar (até ~10 linhas; o resto
+     junto numa linha "Demais"). A tabela completa já aparece embaixo da
+     resposta: não repita a lista inteira em texto.
+  4. Fechamento oferecendo aprofundar (ex: "Se quiser, vejo a evolução
+     mês a mês das bitolas 20,0 e 25,0.").
+- FATO x SUPOSIÇÃO: o texto principal tem SÓ fatos dos dados, sem
+  adjetivo de julgamento ("elevado", "preocupante", "bem controlado") —
+  mostre o número e compare com o grupo. Explicações e próximos passos
+  (ex: "bitolas grossas podem ir mais pra construtoras", "vale verificar
+  se o desconto se concentra em poucos clientes") vão SÓ no fim, num bloco
+  à parte: "**Possíveis explicações (não estão nos dados):**", no máximo 3
+  linhas, como hipótese ("pode", "vale verificar"), nunca como fato.
+- Sem termos técnicos ("correlação", "coeficiente", "mediana", "média
+  ponderada", "sobre as somas"): o % de um grupo é "X% de desconto" ou
+  "X% do faturamento de tabela"; vários itens juntos, "juntos".
+- LIMITAÇÕES: só as que importam pra pergunta, em 1 linha cada (ex: a
+  análise é dos 60 maiores de 2.863 clientes; outubro ainda em andamento;
+  por produto não há toneladas). Lista cortada: diga já na visão geral.
+- NPS é uma nota (ex: "NPS de 99,1"), nunca escreva com "%". Itens sem
+  dado num dos indicadores (ex: filial sem NPS) ficam de fora — diga quais.
 
 REGRAS PARA TOTAL E LISTAS LONGAS (campos "total_de_todas_as_linhas" e
 "itens_filtrados"):
@@ -397,6 +436,11 @@ REGRAS PARA TOTAL E LISTAS LONGAS (campos "total_de_todas_as_linhas" e
 - Numa lista ordenada pelo PERCENTUAL (ex: quem menos deu desconto), cite o
   percentual de cada item — é o critério da ordem; o valor em R$ pode vir
   junto. Percentual abaixo de 0,01 = "menos de 0,01%".
+- Diga o critério da ordem como ele é: se a lista (ou "o maior de cada
+  filial/grupo") foi ordenada pelo VALOR em R$, fale em "maior valor de
+  desconto", nunca em "maior percentual" — e vice-versa.
+- Se vier "mes_atual_incompleto": siga o texto dele (o mês atual ainda não
+  acabou; a variação dele não é comparável com a dos meses fechados).
 - Se "periodo_consultado.descricao" disser "todo o histórico disponível",
   diga isso na resposta.
 
