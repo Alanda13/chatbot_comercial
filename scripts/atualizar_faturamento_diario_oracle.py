@@ -1,6 +1,6 @@
 """
 Força uma atualização manual do faturamento diário, direto do Oracle
-(`dados/faturamento_diario.csv`).
+(`data/faturamento_diario.csv`).
 
 Normalmente não é preciso rodar isso: `core.repositories.faturamento_diario_repository` já
 atualiza esse arquivo sozinho (a cada 1 hora, quando alguém pergunta
@@ -10,7 +10,7 @@ atualização na hora, ou gerar um arquivo de teste separado.
 
 Uso:
     python -m scripts.atualizar_faturamento_diario_oracle
-    python -m scripts.atualizar_faturamento_diario_oracle --desde 2024-01-01 --saida dados/teste.csv
+    python -m scripts.atualizar_faturamento_diario_oracle --desde 2024-01-01 --saida data/teste.csv
 """
 import argparse
 from datetime import date

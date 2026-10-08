@@ -12,5 +12,5 @@ __pycache__/
 Thumbs.db
 
 # base de dados locais da empresa 
-dados/
+data/
 

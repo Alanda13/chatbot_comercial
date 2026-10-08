@@ -47,8 +47,8 @@ from core.logger import obter_logger
 
 logger = obter_logger(__name__)
 
-ARQUIVO_DESCONTO_CLIENTE = RAIZ_PROJETO / "dados" / "desconto_cliente.csv"
-ARQUIVO_CLIENTES = RAIZ_PROJETO / "dados" / "clientes.csv"
+ARQUIVO_DESCONTO_CLIENTE = RAIZ_PROJETO / "data" / "desconto_cliente.csv"
+ARQUIVO_CLIENTES = RAIZ_PROJETO / "data" / "clientes.csv"
 
 COLUNAS_DESCONTO = [
     "CODFILIAL", "ANO", "MES", "COD_RCA", "COD_SUPERVISOR", "CODCLI",

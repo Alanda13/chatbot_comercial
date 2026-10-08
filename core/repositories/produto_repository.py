@@ -13,7 +13,7 @@ Dois CSVs, gerados do Oracle e atualizados em segundo plano por
 GRUPO e FAMÍLIA não existem no Oracle: vêm da planilha BASE_PRODUTOS,
 mantida por um gerente na pasta da rede (o "grupo" é a coluna
 GRUPO_OU_KPI — confirmado pela supervisora). A planilha é copiada pra
-`dados/` quando muda; se a rede estiver fora, vale a última cópia.
+`data/` quando muda; se a rede estiver fora, vale a última cópia.
 Produto que não está na planilha (cadastro novo) fica "SEM GRUPO" — nunca
 some dos totais.
 """
@@ -44,14 +44,14 @@ from core.logger import obter_logger
 
 logger = obter_logger(__name__)
 
-ARQUIVO_DESCONTO_PRODUTO = RAIZ_PROJETO / "dados" / "desconto_produto.csv"
-ARQUIVO_PRODUTOS = RAIZ_PROJETO / "dados" / "produtos.csv"
+ARQUIVO_DESCONTO_PRODUTO = RAIZ_PROJETO / "data" / "desconto_produto.csv"
+ARQUIVO_PRODUTOS = RAIZ_PROJETO / "data" / "produtos.csv"
 
 # Endereço da rede (não a letra "E:", que pode não existir no servidor).
 PASTA_PLANILHA = Path(
     r"\\10.0.1.213\0002 - comercial\1 - REUNIÕES\1.1 - REUNIÃO SEMANAL\BASE_PRODUTOS"
 )
-COPIA_PLANILHA = RAIZ_PROJETO / "dados" / "base_produtos.xlsx"
+COPIA_PLANILHA = RAIZ_PROJETO / "data" / "base_produtos.xlsx"
 
 SEM_GRUPO = "SEM GRUPO"
 
@@ -91,7 +91,7 @@ def _consultar_cadastro(cursor) -> pd.DataFrame:
 
 def atualizar_copia_da_planilha() -> Path:
     """
-    Copia a planilha da rede pra `dados/` quando ela é mais nova que a
+    Copia a planilha da rede pra `data/` quando ela é mais nova que a
     cópia. Procura qualquer BASE_PRODUTOS*.xlsx (o nome hoje tem um "(1)"
     que pode mudar) e ignora o arquivo de trava do Excel ("~$...").
     Sem rede, segue com a cópia que já existe.

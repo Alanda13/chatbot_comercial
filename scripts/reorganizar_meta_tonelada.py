@@ -6,7 +6,7 @@ filial/ano/mês/RCA), pronto pra ser usado pelo chatbot.
 Uso:
     python3 scripts/reorganizar_meta_tonelada.py caminho/do/Export.xlsx
 
-Gera dados/meta_tonelada_2024_2026.csv.
+Gera data/meta_tonelada_2024_2026.csv.
 """
 import sys
 from pathlib import Path
@@ -21,7 +21,7 @@ MAPA_MES = {
 }
 
 RAIZ_PROJETO = Path(__file__).resolve().parent.parent
-ARQUIVO_SAIDA = RAIZ_PROJETO / "dados" / "meta_tonelada_2024_2026.csv"
+ARQUIVO_SAIDA = RAIZ_PROJETO / "data" / "meta_tonelada_2024_2026.csv"
 
 
 def reorganizar(caminho_entrada: str) -> pd.DataFrame:

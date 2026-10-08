@@ -1078,3 +1078,6 @@ Mesma estrutura do projeto do supervisor, sem mudar funcionamento:
   chatbot → chatbot_service, atualizador → atualizador_service,
   conferencia_numeros → conferencia_service, *_data → core/repositories/*_repository,
   arquivos_oracle → arquivos_repository, connection → oracle, database → azure.
+- A pasta dos dados locais passou de `dados/` para `data/` (CSVs, planilha de
+  produtos, perguntas.db) — continua fora do git (.gitignore). Onde as seções
+  acima dizem `dados/`, leia `data/`.

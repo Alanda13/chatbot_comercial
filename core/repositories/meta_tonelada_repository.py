@@ -20,7 +20,7 @@ RAIZ_PROJETO = Path(__file__).resolve().parents[2]  # core/repositories/ -> raiz
 
 ARQUIVO_META_TONELADA = (
     RAIZ_PROJETO
-    / "dados"
+    / "data"
     / "meta_tonelada_2024_2026.csv"
 )
 

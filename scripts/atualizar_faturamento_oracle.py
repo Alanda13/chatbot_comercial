@@ -1,6 +1,6 @@
 """
 Força uma atualização manual do faturamento mensal, direto do Oracle
-(`dados/faturamento_mensal.csv`).
+(`data/faturamento_mensal.csv`).
 
 Normalmente não é preciso rodar isso: `core.repositories.faturamento_repository` já
 atualiza esse arquivo sozinho (a cada 1 hora, quando alguém pergunta
@@ -10,7 +10,7 @@ atualização na hora, ou gerar um arquivo de teste separado.
 
 Uso:
     python -m scripts.atualizar_faturamento_oracle
-    python -m scripts.atualizar_faturamento_oracle --ano-inicio 2022 --saida dados/teste.csv
+    python -m scripts.atualizar_faturamento_oracle --ano-inicio 2022 --saida data/teste.csv
 """
 import argparse
 from pathlib import Path

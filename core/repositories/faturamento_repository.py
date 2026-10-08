@@ -37,7 +37,7 @@ RAIZ_PROJETO = Path(__file__).resolve().parents[2]  # core/repositories/ -> raiz
 
 ARQUIVO_FATURAMENTO_MENSAL = (
     RAIZ_PROJETO
-    /"dados"
+    /"data"
     /"faturamento_mensal.csv"
 )
 
