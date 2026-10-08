@@ -8,7 +8,7 @@ import re
 import pandas as pd
 
 from config.constants import MESES_PT
-from src import catalogo
+from core.motor import catalogo
 
 
 def escapar_para_markdown(texto):

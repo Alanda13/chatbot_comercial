@@ -18,8 +18,8 @@ import threading
 import time
 from datetime import datetime
 
-from src.arquivos_oracle import com_tentativas, marcar_atualizador_ativo
-from src.logger import obter_logger
+from core.repositories.arquivos_repository import com_tentativas, marcar_atualizador_ativo
+from core.logger import obter_logger
 
 logger = obter_logger(__name__)
 
@@ -34,9 +34,12 @@ _atualizando = threading.Event()
 
 
 def _bases():
-    # Import aqui dentro: os módulos de dados importam src.arquivos_oracle,
+    # Import aqui dentro: os módulos de dados importam core.repositories.arquivos_repository,
     # e o atualizador só precisa deles quando roda.
-    from src import cliente_data, faturamento_data, faturamento_diario_data, produto_data
+    from core.repositories import cliente_repository as cliente_data
+    from core.repositories import faturamento_repository as faturamento_data
+    from core.repositories import faturamento_diario_repository as faturamento_diario_data
+    from core.repositories import produto_repository as produto_data
 
     return [
         ("faturamento mensal", faturamento_data.atualizar,

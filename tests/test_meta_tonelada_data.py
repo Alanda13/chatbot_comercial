@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src import meta_tonelada_data as mtd
+from core.repositories import meta_tonelada_repository as mtd
 
 
 def _dados_teste():

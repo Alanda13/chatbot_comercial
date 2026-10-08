@@ -1,4 +1,4 @@
-from src.conferencia_numeros import numeros_inventados, valores_permitidos
+from core.services.conferencia_service import numeros_inventados, valores_permitidos
 
 _RESULTADO = {
     "periodo_consultado": {"descricao": "de 01/01/2026 a 06/10/2026"},

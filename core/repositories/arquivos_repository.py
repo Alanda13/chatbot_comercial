@@ -2,7 +2,7 @@
 Funções comuns aos CSVs gerados do Oracle (faturamento mensal, diário,
 forma de pagamento, cliente).
 
-Os CSVs são atualizados em segundo plano por `src/atualizador.py` — quem
+Os CSVs são atualizados em segundo plano por `core/services/atualizador_service.py` — quem
 pergunta nunca espera o Oracle. Aqui ficam as peças que os módulos de
 dados compartilham:
 
@@ -25,7 +25,7 @@ from typing import Callable
 
 import pandas as pd
 
-from src.logger import obter_logger
+from core.logger import obter_logger
 
 logger = obter_logger(__name__)
 

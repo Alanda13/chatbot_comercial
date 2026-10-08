@@ -1,4 +1,4 @@
-from src.filial_utils import (
+from core.repositories.filial_utils import (
     encontrar_filial_mais_proxima,
     normalizar_nome_filial,
 )

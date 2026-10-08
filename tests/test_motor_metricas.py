@@ -1,4 +1,4 @@
-from src import motor_metricas as mm
+from core.motor import motor_metricas as mm
 
 
 def test_calcular_atingimento_meta():

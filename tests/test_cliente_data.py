@@ -1,9 +1,9 @@
 import pandas as pd
 import pytest
 
-from src import catalogo
-from src import cliente_data
-from src import orquestrador as orq
+from core.motor import catalogo
+from core.repositories import cliente_repository as cliente_data
+from core.motor import orquestrador as orq
 
 
 def _clientes():

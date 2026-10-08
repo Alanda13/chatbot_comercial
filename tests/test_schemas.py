@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.schemas import SolicitacaoFerramenta
+from core.models import SolicitacaoFerramenta
 
 
 def test_solicitacao_valida_para_executar_ferramenta():

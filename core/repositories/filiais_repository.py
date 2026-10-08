@@ -13,7 +13,7 @@ import re
 
 import pandas as pd
 
-from src.filial_utils import encontrar_filial_mais_proxima, normalizar_nome_filial
+from core.repositories.filial_utils import encontrar_filial_mais_proxima, normalizar_nome_filial
 
 # código da filial (CODFILIAL do Winthor) -> (nome, estado)
 LOJAS = {

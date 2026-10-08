@@ -1,4 +1,4 @@
-from src import filiais_tools
+from core.services.ferramentas import filiais_tools
 
 
 def test_executar_listar_filiais():

@@ -21,10 +21,11 @@ from datetime import date, timedelta
 
 import pandas as pd
 
-from src import catalogo, motor_metricas
-from src.exceptions import ConsultaInvalida
-from src.filiais import CODIGO_POR_NOME
-from src.variacao_utils import (
+from core.motor import catalogo
+from core.motor import motor_metricas
+from core.exceptions import ConsultaInvalida
+from core.repositories.filiais_repository import CODIGO_POR_NOME
+from core.motor.variacao_utils import (
     calcular_diferenca_percentual,
     calcular_variacao_sequencial,
 )

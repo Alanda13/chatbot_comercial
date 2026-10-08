@@ -1,6 +1,6 @@
 import pytest
 
-from src import faturamento_tools as ft
+from core.services.ferramentas import faturamento_tools as ft
 
 
 def test_executar_verificar_rca_sem_rca_gera_erro():

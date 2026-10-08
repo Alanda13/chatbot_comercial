@@ -1,7 +1,7 @@
 import pytest
 
-from src import tool_manager
-from src.exceptions import FerramentaError
+from core.services.ferramentas import tool_manager
+from core.exceptions import FerramentaError
 
 
 def test_ferramenta_existe():
@@ -11,7 +11,7 @@ def test_ferramenta_existe():
     )
     assert tool_manager.ferramenta_existe("verificar_rca") is True
     # Substituídas por "consultar_dados_comerciais" — não são mais
-    # registradas como ferramenta própria (veja src/orquestrador.py).
+    # registradas como ferramenta própria (veja core/motor/orquestrador.py).
     assert (
         tool_manager.ferramenta_existe("consultar_indicadores_faturamento")
         is False

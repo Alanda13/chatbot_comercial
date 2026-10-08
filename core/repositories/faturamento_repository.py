@@ -2,9 +2,9 @@
 Carregamento e preparação dos dados de Faturamento mensal.
 
 O CSV (`faturamento_mensal.csv`) funciona como um cache em disco,
-atualizado em segundo plano por `src/atualizador.py` (completa ao abrir
+atualizado em segundo plano por `core/services/atualizador_service.py` (completa ao abrir
 o chatbot e 1x por dia; parcial — mês atual e anterior — de hora em
-hora). Quem pergunta só lê o CSV; ver `src/arquivos_oracle.py`.
+hora). Quem pergunta só lê o CSV; ver `core/repositories/arquivos_repository.py`.
 
 Fonte dos dados (Oracle, schema FNORTE, só leitura — ver
 docs/arquitetura_atual.md, seção "Investigação: ligar o faturamento no
@@ -20,20 +20,20 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.arquivos_oracle import (
+from core.repositories.arquivos_repository import (
     antes_da_janela_mensal,
     garantir,
     gravar_csv,
     inicio_da_janela_parcial,
     ler_csv,
 )
-from src.connection import get_connection
-from src.filiais import padronizar_filiais
-from src.logger import obter_logger
+from core.repositories.oracle import get_connection
+from core.repositories.filiais_repository import padronizar_filiais
+from core.logger import obter_logger
 
 logger = obter_logger(__name__)
 
-RAIZ_PROJETO = Path(__file__).resolve().parent.parent
+RAIZ_PROJETO = Path(__file__).resolve().parents[2]  # core/repositories/ -> raiz
 
 ARQUIVO_FATURAMENTO_MENSAL = (
     RAIZ_PROJETO
@@ -43,7 +43,7 @@ ARQUIVO_FATURAMENTO_MENSAL = (
 
 ANO_INICIO_PADRAO = 2020
 
-# Colunas que src/*.py de fato lê desse arquivo (catalogo.py e
+# Colunas que o código (core/) de fato lê desse arquivo (catalogo.py e
 # metas_data.py) — nada além disso precisa ser gerado.
 COLUNAS_SAIDA = [
     "CODFILIAL", "ANO", "MES", "COD_RCA", "COD_SUPERVISOR",

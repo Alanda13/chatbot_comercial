@@ -3,7 +3,7 @@ Ponte entre a ferramenta genérica "consultar_dados_comerciais" (a
 única entrada nova no catálogo de ferramentas da IA — veja
 tool_manager.py) e o motor de dados (orquestrador.py).
 """
-from src import orquestrador
+from core.motor import orquestrador
 
 
 def executar_consultar_dados_comerciais(argumentos: dict) -> dict:

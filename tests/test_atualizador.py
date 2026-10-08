@@ -2,7 +2,10 @@ from datetime import date, datetime
 
 import pandas as pd
 
-from src import arquivos_oracle, atualizador, faturamento_data, faturamento_diario_data
+from core.repositories import arquivos_repository as arquivos_oracle
+from core.services import atualizador_service as atualizador
+from core.repositories import faturamento_repository as faturamento_data
+from core.repositories import faturamento_diario_repository as faturamento_diario_data
 
 
 # --- quando rodar ---

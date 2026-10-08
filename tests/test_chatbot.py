@@ -2,14 +2,14 @@ from unittest.mock import patch
 
 import pytest
 
-from src.chatbot import _limitar_resultados, processar_pergunta
-from src.exceptions import FerramentaError, RespostaInvalidaError
-from src.schemas import SolicitacaoFerramenta
+from core.services.chatbot_service import _limitar_resultados, processar_pergunta
+from core.exceptions import FerramentaError, RespostaInvalidaError
+from core.models import SolicitacaoFerramenta
 
 
-@patch("src.chatbot.gerar_resposta_final", return_value="resposta final")
-@patch("src.chatbot.executar_ferramenta", return_value={"faturamento": 100})
-@patch("src.chatbot.interpretar_pergunta")
+@patch("core.services.chatbot_service.gerar_resposta_final", return_value="resposta final")
+@patch("core.services.chatbot_service.executar_ferramenta", return_value={"faturamento": 100})
+@patch("core.services.chatbot_service.interpretar_pergunta")
 def test_processar_pergunta_executa_ferramenta(
     mock_interpretar,
     mock_executar,
@@ -40,7 +40,7 @@ def test_processar_pergunta_executa_ferramenta(
     assert mock_gerar.call_args.kwargs["historico"] == historico
 
 
-@patch("src.chatbot.interpretar_pergunta")
+@patch("core.services.chatbot_service.interpretar_pergunta")
 def test_processar_pergunta_pede_esclarecimento(mock_interpretar):
     mock_interpretar.return_value = SolicitacaoFerramenta(
         acao="pedir_esclarecimento",
@@ -52,7 +52,7 @@ def test_processar_pergunta_pede_esclarecimento(mock_interpretar):
     assert resultado == "Qual período você deseja consultar?"
 
 
-@patch("src.chatbot.interpretar_pergunta")
+@patch("core.services.chatbot_service.interpretar_pergunta")
 def test_processar_pergunta_responder_com_historico(mock_interpretar):
     mock_interpretar.return_value = SolicitacaoFerramenta(
         acao="responder_com_historico",
@@ -64,7 +64,7 @@ def test_processar_pergunta_responder_com_historico(mock_interpretar):
     assert resultado == "Do maior para o menor: Maiobão, Timon, Tibiri."
 
 
-@patch("src.chatbot.interpretar_pergunta")
+@patch("core.services.chatbot_service.interpretar_pergunta")
 def test_processar_pergunta_fora_do_escopo(mock_interpretar):
     mock_interpretar.return_value = SolicitacaoFerramenta(
         acao="fora_do_escopo",
@@ -76,7 +76,7 @@ def test_processar_pergunta_fora_do_escopo(mock_interpretar):
     assert "fora do escopo" in resultado.lower()
 
 
-@patch("src.chatbot.interpretar_pergunta")
+@patch("core.services.chatbot_service.interpretar_pergunta")
 def test_processar_pergunta_sem_ferramenta_gera_erro(mock_interpretar):
     mock_interpretar.return_value = SolicitacaoFerramenta(
         acao="executar_ferramenta",
@@ -87,9 +87,9 @@ def test_processar_pergunta_sem_ferramenta_gera_erro(mock_interpretar):
         processar_pergunta("Qual o faturamento?")
 
 
-@patch("src.chatbot.gerar_resposta_final", return_value="resposta final")
-@patch("src.chatbot.executar_ferramenta")
-@patch("src.chatbot.interpretar_pergunta")
+@patch("core.services.chatbot_service.gerar_resposta_final", return_value="resposta final")
+@patch("core.services.chatbot_service.executar_ferramenta")
+@patch("core.services.chatbot_service.interpretar_pergunta")
 def test_processar_pergunta_erro_de_ferramenta_nao_aborta_conversa(
     mock_interpretar,
     mock_executar,
@@ -112,9 +112,9 @@ def test_processar_pergunta_erro_de_ferramenta_nao_aborta_conversa(
     assert "Marrocos" in resultado_passado["mensagem"]
 
 
-@patch("src.chatbot.gerar_resposta_final", return_value="resposta final")
-@patch("src.chatbot.executar_ferramenta")
-@patch("src.chatbot.interpretar_pergunta")
+@patch("core.services.chatbot_service.gerar_resposta_final", return_value="resposta final")
+@patch("core.services.chatbot_service.executar_ferramenta")
+@patch("core.services.chatbot_service.interpretar_pergunta")
 def test_processar_pergunta_erro_de_argumento_obrigatorio_nao_aborta(
     mock_interpretar,
     mock_executar,
@@ -153,9 +153,9 @@ def test_limitar_resultados_trunca_lista_grande():
     assert "200" in resultado_limitado["aviso"]
 
 
-@patch("src.chatbot.gerar_resposta_final", return_value="resposta final")
-@patch("src.chatbot.executar_ferramenta")
-@patch("src.chatbot.interpretar_pergunta")
+@patch("core.services.chatbot_service.gerar_resposta_final", return_value="resposta final")
+@patch("core.services.chatbot_service.executar_ferramenta")
+@patch("core.services.chatbot_service.interpretar_pergunta")
 def test_processar_pergunta_limita_resultado_grande_antes_de_gerar_resposta(
     mock_interpretar,
     mock_executar,
@@ -196,7 +196,7 @@ HISTORICO_DESCONTO = [
 ]
 
 
-@patch("src.chatbot.interpretar_pergunta")
+@patch("core.services.chatbot_service.interpretar_pergunta")
 def test_responder_com_historico_so_com_numeros_ja_mostrados_e_aceito(
     mock_interpretar,
 ):
@@ -211,9 +211,9 @@ def test_responder_com_historico_so_com_numeros_ja_mostrados_e_aceito(
     assert mock_interpretar.call_count == 1
 
 
-@patch("src.chatbot.gerar_resposta_final", return_value="O percentual foi de 6,86%.")
-@patch("src.chatbot.executar_ferramenta", return_value={"encontrado": True, "resultados": []})
-@patch("src.chatbot.interpretar_pergunta")
+@patch("core.services.chatbot_service.gerar_resposta_final", return_value="O percentual foi de 6,86%.")
+@patch("core.services.chatbot_service.executar_ferramenta", return_value={"encontrado": True, "resultados": []})
+@patch("core.services.chatbot_service.interpretar_pergunta")
 def test_responder_com_historico_com_numero_inventado_consulta_de_novo(
     mock_interpretar, mock_executar, mock_gerar,
 ):
@@ -245,7 +245,7 @@ def test_responder_com_historico_com_numero_inventado_consulta_de_novo(
     assert mock_gerar.call_args.kwargs["pergunta"] == "e o percentual de desconto"
 
 
-@patch("src.chatbot.interpretar_pergunta")
+@patch("core.services.chatbot_service.interpretar_pergunta")
 def test_responder_com_historico_insistindo_em_inventar_nao_mostra_o_numero(
     mock_interpretar,
 ):

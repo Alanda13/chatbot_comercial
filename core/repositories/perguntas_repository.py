@@ -8,7 +8,7 @@ escolhida manualmente.
 import sqlite3
 from pathlib import Path
 
-RAIZ_PROJETO = Path(__file__).resolve().parent.parent
+RAIZ_PROJETO = Path(__file__).resolve().parents[2]  # core/repositories/ -> raiz
 ARQUIVO_LOG = RAIZ_PROJETO / "dados" / "perguntas.db"
 
 

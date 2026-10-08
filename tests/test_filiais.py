@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src import filiais
+from core.repositories import filiais_repository as filiais
 
 
 def test_padronizar_filiais_descarta_outras_e_soma_o_30_no_24():

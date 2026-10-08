@@ -2,10 +2,10 @@
 Força uma atualização manual do faturamento mensal, direto do Oracle
 (`dados/faturamento_mensal.csv`).
 
-Normalmente não é preciso rodar isso: `src.faturamento_data` já
+Normalmente não é preciso rodar isso: `core.repositories.faturamento_repository` já
 atualiza esse arquivo sozinho (a cada 1 hora, quando alguém pergunta
 algo de faturamento pelo chatbot — ver docstring de
-`src/faturamento_data.py`). Esse script serve só pra forçar uma
+`core/repositories/faturamento_repository.py`). Esse script serve só pra forçar uma
 atualização na hora, ou gerar um arquivo de teste separado.
 
 Uso:
@@ -15,7 +15,7 @@ Uso:
 import argparse
 from pathlib import Path
 
-from src.faturamento_data import ANO_INICIO_PADRAO, ARQUIVO_FATURAMENTO_MENSAL, gerar_tabela
+from core.repositories.faturamento_repository import ANO_INICIO_PADRAO, ARQUIVO_FATURAMENTO_MENSAL, gerar_tabela
 
 
 def main() -> None:

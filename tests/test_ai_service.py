@@ -3,9 +3,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from src import ai_service
-from src.ai_service import _montar_historico_gemini
-from src.exceptions import IAIndisponivelError
+from core.services import ia_service as ai_service
+from core.services.ia_service import _montar_historico_gemini
+from core.exceptions import IAIndisponivelError
 
 
 class _ChatFalso:
@@ -191,7 +191,7 @@ def test_calendario_recente_da_a_data_de_cada_dia():
     """'Sexta da semana passada' em 05/10/2026 = 02/10/2026 — sem isso a IA
     consultava a semana inteira e dizia que era a sexta."""
     from datetime import date
-    from src.ai_service import calendario_recente
+    from core.services.ia_service import calendario_recente
 
     texto = calendario_recente(date(2026, 10, 5))
 
@@ -206,7 +206,7 @@ def test_resposta_final_liga_execucao_de_codigo_e_cai_pro_jeito_antigo_se_falhar
     correlação) são feitas por Python. Se o recurso falhar (outro modelo,
     outra chave), a resposta sai sem ele em vez de dar erro.
     """
-    from src import ai_service
+    from core.services import ia_service as ai_service
 
     class ModelsSemCodigo(_ModelsFalso):
         def generate_content(self, model, contents, config=None):
@@ -232,7 +232,7 @@ def test_resposta_final_liga_execucao_de_codigo_e_cai_pro_jeito_antigo_se_falhar
 def test_resposta_com_numero_inventado_nunca_chega_a_tela(monkeypatch):
     """O código calculou 2,70%, mas o texto sempre sai com 2,75% (caso
     real): depois das tentativas, não mostra número nenhum."""
-    from src import ai_service
+    from core.services import ia_service as ai_service
 
     modelos = _ModelsFalso("Sem Parnaíba, o grupo cai para 2,75%.")
     monkeypatch.setattr(
@@ -250,7 +250,7 @@ def test_resposta_com_numero_inventado_nunca_chega_a_tela(monkeypatch):
 
 
 def test_percentuais_vao_pra_ia_com_duas_casas_como_na_tabela():
-    from src.ai_service import _percentuais_como_na_tabela
+    from core.services.ia_service import _percentuais_como_na_tabela
 
     dados = {"resultados": [{"percentual_desconto": 5.6574, "valor_desconto": 214235.1934}],
              "total": {"percentual_desconto": 0.0042}}

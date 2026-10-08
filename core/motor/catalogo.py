@@ -45,28 +45,28 @@ Este arquivo é a ÚNICA fonte de verdade sobre o que o motor genérico
 (orquestrador.py) sabe consultar. A IA nunca deve referenciar um
 indicador ou dimensão que não esteja aqui.
 """
-from src.cliente_data import (
+from core.repositories.cliente_repository import (
     carregar_desconto_cliente,
     resolver_codigos_cliente,
     resolver_empresas,
 )
-from src.faturamento_data import carregar_faturamento_mensal
-from src.produto_data import (
+from core.repositories.faturamento_repository import carregar_faturamento_mensal
+from core.repositories.produto_repository import (
     carregar_desconto_produto,
     resolver_familias,
     resolver_grupos,
     resolver_produtos,
 )
-from src.faturamento_diario_data import (
+from core.repositories.faturamento_diario_repository import (
     carregar_faturamento_diario,
     carregar_faturamento_diario_forma_pagamento,
     construir_mapa_rca_nome,
     resolver_codigos_rca,
 )
-from src.filiais import resolver_estado, resolver_nome_filial
-from src.metas_data import resolver_codigos_supervisor
-from src.nps_data import carregar_avaliacoes_nps
-from src.meta_tonelada_data import (
+from core.repositories.filiais_repository import resolver_estado, resolver_nome_filial
+from core.repositories.metas_repository import resolver_codigos_supervisor
+from core.repositories.nps_repository import carregar_avaliacoes_nps
+from core.repositories.meta_tonelada_repository import (
     carregar_meta_tonelada,
     resolver_nomes_rca_tonelada,
 )
@@ -348,7 +348,7 @@ INDICADORES = {
         },
     },
     # Desconto concedido (VLDESCONTO, mesmo critério da rotina 8302 —
-    # ver src/faturamento_data.py e motor_metricas.calcular_desconto).
+    # ver core/repositories/faturamento_repository.py e motor_metricas.calcular_desconto).
     # O % é calculado sobre as SOMAS (desconto total ÷ tabela total),
     # nunca a média dos % de cada filial/RCA.
     "desconto": {
@@ -363,8 +363,8 @@ INDICADORES = {
         # a resposta avisa (decisão da usuária em 06/10/2026).
         "periodo_padrao": "ano_atual",
         # Por cliente/empresa: arquivo próprio (~1,2 milhão de linhas,
-        # ver src/cliente_data.py), lido só quando a pergunta pede.
-        # Por produto/família/grupo: outro arquivo (src/produto_data.py) —
+        # ver core/repositories/cliente_repository.py), lido só quando a pergunta pede.
+        # Por produto/família/grupo: outro arquivo (core/repositories/produto_repository.py) —
         # grupo e família vêm da planilha BASE_PRODUTOS do comercial.
         "fontes_por_dimensao": {
             "cliente": carregar_desconto_cliente,

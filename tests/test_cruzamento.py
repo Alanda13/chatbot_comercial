@@ -2,9 +2,9 @@
 import pandas as pd
 import pytest
 
-from src import catalogo
-from src import orquestrador as orq
-from src.exceptions import ConsultaInvalida
+from core.motor import catalogo
+from core.motor import orquestrador as orq
+from core.exceptions import ConsultaInvalida
 
 
 def _nps():

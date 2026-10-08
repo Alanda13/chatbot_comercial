@@ -1,4 +1,4 @@
-from src.variacao_utils import calcular_diferenca_percentual
+from core.motor.variacao_utils import calcular_diferenca_percentual
 
 
 def test_diferenca_e_percentual():

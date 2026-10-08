@@ -2,10 +2,10 @@
 Força uma atualização manual do faturamento diário, direto do Oracle
 (`dados/faturamento_diario.csv`).
 
-Normalmente não é preciso rodar isso: `src.faturamento_diario_data` já
+Normalmente não é preciso rodar isso: `core.repositories.faturamento_diario_repository` já
 atualiza esse arquivo sozinho (a cada 1 hora, quando alguém pergunta
 algo de faturamento diário pelo chatbot — ver docstring de
-`src/faturamento_diario_data.py`). Esse script serve só pra forçar uma
+`core/repositories/faturamento_diario_repository.py`). Esse script serve só pra forçar uma
 atualização na hora, ou gerar um arquivo de teste separado.
 
 Uso:
@@ -16,7 +16,7 @@ import argparse
 from datetime import date
 from pathlib import Path
 
-from src.faturamento_diario_data import ARQUIVO_FATURAMENTO_DIARIO, DESDE_PADRAO, gerar_tabela
+from core.repositories.faturamento_diario_repository import ARQUIVO_FATURAMENTO_DIARIO, DESDE_PADRAO, gerar_tabela
 
 
 def main() -> None:

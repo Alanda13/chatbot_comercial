@@ -1,7 +1,7 @@
 import streamlit as st
 
 from config.settings import CAMINHO_ICONE, CAMINHO_LOGO_SIDEBAR, TITULO_PAGINA
-from src import atualizador
+from core.services import atualizador_service as atualizador
 from ui.components.barra_lateral import mostrar_barra_lateral
 from ui.components.cabecalho import mostrar_cabecalho
 from ui.components.chat import ler_pergunta, mostrar_historico, responder

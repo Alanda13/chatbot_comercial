@@ -10,13 +10,13 @@ export bruto do TARGIT.
 from pathlib import Path
 import pandas as pd
 
-from src.filiais import padronizar_filiais
-from src.filial_utils import (
+from core.repositories.filiais_repository import padronizar_filiais
+from core.repositories.filial_utils import (
     encontrar_filial_mais_proxima,
     normalizar_nome_filial,
 )
 
-RAIZ_PROJETO = Path(__file__).resolve().parent.parent
+RAIZ_PROJETO = Path(__file__).resolve().parents[2]  # core/repositories/ -> raiz
 
 ARQUIVO_META_TONELADA = (
     RAIZ_PROJETO

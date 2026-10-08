@@ -7,11 +7,11 @@ seus argumentos obrigatórios e as funções Python
 que devem ser executadas.
 """
 
-from src.faturamento_tools import executar_verificar_rca
-from src.filiais_tools import executar_listar_filiais
-from src.indicador_tools import executar_consultar_dados_comerciais
-from src.catalogo import gerar_descricao_cruzamentos, gerar_descricao_indicadores
-from src.exceptions import FerramentaError
+from core.services.ferramentas.faturamento_tools import executar_verificar_rca
+from core.services.ferramentas.filiais_tools import executar_listar_filiais
+from core.services.ferramentas.indicador_tools import executar_consultar_dados_comerciais
+from core.motor.catalogo import gerar_descricao_cruzamentos, gerar_descricao_indicadores
+from core.exceptions import FerramentaError
 
 FERRAMENTAS_DISPONIVEIS = {
     "listar_filiais": {

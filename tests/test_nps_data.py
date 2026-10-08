@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from src import nps_data
+from core.repositories import nps_repository as nps_data
 
 
 class _CursorFalso:

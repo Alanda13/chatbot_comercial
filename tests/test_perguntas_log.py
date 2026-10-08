@@ -1,4 +1,4 @@
-from src import perguntas_log
+from core.repositories import perguntas_repository as perguntas_log
 
 
 def _usar_banco_temporario(tmp_path, monkeypatch):

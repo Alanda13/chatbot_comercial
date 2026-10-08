@@ -3,10 +3,10 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from src import catalogo
-from src import motor_metricas
-from src import orquestrador as orq
-from src.exceptions import ConsultaInvalida
+from core.motor import catalogo
+from core.motor import motor_metricas
+from core.motor import orquestrador as orq
+from core.exceptions import ConsultaInvalida
 
 
 def _dados_faturamento():
@@ -1564,7 +1564,7 @@ def test_cruza_por_dimensao_que_todos_identificam_igual_e_recusa_a_que_falta():
 
 
 def test_lista_cortada_pra_ia_fica_com_os_maiores_e_a_tabela_acompanha():
-    from src.chatbot import LIMITE_RESULTADOS_RESPOSTA, _limitar_resultados
+    from core.services.chatbot_service import LIMITE_RESULTADOS_RESPOSTA, _limitar_resultados
 
     linhas = [{"familia": f"F{i:03d}", "valor_desconto": float(i)} for i in range(100)]
     resultado = {
@@ -1581,7 +1581,7 @@ def test_lista_cortada_pra_ia_fica_com_os_maiores_e_a_tabela_acompanha():
 
 
 def test_mes_a_mes_cortado_continua_em_ordem():
-    from src.chatbot import _limitar_resultados
+    from core.services.chatbot_service import _limitar_resultados
 
     linhas = [{"mes": m, "valor_desconto": float(100 - m)} for m in range(1, 80)]
     cortado = _limitar_resultados({"indicador": "desconto", "agrupar_por": ["mes"], "resultados": linhas})

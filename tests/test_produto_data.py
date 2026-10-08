@@ -1,9 +1,9 @@
 import pandas as pd
 import pytest
 
-from src import catalogo
-from src import orquestrador as orq
-from src import produto_data
+from core.motor import catalogo
+from core.motor import orquestrador as orq
+from core.repositories import produto_repository as produto_data
 
 
 def _produtos():
@@ -92,7 +92,7 @@ def test_desconto_por_grupo_no_motor(monkeypatch, produtos):
 
 
 def test_juntar_devolucao_desconta_e_conta_devolucao_sem_venda():
-    from src.faturamento_data import juntar_devolucao
+    from core.repositories.faturamento_repository import juntar_devolucao
 
     class Cursor:
         description = [("CODFILIAL",), ("ANO",), ("MES",), ("CODPROD",), ("VALOR_DEV",)]

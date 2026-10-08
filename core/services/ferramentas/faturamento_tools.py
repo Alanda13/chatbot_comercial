@@ -4,8 +4,8 @@ Ferramentas do módulo de faturamento.
 Este arquivo faz a ponte entre os nomes informados pela IA
 e as consultas de faturamento.
 """
-from src.faturamento_diario_data import verificar_rca
-from src.filiais import resolver_nome_filial
+from core.repositories.faturamento_diario_repository import verificar_rca
+from core.repositories.filiais_repository import resolver_nome_filial
 
 
 def executar_verificar_rca(argumentos: dict) -> dict:

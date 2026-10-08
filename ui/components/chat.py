@@ -8,10 +8,10 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from config.settings import CAMINHO_ICONE
-from src.chatbot import processar_pergunta
-from src.exceptions import ChatbotError
-from src.logger import obter_logger
-from src.perguntas_log import registrar_pergunta
+from core.services.chatbot_service import processar_pergunta
+from core.exceptions import ChatbotError
+from core.logger import obter_logger
+from core.repositories.perguntas_repository import registrar_pergunta
 from ui.components.tabela import exibir_tabela
 from ui.formatacao import vale_a_pena_mostrar_tabela
 

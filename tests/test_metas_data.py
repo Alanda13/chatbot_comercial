@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src import metas_data as md
+from core.repositories import metas_repository as md
 
 
 def test_construir_lista_supervisores(monkeypatch):

@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src import faturamento_diario_data as fdd
+from core.repositories import faturamento_diario_repository as fdd
 
 
 def test_construir_mapa_rca_nome(monkeypatch):

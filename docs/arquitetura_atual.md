@@ -1062,3 +1062,19 @@ removidos junto com elas — não é perda de cobertura.
   se ela compara, calcular os dois lados e dizer qual é maior; lista solta não é
   resposta. Sem regra por caso (decisão da usuária: até ter plano pago, só esse
   princípio).
+
+## Reorganização em pastas (08/10/2026)
+
+Mesma estrutura do projeto do supervisor, sem mudar funcionamento:
+- `app.py` (~45 linhas) só monta a página; `config/` (settings, constants);
+  `ui/` (styles, state, formatacao, components/: cabecalho, barra_lateral, chat,
+  tabela).
+- `src/` virou `core/`: `services/` (chatbot_service, ia_service,
+  conferencia_service, atualizador_service, prompts/, ferramentas/), `motor/`
+  (orquestrador, catalogo, motor_metricas, variacao_utils), `repositories/`
+  (oracle, azure, arquivos_repository e os *_repository de cada base, filiais,
+  perguntas), `models.py` (antigo schemas), `exceptions.py`, `logger.py`.
+- Nomes antigos citados nas seções acima: ai_service → core/services/ia_service,
+  chatbot → chatbot_service, atualizador → atualizador_service,
+  conferencia_numeros → conferencia_service, *_data → core/repositories/*_repository,
+  arquivos_oracle → arquivos_repository, connection → oracle, database → azure.

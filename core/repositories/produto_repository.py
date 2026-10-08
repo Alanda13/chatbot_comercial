@@ -2,7 +2,7 @@
 Carregamento dos dados de desconto por produto (e por grupo e família).
 
 Dois CSVs, gerados do Oracle e atualizados em segundo plano por
-`src/atualizador.py` (mesma regra dos outros):
+`core/services/atualizador_service.py` (mesma regra dos outros):
 
 - `desconto_produto.csv`: desconto e faturamento de tabela por
   filial/ano/mês/produto, desde 2020 (~1 milhão de linhas). Sem RCA
@@ -25,22 +25,22 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.arquivos_oracle import (
+from core.repositories.arquivos_repository import (
     antes_da_janela_mensal,
     garantir,
     gravar_csv,
     inicio_da_janela_parcial,
     ler_csv,
 )
-from src.connection import get_connection
-from src.faturamento_data import (
+from core.repositories.oracle import get_connection
+from core.repositories.faturamento_repository import (
     ANO_INICIO_PADRAO,
     RAIZ_PROJETO,
     _FILTRO_VENDA_VALIDA,
     juntar_devolucao,
 )
-from src.filiais import padronizar_filiais
-from src.logger import obter_logger
+from core.repositories.filiais_repository import padronizar_filiais
+from core.logger import obter_logger
 
 logger = obter_logger(__name__)
 

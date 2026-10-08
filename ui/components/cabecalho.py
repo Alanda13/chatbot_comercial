@@ -10,7 +10,7 @@ import streamlit as st
 
 from config.constants import AZUL_FERRONORTE, LARANJA_FERRONORTE, VERDE_FERRONORTE
 from config.settings import CAMINHO_ICONE
-from src import atualizador
+from core.services import atualizador_service as atualizador
 
 
 def mostrar_cabecalho():

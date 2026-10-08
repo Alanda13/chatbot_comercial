@@ -5,8 +5,8 @@ A própria rotina 8280 (Faturamento por RCA/Filial/Mês/Ano) já traz
 VALOR_META, PERC_META, COD_SUPERVISOR e NOME_SUPERVISOR por linha —
 não é preciso nenhuma base nova.
 """
-from src.faturamento_data import carregar_faturamento_mensal
-from src.filial_utils import (
+from core.repositories.faturamento_repository import carregar_faturamento_mensal
+from core.repositories.filial_utils import (
     encontrar_filial_mais_proxima,
     normalizar_nome_filial,
 )

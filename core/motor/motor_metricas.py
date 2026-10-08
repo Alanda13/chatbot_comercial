@@ -13,7 +13,7 @@ import calendar
 from datetime import date, timedelta
 from typing import Optional
 
-from src.variacao_utils import calcular_diferenca_percentual
+from core.motor.variacao_utils import calcular_diferenca_percentual
 
 
 def calcular_dias_uteis_restantes(ano: int, mes: int) -> Optional[int]:

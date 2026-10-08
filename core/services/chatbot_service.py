@@ -6,12 +6,12 @@ ao Gemini, executa ferramentas autorizadas e monta a resposta final.
 """
 import re
 
-from src.ai_service import interpretar_pergunta
-from src.ai_service import gerar_resposta_final
-from src.tool_manager import executar_ferramenta
-from src.exceptions import FerramentaError, RespostaInvalidaError
-from src.logger import obter_logger
-from src import catalogo
+from core.services.ia_service import interpretar_pergunta
+from core.services.ia_service import gerar_resposta_final
+from core.services.ferramentas.tool_manager import executar_ferramenta
+from core.exceptions import FerramentaError, RespostaInvalidaError
+from core.logger import obter_logger
+from core.motor import catalogo
 
 logger = obter_logger(__name__)
 

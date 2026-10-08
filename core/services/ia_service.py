@@ -10,13 +10,13 @@ from google import genai
 from google.genai import types
 from pydantic import ValidationError
 
-from src.conferencia_numeros import numeros_inventados, valores_permitidos
-from src.filiais import descrever_codigos_somados
-from src.prompts import PROMPT_SISTEMA
-from src.schemas import SolicitacaoFerramenta
-from src.tool_manager import gerar_catalogo_ferramentas
-from src.exceptions import IAIndisponivelError
-from src.logger import obter_logger
+from core.services.conferencia_service import numeros_inventados, valores_permitidos
+from core.repositories.filiais_repository import descrever_codigos_somados
+from core.services.prompts import PROMPT_SISTEMA
+from core.models import SolicitacaoFerramenta
+from core.services.ferramentas.tool_manager import gerar_catalogo_ferramentas
+from core.exceptions import IAIndisponivelError
+from core.logger import obter_logger
 
 load_dotenv()
 

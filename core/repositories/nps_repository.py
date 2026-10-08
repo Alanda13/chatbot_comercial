@@ -10,8 +10,8 @@ import time
 
 import pandas as pd
 
-from src.database import get_connection
-from src.filiais import padronizar_filiais
+from core.repositories.azure import get_connection
+from core.repositories.filiais_repository import padronizar_filiais
 
 # Os dados são "ao vivo" (respostas entram todo dia) e a carga completa
 # leva ~1,5s, então uma consulta que compara períodos (que carrega duas

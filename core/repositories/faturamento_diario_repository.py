@@ -2,8 +2,8 @@
 Carregamento e preparação dos dados de Faturamento por dia.
 
 O CSV (`faturamento_diario.csv`) funciona como um cache em disco,
-atualizado em segundo plano por `src/atualizador.py` — mesmo mecanismo
-do faturamento mensal (ver `src/arquivos_oracle.py`).
+atualizado em segundo plano por `core/services/atualizador_service.py` — mesmo mecanismo
+do faturamento mensal (ver `core/repositories/arquivos_repository.py`).
 
 Fonte dos dados (Oracle, schema FNORTE, só leitura — ver
 docs/arquitetura_atual.md):
@@ -23,23 +23,23 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.arquivos_oracle import (
+from core.repositories.arquivos_repository import (
     garantir,
     gravar_csv,
     inicio_da_janela_parcial,
     ler_csv,
 )
-from src.connection import get_connection
-from src.filiais import padronizar_filiais
-from src.filial_utils import (
+from core.repositories.oracle import get_connection
+from core.repositories.filiais_repository import padronizar_filiais
+from core.repositories.filial_utils import (
     encontrar_filial_mais_proxima,
     normalizar_nome_filial,
 )
-from src.logger import obter_logger
+from core.logger import obter_logger
 
 logger = obter_logger(__name__)
 
-RAIZ_PROJETO = Path(__file__).resolve().parent.parent
+RAIZ_PROJETO = Path(__file__).resolve().parents[2]  # core/repositories/ -> raiz
 
 ARQUIVO_FATURAMENTO_DIARIO = (
     RAIZ_PROJETO
@@ -55,7 +55,7 @@ ARQUIVO_FATURAMENTO_DIARIO_FORMA_PAGAMENTO = (
 
 DESDE_PADRAO = date(2020, 1, 1)
 
-# Colunas que src/faturamento_diario_data.py e src/catalogo.py de fato
+# Colunas que core/repositories/faturamento_diario_repository.py e core/motor/catalogo.py de fato
 # leem desse arquivo — nada além disso precisa ser gerado.
 COLUNAS_SAIDA = [
     "CODFILIAL", "DATA", "COD_RCA", "NOME_RCA",
@@ -246,7 +246,7 @@ def _carregar_csv_8302(caminho: Path) -> pd.DataFrame:
 def carregar_faturamento_diario() -> pd.DataFrame:
     """
     Carrega o faturamento diário (CSV atualizado em segundo plano — ver
-    `src/arquivos_oracle.garantir`).
+    `core/repositories/arquivos_repository.garantir`).
     """
     garantir([ARQUIVO_FATURAMENTO_DIARIO], atualizar, "faturamento diário")
     return _carregar_csv_8302(ARQUIVO_FATURAMENTO_DIARIO)

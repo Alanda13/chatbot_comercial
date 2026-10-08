@@ -1,4 +1,4 @@
-from src import faturamento_data as fd
+from core.repositories import faturamento_repository as fd
 
 
 def test_carregar_faturamento_mensal_padroniza_filiais(monkeypatch, tmp_path):
