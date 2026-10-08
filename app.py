@@ -1,5 +1,4 @@
 import base64
-import html
 import io
 import json
 import re
@@ -69,11 +68,9 @@ def escapar_para_markdown(texto):
     return texto.replace("$", "&#36;")
 
 
-def botao_copiar(texto, legenda=None):
+def botao_copiar(texto):
     """
-    Botão de copiar o texto de uma mensagem — com `legenda` (ex: "Dados
-    atualizados em…") pequena ao lado dele, no mesmo iframe (fora dele,
-    ela ficaria numa linha separada embaixo).
+    Botão de copiar o texto de uma mensagem.
 
     Roda dentro de components.html (iframe isolado) de propósito: um
     botão colado direto via st.markdown fica embaixo do "toolbar" que
@@ -85,9 +82,6 @@ def botao_copiar(texto, legenda=None):
     liberada de verdade.
     """
     texto_js = json.dumps(texto).replace("</", "<\\/")
-    legenda_html = (
-        f'<span class="legenda">{html.escape(legenda)}</span>' if legenda else ""
-    )
     components.html(
         f"""
         <style>
@@ -99,12 +93,6 @@ def botao_copiar(texto, legenda=None):
                 display: flex;
                 align-items: center;
                 gap: 8px;
-            }}
-            .legenda {{
-                font-family: "Source Sans Pro", sans-serif;
-                font-size: 11px;
-                color: #6b7480;
-                white-space: nowrap;
             }}
         </style>
         <button id="botao-copiar" title="Copiar mensagem" style="
@@ -120,7 +108,6 @@ def botao_copiar(texto, legenda=None):
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
             </svg>
         </button>
-        {legenda_html}
         <script>
         document.getElementById("botao-copiar").addEventListener("click", function () {{
             navigator.clipboard.writeText({texto_js});
@@ -654,51 +641,141 @@ st.set_page_config(
 )
 _icone_base64 = base64.b64encode(Path(CAMINHO_ICONE).read_bytes()).decode()
 
-st.markdown(
-    f"""
-    <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 4px;">
-        <img src="data:image/png;base64,{_icone_base64}" style="width: 64px; flex-shrink: 0;">
-        <div style="line-height: 1.35;">
-            <div style="font-size: 1.25rem; font-weight: 700;">Olá! 👋</div>
-            <div style="font-size: 0.9rem; opacity: 0.75;">
-                Sou seu assistente virtual. Como posso te ajudar?
-            </div>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.logo("assets/logo_ferronorte_fundo_claro.png", size="large")
+
+# Faixa azul do topo e cartão branco dos indicadores — mesmo visual das
+# outras telas do comercial (ex: Separação de Produtos).
+_atualizado_em = atualizador.descrever_ultima_atualizacao()
+_selo_atualizacao = (
+    f'<span class="selo-faixa">{_atualizado_em}</span>' if _atualizado_em else ""
 )
 
 st.markdown(
     f"""
     <style>
+    .faixa-topo {{
+        background-color: {AZUL_FERRONORTE};
+        color: #FFFFFF;
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin-bottom: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        box-shadow: 0 1px 3px rgba(30, 41, 56, 0.12);
+    }}
+    .faixa-topo .titulo {{
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+    }}
+    .faixa-topo img {{
+        width: 40px;
+        height: 40px;
+        flex-shrink: 0;
+        background-color: #FFFFFF;
+        border-radius: 8px;
+        padding: 4px;
+    }}
+    .faixa-topo .nome {{
+        font-size: 1.2rem;
+        font-weight: 700;
+        line-height: 1.3;
+    }}
+    .faixa-topo .subtitulo {{
+        font-size: 0.82rem;
+        opacity: 0.9;
+    }}
+    .selo-faixa {{
+        background-color: rgba(255, 255, 255, 0.18);
+        border-radius: 999px;
+        padding: 4px 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }}
+    .cartao {{
+        background-color: #FFFFFF;
+        border: 1px solid rgba(30, 41, 56, 0.12);
+        border-radius: 8px;
+        padding: 14px 18px;
+        margin-bottom: 8px;
+        box-shadow: 0 2px 6px rgba(30, 41, 56, 0.08);
+    }}
+    /* Mensagens, campo de digitar e barra lateral com borda suave e
+       sombra leve — no fundo claro, branco sobre branco some. */
+    [data-testid="stChatMessage"] {{
+        background-color: #FFFFFF;
+        border: 1px solid rgba(30, 41, 56, 0.12);
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(30, 41, 56, 0.06);
+        padding: 12px 16px;
+        margin-bottom: 10px;
+    }}
+    /* Pergunta do usuário (a resposta tem o avatar em imagem). */
+    [data-testid="stChatMessage"]:not(:has(img[alt="assistant avatar"])) {{
+        background-color: rgba(14, 94, 166, 0.05);
+        border-color: rgba(14, 94, 166, 0.18);
+    }}
+    [data-testid="stChatInput"] > div {{
+        border: 1px solid rgba(30, 41, 56, 0.16);
+        box-shadow: 0 2px 8px rgba(30, 41, 56, 0.08);
+    }}
+    section[data-testid="stSidebar"] {{
+        border-right: 1px solid rgba(30, 41, 56, 0.10);
+    }}
+    .cartao .titulo-cartao {{
+        font-weight: 700;
+        font-size: 0.95rem;
+    }}
+    .cartao .subtitulo-cartao {{
+        font-size: 0.78rem;
+        opacity: 0.6;
+        margin-bottom: 8px;
+    }}
     .badge-indicador {{
         display: inline-block;
         padding: 2px 10px 2px 8px;
         margin: 2px 4px 2px 0;
         border-radius: 999px;
         font-size: 0.8rem;
-        background-color: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        background-color: #FFFFFF;
+        border: 1px solid rgba(30, 41, 56, 0.12);
         border-left: 3px solid var(--cor-indicador, {AZUL_FERRONORTE});
     }}
     .legenda-filtros {{
         font-size: 0.8rem;
         opacity: 0.6;
-        margin-top: 4px;
+        margin-top: 6px;
     }}
     </style>
-    <div style="opacity: 0.75; font-size: 0.85rem; margin-bottom: 4px;">
-        No momento posso ajudar com consultas de:
+    <div class="faixa-topo">
+        <div class="titulo">
+            <img src="data:image/png;base64,{_icone_base64}" alt="">
+            <div>
+                <div class="nome">Chatbot Comercial</div>
+                <div class="subtitulo">
+                    Olá! Sou seu assistente virtual. Como posso te ajudar?
+                </div>
+            </div>
+        </div>
+        {_selo_atualizacao}
     </div>
-    <span class="badge-indicador" style="--cor-indicador: {AZUL_FERRONORTE};">💰 Faturamento (R$ e toneladas — anual, mensal e diário)</span>
-    <span class="badge-indicador" style="--cor-indicador: {LARANJA_FERRONORTE};">🎯 Metas (faturamento)</span>
-    <span class="badge-indicador" style="--cor-indicador: {LARANJA_FERRONORTE};">🎯 Metas (tonelada) — 2024 a 2026</span>
-    <span class="badge-indicador" style="--cor-indicador: {AZUL_FERRONORTE};">🏷️ Desconto</span>
-    <span class="badge-indicador" style="--cor-indicador: {VERDE_FERRONORTE};">⭐ NPS</span>
-    <div class="legenda-filtros">
-        Tudo por <b>filial, RCA, supervisor ou período</b>, além da
-        lista de filiais.
+    <div class="cartao">
+        <div class="titulo-cartao">Consultas disponíveis</div>
+        <div class="subtitulo-cartao">Pergunte em português, do jeito que você falaria.</div>
+        <span class="badge-indicador" style="--cor-indicador: {AZUL_FERRONORTE};">💰 Faturamento (R$ e toneladas — anual, mensal e diário)</span>
+        <span class="badge-indicador" style="--cor-indicador: {LARANJA_FERRONORTE};">🎯 Metas (faturamento)</span>
+        <span class="badge-indicador" style="--cor-indicador: {LARANJA_FERRONORTE};">🎯 Metas (tonelada) — 2024 a 2026</span>
+        <span class="badge-indicador" style="--cor-indicador: {AZUL_FERRONORTE};">🏷️ Desconto</span>
+        <span class="badge-indicador" style="--cor-indicador: {VERDE_FERRONORTE};">⭐ NPS</span>
+        <div class="legenda-filtros">
+            Tudo por <b>filial, RCA, supervisor, cliente, produto ou período</b>,
+            além da lista de filiais.
+        </div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -724,15 +801,15 @@ with st.sidebar:
                 text-align: left;
                 border-radius: 10px;
                 padding: 0.6rem 0.85rem;
-                background-color: rgba(255, 255, 255, 0.04);
-                border: 1px solid rgba(255, 255, 255, 0.08);
+                background-color: #FFFFFF;
+                border: 1px solid rgba(30, 41, 56, 0.12);
                 transition: background-color 0.15s ease;
                 font-size: 0.88rem;
             }
             .st-key-painel_perguntas button[kind="secondary"]:hover {
-                background-color: rgba(14, 94, 166, 0.15);
+                background-color: rgba(14, 94, 166, 0.08);
                 border-color: #0E5EA6;
-                color: #F8F8F7;
+                color: #0E5EA6;
             }
             .st-key-painel_perguntas [data-testid="stVerticalBlock"] {
                 gap: 0.2rem;
@@ -755,7 +832,7 @@ with st.sidebar:
             .separador-indicador {
                 margin: 0.2rem 0 !important;
                 border: none;
-                border-top: 1px solid rgba(255, 255, 255, 0.08);
+                border-top: 1px solid rgba(30, 41, 56, 0.10);
             }
             </style>
             """,
@@ -806,7 +883,7 @@ for indice_mensagem, mensagem in enumerate(st.session_state.mensagens):
         mensagem["papel"], avatar=AVATAR_POR_PAPEL.get(mensagem["papel"])
     ):
         st.text(mensagem["conteudo"])
-        botao_copiar(mensagem["conteudo"], legenda=mensagem.get("atualizado_em"))
+        botao_copiar(mensagem["conteudo"])
 
         if mensagem.get("dados_tabela") and vale_a_pena_mostrar_tabela(
             mensagem["dados_tabela"],
@@ -882,9 +959,7 @@ if pergunta:
             )
             placeholder.text(resposta)
 
-            # De quando são os dados desta resposta (fica guardado com ela).
-            atualizado_em = atualizador.descrever_ultima_atualizacao()
-            botao_copiar(resposta, legenda=atualizado_em)
+            botao_copiar(resposta)
 
             if dados_tabela and vale_a_pena_mostrar_tabela(
                 dados_tabela, resposta, nome_ferramenta
@@ -903,7 +978,6 @@ if pergunta:
                     "conteudo": resposta,
                     "dados_tabela": dados_tabela,
                     "nome_ferramenta": nome_ferramenta,
-                    "atualizado_em": atualizado_em,
                 }
             )
 
