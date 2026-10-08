@@ -1,4 +1,4 @@
-from app import descrever_periodo, preparar_tabela, vale_a_pena_mostrar_tabela
+from ui.formatacao import descrever_periodo, preparar_tabela, vale_a_pena_mostrar_tabela
 
 _DADOS_FILIAL_2_ANOS = [
     {"filial": "FERRONORTE LOURIVAL", "ano": 2024, "faturamento": 74414711.88},
@@ -249,7 +249,7 @@ def test_legenda_nao_confunde_codigo_com_ano():
 
 
 def test_percentual_muito_pequeno_nao_aparece_como_zero():
-    from app import formatar_percentual_atingimento
+    from ui.formatacao import formatar_percentual_atingimento
 
     assert formatar_percentual_atingimento(0.0034) == "menos de 0,01%"
     assert formatar_percentual_atingimento(0.0) == "0,00%"
@@ -257,7 +257,7 @@ def test_percentual_muito_pequeno_nao_aparece_como_zero():
 
 
 def test_diferenca_em_reais_mostra_o_sinal():
-    from app import formatar_moeda_com_sinal
+    from ui.formatacao import formatar_moeda_com_sinal
 
     assert formatar_moeda_com_sinal(14287298.37) == "+R$ 14.287.298,37"
     assert formatar_moeda_com_sinal(-963253.53) == "−R$ 963.253,53"

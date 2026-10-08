@@ -2,7 +2,7 @@
 import pandas as pd
 import pytest
 
-from app import preparar_tabela
+from ui.formatacao import preparar_tabela
 from src import catalogo
 from src import orquestrador as orq
 from src.exceptions import ConsultaInvalida
