@@ -1081,3 +1081,32 @@ Mesma estrutura do projeto do supervisor, sem mudar funcionamento:
 - A pasta dos dados locais passou de `dados/` para `data/` (CSVs, planilha de
   produtos, perguntas.db) — continua fora do git (.gitignore). Onde as seções
   acima dizem `dados/`, leia `data/`.
+
+### Refatoração do orquestrador (08/10/2026)
+
+Sem mudar nenhuma regra: 2.144 → 1.829 linhas (código 1.346 → 1.166;
+comentários 413 → 275, mantendo o "por quê" de cada regra).
+- `executar_consulta` (423 → 72 linhas) virou um roteiro: `_preparar_consulta`
+  → `_ajustar_periodo` → `_consultar` → `_separar_sem_valor`/`_ordenar` →
+  `_avisos_para_a_ia` → `_tabela_da_tela`.
+- Repetição removida: `_dias`/`_mes_inteiro` (períodos por dia em tabela),
+  `_filtros_efetivos(indicador_def, consulta)` lê o período da própria consulta
+  (`_do_periodo_comparado` pro "comparar_com"), `_com_filtros`,
+  `_com_meses_fechados` (ano incompleto), `_checar_dimensoes`,
+  `_atributos_por_item`, `_exibicao_do_campo`, `_chave`, `_inicio_e_fim`; o total
+  sem agrupamento usa o mesmo caminho do agrupado (coluna constante).
+- Conferido com 266 testes e 42 consultas reais gravadas antes da mudança
+  (resultados idênticos, inclusive as mensagens de erro).
+
+### Layout no estilo das IAs (08/10/2026)
+
+Pedido da usuária ("igual ao ChatGPT"), com as cores da Ferronorte:
+- Tela inicial (`ui/components/tela_inicial.py`, antes cabecalho.py): saudação no
+  meio da tela + 4 sugestões (`config/constants.SUGESTOES`) que fazem a pergunta
+  de verdade. Saíram a faixa azul, o cartão "Consultas disponíveis" e os exemplos
+  com resposta fixa da barra lateral.
+- Pergunta em balão azul-claro à direita (sem avatar); resposta como texto solto
+  com o ícone; campo de digitar arredondado com botão azul; "Dados atualizados
+  em…" embaixo do campo (`styles.mostrar_data_atualizacao`).
+- Barra lateral: "＋ Nova conversa" (limpa o histórico) e "Esta conversa"
+  (baixar/copiar).

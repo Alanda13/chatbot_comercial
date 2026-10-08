@@ -13,7 +13,7 @@ from core.exceptions import ChatbotError
 from core.logger import obter_logger
 from core.repositories.perguntas_repository import registrar_pergunta
 from ui.components.tabela import exibir_tabela
-from ui.formatacao import vale_a_pena_mostrar_tabela
+from ui.formatacao import escapar_para_markdown, vale_a_pena_mostrar_tabela
 
 logger = obter_logger(__name__)
 
@@ -77,7 +77,7 @@ def mostrar_historico():
         with st.chat_message(
             mensagem["papel"], avatar=AVATAR_POR_PAPEL.get(mensagem["papel"])
         ):
-            st.text(mensagem["conteudo"])
+            st.markdown(escapar_para_markdown(mensagem["conteudo"]))
             botao_copiar(mensagem["conteudo"])
 
             if mensagem.get("dados_tabela") and vale_a_pena_mostrar_tabela(
@@ -118,7 +118,7 @@ def responder(pergunta):
     )
 
     with st.chat_message("user", avatar=AVATAR_POR_PAPEL["user"]):
-        st.markdown(pergunta)
+        st.markdown(escapar_para_markdown(pergunta))
         botao_copiar(pergunta)
 
     historico = [
@@ -144,7 +144,9 @@ def responder(pergunta):
                 pergunta=pergunta,
                 historico=historico,
             )
-            placeholder.text(resposta)
+            # Com formatação (negrito, listas, tabelas) — as análises vêm em
+            # markdown; com st.text os **asteriscos** apareciam crus.
+            placeholder.markdown(escapar_para_markdown(resposta))
 
             botao_copiar(resposta)
 

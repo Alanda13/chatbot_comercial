@@ -261,3 +261,27 @@ def test_diferenca_em_reais_mostra_o_sinal():
 
     assert formatar_moeda_com_sinal(14287298.37) == "+R$ 14.287.298,37"
     assert formatar_moeda_com_sinal(-963253.53) == "−R$ 963.253,53"
+
+
+def test_texto_da_conversa_tem_perguntas_respostas_e_tabela():
+    from datetime import datetime
+
+    from ui.components.exportar_conversa import montar_texto_da_conversa
+
+    dados = [
+        {"filial": "TIMON", "faturamento": 100.0, "_colunas_pedidas": ["faturamento"]},
+        {"filial": "IMPERATRIZ", "faturamento": 80.0, "_colunas_pedidas": ["faturamento"]},
+    ]
+    texto = montar_texto_da_conversa(
+        [
+            {"papel": "user", "conteudo": "faturamento por filial"},
+            {"papel": "assistant", "conteudo": "**Faturamento** por filial:",
+             "dados_tabela": dados, "nome_ferramenta": "consultar_dados_comerciais"},
+        ],
+        datetime(2026, 10, 8, 11, 40),
+    )
+
+    assert "conversa de 08/10/2026 às 11:40" in texto
+    assert "Você: faturamento por filial" in texto
+    assert "Chatbot: Faturamento por filial:" in texto   # sem os **
+    assert "R$ 100,00" in texto and "IMPERATRIZ" in texto
