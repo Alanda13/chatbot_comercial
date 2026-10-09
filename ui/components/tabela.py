@@ -2,12 +2,13 @@
 A tabela embaixo da resposta ("📊 Ver como tabela") e o botão de
 baixar em Excel.
 """
-import io
 import re
+from datetime import datetime
 
-import pandas as pd
 import streamlit as st
 
+from config.settings import CAMINHO_LOGO_SIDEBAR
+from ui.exportar_excel import gerar_excel
 from ui.formatacao import descrever_periodo, preparar_tabela
 
 
@@ -23,8 +24,9 @@ def _colunas_de_valor(tabela):
     ]
 
 
-def exibir_tabela(dados_tabela, texto_referencia, chave, nome_ferramenta=None):
-    """Renderiza a tabela formatada + botão de download em Excel."""
+def exibir_tabela(dados_tabela, texto_referencia, chave, nome_ferramenta=None, pergunta=None):
+    """Renderiza a tabela formatada + botão de download em Excel (com a
+    pergunta como título da planilha)."""
     legenda = descrever_periodo(dados_tabela, texto_referencia)
     if legenda:
         st.caption(legenda)
@@ -62,14 +64,20 @@ def exibir_tabela(dados_tabela, texto_referencia, chave, nome_ferramenta=None):
         if colunas_de_valor else tabela_exibicao
     )
 
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        tabela.to_excel(writer, index=False, sheet_name="Dados")
+    agora = datetime.now()
+    subtitulo = " · ".join(
+        parte for parte in (legenda, f"Gerado em {agora:%d/%m/%Y às %H:%M}") if parte
+    )
 
     st.download_button(
         label="⬇️ Baixar em Excel",
-        data=buffer.getvalue(),
-        file_name="resultado.xlsx",
+        data=gerar_excel(
+            tabela,
+            titulo=pergunta or "Chatbot Comercial Ferronorte",
+            subtitulo=subtitulo,
+            caminho_logo=CAMINHO_LOGO_SIDEBAR,
+        ),
+        file_name=f"Chatbot_Ferronorte_{agora:%d.%m.%Y}.xlsx",
         mime=(
             "application/vnd.openxmlformats-officedocument"
             ".spreadsheetml.sheet"

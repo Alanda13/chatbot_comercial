@@ -259,3 +259,26 @@ def test_percentuais_vao_pra_ia_com_duas_casas_como_na_tabela():
 
     assert saida["resultados"][0] == {"percentual_desconto": 5.66, "valor_desconto": 214235.1934}
     assert saida["total"]["percentual_desconto"] == 0.0042
+
+
+def test_regras_da_resposta_so_do_assunto():
+    from core.services.prompts.resposta import regras_da_resposta
+
+    simples = regras_da_resposta(
+        {"indicador": "faturamento", "resultados": [{"faturamento": 1.0}], "encontrado": True},
+        "consultar_dados_comerciais",
+    )
+    assert "REGRAS GERAIS" in simples and "PERÍODO" in simples
+    assert "NPS:" not in simples and "META DE TONELADA" not in simples and "ANÁLISE" not in simples
+
+    cruzada = regras_da_resposta(
+        {"indicador": "desconto", "cruzado_com": ["nps"], "agrupar_por": ["filial"],
+         "resultados": [{"filial": "A"}, {"filial": "B"}, {"filial": "C"}],
+         "periodo_assumido": "...", "encontrado": True},
+        "consultar_dados_comerciais",
+    )
+    assert "NPS:" in cruzada and "ANÁLISE" in cruzada and "PERÍODO NÃO INFORMADO" in cruzada
+    assert "CÓDIGO DE FILIAL" in cruzada and "META DE FATURAMENTO" not in cruzada
+
+    vazio = regras_da_resposta({"encontrado": False, "mensagem": "x"}, "consultar_dados_comerciais")
+    assert "SEM DADOS" in vazio

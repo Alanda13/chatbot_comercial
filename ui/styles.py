@@ -48,21 +48,32 @@ _CSS_CHAT = f"""
     width: 24px !important;
 }}
 
-/* Campo de digitar: pílula com sombra e botão de enviar redondo, azul. */
+/* Campo de digitar: pílula com sombra, contorno azulado (azul ao clicar)
+   e botão de enviar redondo, azul. Antes contorno, texto de exemplo e
+   botão vazio ficavam claros demais ("muito apagado"). */
 [data-testid="stChatInput"] > div {{
     border-radius: 26px !important;
-    border: 1px solid rgba(30, 41, 56, 0.16) !important;
+    border: 1px solid rgba(14, 94, 166, 0.35) !important;
     box-shadow: 0 2px 12px rgba(30, 41, 56, 0.10);
     background-color: #FFFFFF;
     padding-left: 8px;
+}}
+[data-testid="stChatInput"] > div:focus-within {{
+    border-color: {AZUL_FERRONORTE} !important;
+}}
+[data-testid="stChatInput"] textarea::placeholder {{
+    color: #5B6670 !important;
+    opacity: 1;
 }}
 [data-testid="stChatInputSubmitButton"] {{
     border-radius: 50% !important;
     background-color: {AZUL_FERRONORTE} !important;
     color: #FFFFFF !important;
 }}
+/* Vazio (nada pra enviar): o mesmo azul, só um pouco mais claro. */
 [data-testid="stChatInputSubmitButton"]:disabled {{
-    background-color: rgba(14, 94, 166, 0.35) !important;
+    background-color: {AZUL_FERRONORTE} !important;
+    opacity: 0.7;
 }}
 
 /* Tela inicial: saudação no meio da tela e sugestões em botões. */
@@ -97,6 +108,27 @@ _CSS_CHAT = f"""
     border-color: {AZUL_FERRONORTE};
     color: {AZUL_FERRONORTE};
     background-color: rgba(14, 94, 166, 0.05);
+}}
+
+/* Logo maior (na barra lateral e no topo, com a barra recolhida): o
+   Streamlit limita a ~2rem e o "Ferronorte" ficava pequeno. */
+[data-testid="stSidebarLogo"],
+[data-testid="stHeaderLogo"] {{
+    height: 2.5rem !important;
+    max-height: none !important;
+    width: auto;
+    max-width: 100%;
+}}
+[data-testid="stSidebarHeader"] {{
+    height: auto !important;
+    padding-top: 1rem;
+    padding-bottom: 0.5rem;
+}}
+/* Com a barra aberta, a logo fica no meio dela (e não no canto). */
+[data-testid="stSidebarHeader"] > div:first-child {{
+    flex: 1;
+    display: flex;
+    justify-content: center;
 }}
 
 /* Barra lateral: linha separando do conteúdo. */

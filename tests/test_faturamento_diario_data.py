@@ -14,12 +14,19 @@ def test_construir_mapa_rca_nome(monkeypatch):
         ]
     )
     monkeypatch.setattr(fdd, "carregar_faturamento_diario", lambda: df)
+    # Cadastro (PCUSUARI): completa quem nunca vendeu (1903); o nome das
+    # vendas continua valendo quando os dois têm (1902).
+    monkeypatch.setattr(
+        "core.repositories.rca_repository.carregar_nomes_do_cadastro",
+        lambda: {1902: "MARIA SOUZA - F09", 1903: "Romulo Viena Veras"},
+    )
 
     mapa = fdd.construir_mapa_rca_nome()
 
     assert mapa == {
         1901: "Jose Felipe Pires",
         1902: "Maria Souza",
+        1903: "Romulo Viena Veras",
     }
 
 

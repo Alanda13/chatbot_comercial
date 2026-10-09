@@ -271,11 +271,13 @@ def construir_mapa_rca_nome() -> dict[int, str]:
     """
     Constrói um mapa de código do RCA para o nome do vendedor.
 
-    A rotina 8302 é a única fonte que traz o nome do RCA (coluna
-    NOME_RCA) — a 8280 só tem o código. Quando o mesmo código
-    aparece com nomes diferentes ao longo do tempo, fica o primeiro
-    nome encontrado.
+    O nome vem das vendas (8302, coluna NOME_RCA — a 8280 só tem o
+    código); quando o mesmo código aparece com nomes diferentes ao longo
+    do tempo, fica o primeiro nome encontrado. Quem nunca vendeu (só tem
+    meta cadastrada) pega o nome do cadastro de RCAs (PCUSUARI).
     """
+    from core.repositories.rca_repository import carregar_nomes_do_cadastro
+
     dados = carregar_faturamento_diario()
 
     pares = (
@@ -284,13 +286,21 @@ def construir_mapa_rca_nome() -> dict[int, str]:
         .drop_duplicates(subset="COD_RCA")
     )
 
-    return {
+    mapa = {
         int(codigo): str(nome).strip()
         for codigo, nome in zip(
             pares["COD_RCA"],
             pares["NOME_RCA"],
         )
     }
+
+    try:
+        cadastro = carregar_nomes_do_cadastro()
+    except Exception:
+        logger.warning("Cadastro de RCAs indisponível — só os nomes das vendas.")
+        return mapa
+
+    return {**cadastro, **mapa}
 
 
 def construir_lista_rca() -> list[dict]:

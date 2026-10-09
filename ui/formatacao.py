@@ -100,6 +100,7 @@ RENOMEAR_COLUNAS = {
     "produto": "Código Produto",
     "familia": "Família",
     "grupo": "Grupo",
+    "venda": "Venda",
     "supervisor": "Código Supervisor",
     "filial": "Filial",
     "estado": "Estado",
@@ -204,7 +205,7 @@ def formatar_coluna_numerica(serie):
 # Colunas que identificam a linha (em vez de medir alguma coisa).
 DIMENSOES_DA_TABELA = (
     "estado", "filial", "rca_nome", "rca", "supervisor", "codigo", "cliente",
-    "grupo", "familia", "produto",
+    "grupo", "familia", "produto", "venda",
     "empresa", *ATRIBUTOS_DA_TABELA, "ano", "mes", "periodo",
     "forma_pagamento", "dia",
 )
@@ -342,6 +343,10 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
     if "supervisor_nome" in colunas_base and "supervisor" in colunas_base:
         colunas_base.remove("supervisor")
 
+    # A venda aparece pela nota/pedido; o nº interno da transação, não.
+    if "venda_nota" in colunas_base and "venda" in colunas_base:
+        colunas_base.remove("venda")
+
     # Se só tem UM ano nos dados, tira a coluna "ano" da tabela — ela
     # já aparece na legenda acima ("Ano: 2025"), repetir em toda
     # linha é redundante. Só mantém quando há vários anos misturados.
@@ -459,7 +464,7 @@ def descrever_periodo(dados_tabela, texto_referencia):
 
 COLUNAS_DE_IDENTIFICACAO = {
     "Estado", "Filial", "RCA", "Código", "Código RCA", "Código Cliente",
-    "Código Supervisor", "Código Produto",
+    "Código Supervisor", "Código Produto", "Venda",
     "Ano", "Mês", "Período", "Forma de Pagamento", "Dia",
     *ATRIBUTOS_DA_TABELA.values(),
 }

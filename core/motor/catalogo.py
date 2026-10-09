@@ -51,6 +51,7 @@ from core.repositories.cliente_repository import (
     resolver_empresas,
 )
 from core.repositories.faturamento_repository import carregar_faturamento_mensal
+from core.repositories.venda_repository import carregar_desconto_venda, resolver_vendas
 from core.repositories.produto_repository import (
     carregar_desconto_produto,
     resolver_familias,
@@ -74,6 +75,7 @@ from core.repositories.meta_tonelada_repository import (
 DIMENSOES_VALIDAS = [
     "filial", "estado", "rca", "supervisor", "mes", "ano", "dia",
     "forma_pagamento", "cliente", "empresa", "produto", "familia", "grupo",
+    "venda",
 ]
 
 # Colunas que DESCREVEM o item de uma dimensão (vêm junto quando se
@@ -98,6 +100,15 @@ ATRIBUTOS_DIMENSAO = {
     },
     "familia": {
         "familia_grupo": ("GRUPO", "Grupo"),
+    },
+    "venda": {
+        "venda_nota": ("NUMNOTA", "Nota"),
+        "venda_pedido": ("NUMPED", "Pedido"),
+        "venda_data": ("DATA_TEXTO", "Data"),
+        "venda_cliente": ("CLIENTE", "Cliente"),
+        "venda_rca": ("NOME_RCA", "RCA"),
+        # o nº da nota se repete entre filiais: a filial diz qual é qual
+        "venda_filial": ("FILIAL", "Filial da nota"),
     },
     "empresa": {
         "empresa_nome": ("NOME_EMPRESA", "Empresa"),
@@ -154,6 +165,14 @@ INDICADORES = {
         },
         "rca_nome_mapa": construir_mapa_rca_nome,
         "rca_requer_meta_cadastrada": True,
+        # "Quem MENOS faturou": o RCA com meta cadastrada (8139) que não
+        # vendeu nada entra no arquivo com R$ 0,00 — sai da lista e vem à
+        # parte (decisão da usuária em 09/10/2026). Totais não mudam.
+        "menor_ignora": {
+            "ordem_por": ("faturamento", "venda_bruta"),
+            "campo": "venda_bruta", "abaixo_de": 0.01,
+            "motivo": "têm meta cadastrada, mas não venderam nada no período",
+        },
         "derivados": [
             {
                 "nome": "toneladas",
@@ -354,14 +373,23 @@ INDICADORES = {
     "desconto": {
         # "Quem MENOS deu desconto": abaixo de R$ 1,00 é arredondamento
         # (meio centavo por item vendido em kg/metro), não desconto — esses
-        # itens saem da lista e vêm à parte como "sem desconto". Só muda a
-        # lista; os totais seguem iguais aos do WinThor (8302).
-        "menor_ignora_abaixo_de": ("valor_desconto", 1.0),
+        # itens saem da lista e vêm à parte. Só muda a lista; os totais
+        # seguem iguais aos do WinThor (8302).
+        "menor_ignora": {
+            "ordem_por": ("valor_desconto", "percentual_desconto"),
+            "campo": "valor_desconto", "abaixo_de": 1.0,
+            "motivo": "não deram desconto (abaixo de R$ 1,00 é só arredondamento)",
+        },
+        # Cruzado com outro indicador, a tabela mostra o desconto em R$ e em %.
+        "colunas_no_cruzamento": ["valor_desconto", "percentual_desconto"],
         "carregar": carregar_faturamento_mensal,
         # Sem período a consulta somaria desde 2020 (ex: "desconto do Mateus
         # em Timon" dava R$ 205 mil, quase tudo de 2020): usa o ano atual e
         # a resposta avisa (decisão da usuária em 06/10/2026).
         "periodo_padrao": "ano_atual",
+        # Uma venda (nota/pedido) já tem data: sem período assumido — senão
+        # "a nota 245704" de 2025 não seria achada em "2026".
+        "sem_periodo_padrao_com": ("venda",),
         # Por cliente/empresa: arquivo próprio (~1,2 milhão de linhas,
         # ver core/repositories/cliente_repository.py), lido só quando a pergunta pede.
         # Por produto/família/grupo: outro arquivo (core/repositories/produto_repository.py) —
@@ -372,6 +400,8 @@ INDICADORES = {
             "produto": carregar_desconto_produto,
             "familia": carregar_desconto_produto,
             "grupo": carregar_desconto_produto,
+            # Por venda (nota/pedido), desde 2025: core/repositories/venda_repository.py
+            "venda": carregar_desconto_venda,
         },
         "granularidade_periodo": "mensal",
         "campos": {
@@ -389,6 +419,7 @@ INDICADORES = {
             "supervisor": "COD_SUPERVISOR", "mes": "MES", "ano": "ANO",
             "cliente": "CODCLI", "empresa": "EMPRESA",
             "produto": "CODPROD", "familia": "FAMILIA", "grupo": "GRUPO",
+            "venda": "NUMTRANSVENDA",
         },
         "resolver_dimensao": {
             "filial": resolver_nome_filial,
@@ -400,6 +431,7 @@ INDICADORES = {
             "produto": resolver_produtos,
             "familia": resolver_familias,
             "grupo": resolver_grupos,
+            "venda": resolver_vendas,
         },
         "rca_nome_mapa": construir_mapa_rca_nome,
         "rca_requer_meta_cadastrada": True,
@@ -431,12 +463,26 @@ INDICADORES = {
     "desconto_diario": {
         # "Quem MENOS deu desconto": abaixo de R$ 1,00 é arredondamento
         # (meio centavo por item vendido em kg/metro), não desconto — esses
-        # itens saem da lista e vêm à parte como "sem desconto". Só muda a
-        # lista; os totais seguem iguais aos do WinThor (8302).
-        "menor_ignora_abaixo_de": ("valor_desconto", 1.0),
+        # itens saem da lista e vêm à parte. Só muda a lista; os totais
+        # seguem iguais aos do WinThor (8302).
+        "menor_ignora": {
+            "ordem_por": ("valor_desconto", "percentual_desconto"),
+            "campo": "valor_desconto", "abaixo_de": 1.0,
+            "motivo": "não deram desconto (abaixo de R$ 1,00 é só arredondamento)",
+        },
+        # Cruzado com outro indicador, a tabela mostra o desconto em R$ e em %.
+        "colunas_no_cruzamento": ["valor_desconto", "percentual_desconto"],
         "carregar": carregar_faturamento_diario,
+        # Por venda (e por cliente, que o arquivo de venda também tem):
+        # desde 2025 — ver core/repositories/venda_repository.py.
+        "fontes_por_dimensao": {
+            "venda": carregar_desconto_venda,
+            "cliente": carregar_desconto_venda,
+            "empresa": carregar_desconto_venda,
+        },
         "granularidade_periodo": "diaria",
         "periodo_padrao": "ano_atual",
+        "sem_periodo_padrao_com": ("venda",),
         "campos": {
             "valor_desconto": ("VALORDESC", "sum"),
             "faturamento_tabela": ("VENDA_TABELA", "sum"),
@@ -447,11 +493,15 @@ INDICADORES = {
         "dimensoes": {
             "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
             "dia": "DATA",
+            "venda": "NUMTRANSVENDA", "cliente": "CODCLI", "empresa": "EMPRESA",
         },
         "resolver_dimensao": {
             "filial": resolver_nome_filial,
             "estado": resolver_estado,
             "rca": resolver_codigos_rca,
+            "venda": resolver_vendas,
+            "cliente": resolver_codigos_cliente,
+            "empresa": resolver_empresas,
         },
         "rca_nome_mapa": construir_mapa_rca_nome,
         "rca_requer_meta_cadastrada": True,

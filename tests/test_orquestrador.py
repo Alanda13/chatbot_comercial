@@ -1406,7 +1406,7 @@ def test_menos_desconto_separa_quem_nao_deu_e_mantem_o_total(monkeypatch):
     """
     'Quem menos deu desconto na sexta' respondia um RCA com R$ 0,00 — ou
     com centavos de arredondamento (meio centavo por item em kg). Abaixo
-    de R$ 1,00 sai da lista e vem em "sem_desconto"; o total segue somando
+    de R$ 1,00 sai da lista e vem em "fora_da_lista_de_menor"; o total segue somando
     tudo (igual ao WinThor).
     """
     dados = pd.DataFrame([
@@ -1427,7 +1427,7 @@ def test_menos_desconto_separa_quem_nao_deu_e_mantem_o_total(monkeypatch):
     })
 
     assert [linha["rca"] for linha in resposta["resultados"]] == [3]
-    assert resposta["sem_desconto"]["quantidade"] == 2
+    assert resposta["fora_da_lista_de_menor"]["quantidade"] == 2
     assert resposta["total_de_todas_as_linhas"]["valor_desconto"] == 67.96
 
 
@@ -1448,7 +1448,7 @@ def test_mais_desconto_nao_separa(monkeypatch):
         "ordenar_por": {"campo": "valor_desconto"},
     })
 
-    assert "sem_desconto" not in resposta
+    assert "fora_da_lista_de_menor" not in resposta
     assert len(resposta["resultados"]) == 2
 
 
@@ -1610,3 +1610,61 @@ def test_sem_ninguem_no_filtro_mostra_quem_chegou_mais_perto(monkeypatch):
     perto = resposta["mais_perto_do_filtro"]["itens"]
     assert [item["filial"] for item in perto] == ["TIMON"]
     assert perto[0]["condicao_que_faltou"] == "percentual_desconto > 5"
+
+
+def test_menos_faturou_separa_rca_que_so_tem_meta(monkeypatch):
+    """
+    'Os 5 RCAs que menos faturaram' vinha com 3 RCAs de R$ 0,00 — só
+    tinham meta cadastrada, não venderam nada. Saem da lista e vêm à
+    parte; o total segue somando tudo. Cruzado com desconto, a tabela
+    mostra o desconto em R$ e em %.
+    """
+    dados = pd.DataFrame([
+        {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": codigo, "ANO": 2026, "MES": 1,
+         "VENDA_BRUTA": venda, "VENDA_LIQ": venda, "VALORDESC": venda * 0.01,
+         "VENDA_TABELA": venda * 1.01, "PESOLIQ": 0.0, "QT_NOTAS": 1, "VALOR_META": 100.0}
+        for codigo, venda in [(1, 0.0), (2, 500.0), (3, 900.0)]
+    ])
+    # Mesma função nos dois: campos com o mesmo nome vêm do mesmo arquivo.
+    carregar = lambda: dados  # noqa: E731
+    for nome in ("faturamento", "desconto"):
+        monkeypatch.setitem(catalogo.INDICADORES[nome], "carregar", carregar)
+        monkeypatch.setitem(catalogo.INDICADORES[nome], "rca_requer_meta_cadastrada", False)
+        monkeypatch.setitem(catalogo.INDICADORES[nome], "rca_nome_mapa", None)
+
+    resposta = orq.executar_consulta({
+        "indicador": "faturamento",
+        "cruzar_com": ["desconto"],
+        "filtros": {"ano": [2026]},
+        "agrupar_por": ["rca"],
+        "ordenar_por": {"campo": "faturamento", "ordem": "asc", "limite": 5},
+    })
+
+    assert [linha["rca"] for linha in resposta["resultados"]] == [2, 3]
+    assert resposta["fora_da_lista_de_menor"]["quantidade"] == 1
+    assert "não venderam nada" in resposta["fora_da_lista_de_menor"]["motivo"]
+    assert resposta["tabela"][0]["_colunas_pedidas"] == ["faturamento", "valor_desconto", "percentual_desconto"]
+
+
+def test_menos_faturou_nao_separa_por_falta_de_desconto(monkeypatch):
+    """A regra é do campo ORDENADO: 'quem menos faturou' não tira quem não
+    deu desconto (antes a regra do desconto valia pra qualquer ordem)."""
+    dados = pd.DataFrame([
+        {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": codigo, "ANO": 2026, "MES": 1,
+         "VENDA_BRUTA": 500.0, "VENDA_LIQ": 500.0, "VALORDESC": desconto,
+         "VENDA_TABELA": 500.0, "PESOLIQ": 0.0, "QT_NOTAS": 1, "VALOR_META": 100.0}
+        for codigo, desconto in [(1, 0.0), (2, 30.0)]
+    ])
+    monkeypatch.setitem(catalogo.INDICADORES["desconto"], "carregar", lambda: dados)
+    monkeypatch.setitem(catalogo.INDICADORES["desconto"], "rca_requer_meta_cadastrada", False)
+    monkeypatch.setitem(catalogo.INDICADORES["desconto"], "rca_nome_mapa", None)
+
+    resposta = orq.executar_consulta({
+        "indicador": "desconto",
+        "filtros": {"ano": [2026]},
+        "agrupar_por": ["rca"],
+        "ordenar_por": {"campo": "venda_bruta", "ordem": "asc"},
+    })
+
+    assert "fora_da_lista_de_menor" not in resposta
+    assert len(resposta["resultados"]) == 2

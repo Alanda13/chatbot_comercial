@@ -40,6 +40,8 @@ def _bases():
     from core.repositories import faturamento_repository as faturamento_data
     from core.repositories import faturamento_diario_repository as faturamento_diario_data
     from core.repositories import produto_repository as produto_data
+    from core.repositories import rca_repository
+    from core.repositories import venda_repository
 
     return [
         ("faturamento mensal", faturamento_data.atualizar,
@@ -52,6 +54,9 @@ def _bases():
          [cliente_data.ARQUIVO_DESCONTO_CLIENTE, cliente_data.ARQUIVO_CLIENTES]),
         ("desconto por produto", produto_data.atualizar,
          [produto_data.ARQUIVO_DESCONTO_PRODUTO, produto_data.ARQUIVO_PRODUTOS]),
+        ("desconto por venda", venda_repository.atualizar,
+         [venda_repository.ARQUIVO_DESCONTO_VENDA]),
+        ("cadastro de RCAs", rca_repository.atualizar, [rca_repository.ARQUIVO_RCAS]),
     ]
 
 

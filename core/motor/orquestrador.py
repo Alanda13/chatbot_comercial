@@ -31,6 +31,7 @@ _ORDEM_RESOLUCAO_DIMENSOES = ("filial", "rca", "supervisor")
 # (ex: um nome de empresa vira todas as lojas dela).
 _RESOLVEDORES_COM_FILIAL = (
     "rca", "supervisor", "cliente", "empresa", "produto", "familia", "grupo",
+    "venda",
 )
 
 # Nome/CNPJ/cidade que descrevem o item agrupado — identificação, não
@@ -747,6 +748,18 @@ def buscar_dados_brutos(
         if dimensao in agrupar_por or dimensao in filtros
     }
 
+    # Mais de um arquivo: vale o que também tem as dimensões dos outros
+    # (ex: o de venda tem cliente — "vendas com mais desconto do Mateus").
+    if len(fontes) > 1:
+        pedidas = {d for d in (*agrupar_por, *filtros) if d in indicador_def.get("fontes_por_dimensao", {})}
+        cobre_tudo = [
+            fonte for fonte in fontes
+            if pedidas <= {
+                d for d, f in indicador_def["fontes_por_dimensao"].items() if f is fonte
+            } | set(getattr(fonte, "tambem_tem", ()))
+        ]
+        fontes = set(cobre_tudo[:1]) or fontes
+
     # Cliente e produto vêm de arquivos diferentes (nenhum tem os dois).
     if len(fontes) > 1:
         raise ConsultaInvalida(
@@ -892,7 +905,7 @@ def _aplicar_agrupamento(
         for dimensao, coluna in zip(agrupar_por, colunas_agrupamento):
             valor = linha[coluna]
 
-            if dimensao in ("mes", "ano", "rca", "supervisor", "cliente", "produto"):
+            if dimensao in ("mes", "ano", "rca", "supervisor", "cliente", "produto", "venda"):
                 # "rca" é código na maioria das bases, mas NOME na meta de
                 # tonelada: tenta número, senão texto.
                 try:
@@ -1278,21 +1291,33 @@ def _aplicar_ordenacao_por_grupo(
 
 
 def _separar_sem_valor(
-    resultado: list[dict], indicador_def: dict, ordenar_por: dict | None
+    resultado: list[dict], indicadores: list[dict], ordenar_por: dict | None
 ) -> tuple[list[dict], dict | None]:
     """
-    "Quem MENOS deu desconto": quem fica abaixo do "menor_ignora_abaixo_de"
-    do indicador (nenhum desconto, ou só centavos de arredondamento) sai da
-    lista e vem à parte. Só muda a LISTA — os totais somam tudo, iguais ao
-    WinThor.
+    "Quem MENOS…": quem não teve o que está sendo medido sai da lista e vem
+    à parte, pela regra "menor_ignora" do indicador do campo ordenado (ex:
+    "quem menos deu desconto" sem quem deu R$ 0,00; "quem menos faturou"
+    sem o RCA que só tem meta cadastrada e não vendeu nada). Só muda a
+    LISTA — os totais somam tudo, iguais ao WinThor.
     """
-    regra = indicador_def.get("menor_ignora_abaixo_de")
-
-    if not regra or not ordenar_por or ordenar_por.get("ordem") != "asc" or ordenar_por.get("por"):
+    if not ordenar_por or ordenar_por.get("ordem") != "asc" or ordenar_por.get("por"):
         return resultado, None
 
-    campo, limite = regra
-    sem_valor = [linha for linha in resultado if (linha.get(campo) or 0) < limite]
+    regra = next(
+        (
+            definicao["menor_ignora"] for definicao in indicadores
+            if ordenar_por.get("campo") in (definicao.get("menor_ignora") or {}).get("ordem_por", ())
+        ),
+        None,
+    )
+
+    if not regra or not resultado or regra["campo"] not in resultado[0]:
+        return resultado, None
+
+    def fora(linha):
+        return (linha.get(regra["campo"]) or 0) < regra["abaixo_de"]
+
+    sem_valor = [linha for linha in resultado if fora(linha)]
 
     if not sem_valor:
         return resultado, None
@@ -1301,14 +1326,11 @@ def _separar_sem_valor(
         return next((str(linha[c]) for c in _CAMPOS_DE_NOME if linha.get(c) is not None), "")
 
     return (
-        [linha for linha in resultado if (linha.get(campo) or 0) >= limite],
+        [linha for linha in resultado if not fora(linha)],
         {
             "quantidade": len(sem_valor),
             "itens": [nome(linha) for linha in sem_valor[:20]],
-            "explicacao": (
-                f"{campo} abaixo de R$ {limite:.2f} — nenhum desconto ou só "
-                "centavos de arredondamento; ficaram fora da lista de 'menor'."
-            ),
+            "motivo": regra["motivo"] + "; ficaram fora da lista de 'menor'.",
         },
     )
 
@@ -1355,8 +1377,9 @@ def _colunas_usadas_na_pergunta(consulta: dict, indicador_def: dict) -> list[str
     """
     Sem "colunas" da IA, a tabela mostra só o que a pergunta usou: o campo
     da ordem, os dos filtros calculados e, num cruzamento, o principal de
-    cada indicador (antes a tela escolhia por palavras da resposta e saía
-    com colunas que ninguém pediu).
+    cada indicador — ou as "colunas_no_cruzamento" dele (desconto: R$ e %)
+    (antes a tela escolhia por palavras da resposta e saía com colunas que
+    ninguém pediu).
     """
     campos = [
         (consulta.get("ordenar_por") or {}).get("campo"),
@@ -1364,10 +1387,9 @@ def _colunas_usadas_na_pergunta(consulta: dict, indicador_def: dict) -> list[str
     ]
 
     if consulta.get("cruzar_com"):
-        campos += [
-            catalogo.INDICADORES[nome].get("campo_principal")
-            for nome in [consulta["indicador"], *consulta["cruzar_com"]]
-        ]
+        for nome in [consulta["indicador"], *consulta["cruzar_com"]]:
+            definicao = catalogo.INDICADORES[nome]
+            campos += definicao.get("colunas_no_cruzamento") or [definicao.get("campo_principal")]
 
     if not any(campos):
         return None
@@ -1473,6 +1495,14 @@ def _ajustar_periodo(consulta: dict, indicador_def: dict) -> tuple[dict, dict]:
         ),
         None,
     )
+    # Filtro que já tem data própria (ex: uma venda) dispensa o padrão.
+    if any(
+        dimensao in (consulta.get("filtros") or {})
+        for nome in indicadores
+        for dimensao in catalogo.INDICADORES[nome].get("sem_periodo_padrao_com", ())
+    ):
+        periodo_padrao = None
+
     periodo_assumido = periodo_consultado is None and periodo_padrao is not None
 
     if periodo_assumido:
@@ -1831,8 +1861,10 @@ def executar_consulta(consulta: dict) -> dict:
     consulta, contexto = _ajustar_periodo(consulta, indicador_def)
     resultado, extras, lados = _consultar(consulta, indicador_def)
 
-    resultado, sem_desconto = _separar_sem_valor(
-        resultado, indicador_def, consulta.get("ordenar_por")
+    resultado, fora_da_lista = _separar_sem_valor(
+        resultado,
+        [catalogo.INDICADORES[nome] for nome in [consulta["indicador"], *(consulta.get("cruzar_com") or [])]],
+        consulta.get("ordenar_por"),
     )
     resultado_antes_do_limite = resultado
     resultado, totais_por_grupo = _ordenar(resultado, consulta.get("ordenar_por"), extras)
@@ -1852,8 +1884,8 @@ def executar_consulta(consulta: dict) -> dict:
     if totais_por_grupo is not None:
         resposta["totais_por_grupo"] = totais_por_grupo
 
-    if sem_desconto is not None:
-        resposta["sem_desconto"] = sem_desconto
+    if fora_da_lista is not None:
+        resposta["fora_da_lista_de_menor"] = fora_da_lista
 
     _avisos_para_a_ia(resposta, consulta, indicador_def, contexto, extras, resultado_antes_do_limite)
 

@@ -91,6 +91,10 @@ def mostrar_historico():
                         mensagem.get("conteudo", ""),
                         chave=f"historico_{indice_mensagem}",
                         nome_ferramenta=mensagem.get("nome_ferramenta"),
+                        pergunta=(
+                            st.session_state.mensagens[indice_mensagem - 1]["conteudo"]
+                            if indice_mensagem > 0 else None
+                        ),
                     )
 
 
@@ -159,6 +163,7 @@ def responder(pergunta):
                         resposta,
                         chave="atual",
                         nome_ferramenta=nome_ferramenta,
+                        pergunta=pergunta,
                     )
 
             st.session_state.mensagens.append(

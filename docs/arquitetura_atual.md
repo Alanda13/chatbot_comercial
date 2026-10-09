@@ -856,9 +856,9 @@ removidos junto com elas — não é perda de cobertura.
   o mês em andamento vem em `mes_em_andamento` (mesmos itens do resultado), que
   a resposta cita à parte. Vale também quando a meta está cruzada com outro
   indicador. Decisão provisória até o supervisor responder.
-- **"Quem MENOS deu desconto"** (`menor_ignora_abaixo_de` em desconto e
+- **"Quem MENOS deu desconto"** (`menor_ignora` em desconto e
   desconto_diario; `orquestrador._separar_sem_valor`): em ordem crescente,
-  quem tem desconto abaixo de R$ 1,00 sai da lista e vem em `sem_desconto`
+  quem tem desconto abaixo de R$ 1,00 sai da lista e vem em `fora_da_lista_de_menor`
   (quantos e quais). Abaixo de R$ 1,00 é arredondamento: item vendido em
   kg/metro dá meio centavo (21,9 kg x R$ 10,35 = R$ 226,665 → R$ 226,67 na
   tabela, R$ 226,66 na nota → "desconto" de R$ 0,005). Só muda a lista; os
@@ -1147,3 +1147,53 @@ forma exata ("nenhuma das 18 filiais"). A conferência também ignora o inteiro 
 - Quando nenhum item passa em 2+ filtros_calculados, o motor manda
   `mais_perto_do_filtro`: quem atende a todas as condições menos uma e qual
   faltou ("condicao_que_faltou") — a resposta mostra depois do "nenhuma".
+
+### Regras da resposta por assunto (09/10/2026)
+
+As ~536 linhas de regras da resposta (23 seções, todas mandadas em toda
+resposta) viraram `core/services/prompts/resposta.py`: seções curtas por assunto
+e `regras_da_resposta(resultado, ferramenta)` manda só as que se aplicam ao que
+veio nos dados (ex: regras de NPS só com NPS; de meta de tonelada só com ela).
+Regras repetidas foram juntadas; as que o motor já escreve nos dados
+("periodo_assumido", "criterio_da_ordem", "mes_atual_incompleto"...) viraram
+"siga o que o campo diz". Cada resposta recebe 40–110 linhas.
+Conferido com uma bateria de 21 perguntas reais pela IA, antes x depois: 19 → 20
+certas (a única falha nas duas é "Mateus" ambíguo — o chatbot pergunta qual, o
+teste é que esperava um valor), tempo total 170 s → 125 s.
+Combinado com a usuária: não criar regra nova a cada erro do modelo — só
+corrigir o que der pra resolver no motor, de forma exata e geral.
+
+## Desconto por venda (nota/pedido) — 09/10/2026
+
+- `core/repositories/venda_repository.py` → `data/desconto_venda.csv`: uma linha
+  por nota (NUMTRANSVENDA, nota, pedido, data, filial, cliente, RCA, supervisor,
+  nº de itens, desconto, tabela, venda), **desde 2025** (decisão da usuária:
+  ~700 mil notas/ano; desde 2020 seriam 4,3 milhões). Mesma conta da 8302: 2025
+  bate com o mensal até os centavos. Atualizado em segundo plano; em memória até
+  o arquivo mudar (abrir leva ~8 s, depois ~0,1–1 s por consulta).
+- Dimensão "venda" nos indicadores desconto e desconto_diario (este também
+  ganhou cliente/empresa pelo arquivo de venda). Atributos: nota, pedido, data,
+  cliente, RCA, filial.
+- Nº de nota se repete entre filiais: com filial na pergunta, filtra; sem, e
+  em filiais diferentes, pergunta qual (nunca soma vendas diferentes).
+- Filtro de venda dispensa o "ano atual" automático (`sem_periodo_padrao_com`).
+- Arquivo que "também tem" as dimensões de outro (`tambem_tem`) é escolhido
+  quando a pergunta mistura as duas (ex: vendas do Mateus = venda + empresa).
+- Regras da resposta: seção VENDA (identificar pela nota, nunca pelo nº interno).
+
+## Excel no formato institucional (09/10/2026)
+
+O botão "⬇️ Baixar em Excel" usa `ui/exportar_excel.py` (`gerar_excel`), no formato do resumo gerencial do supervisor:
+
+- topo do tamanho da tabela: a logo na 1ª linha (em fundo branco, pois as letras azuis sumiam no azul) e, embaixo, a faixa azul com a pergunta como título e, como subtítulo, o período e "Gerado em". Uma pergunta que não cabe na largura da tabela quebra em mais linhas; tabela estreita é alargada até 45 caracteres;
+- cabeçalho azul (#0E5EA6), linhas zebradas (#E8F1F9), bordas finas, largura automática e cabeçalho fixo ao rolar.
+
+**Valores como número:** a tabela chega formatada para a tela ("R$ 1.234,56", "2,29%", "1.234"). Nas colunas em que toda célula é valor, o texto volta a ser número, com o formato do Excel (`"R$" #,##0.00`, `0.00%`, `#,##0`), para dar para somar. "sem dados" e "menos de 0,01%" ficam como texto.
+
+**Nome do arquivo:** `Chatbot_Ferronorte_dd.mm.aaaa.xlsx`.
+
+## "Quem menos faturou", nomes dos RCAs e colunas do desconto (09/10/2026)
+
+- **Regra de "menor" por campo ordenado:** `menor_ignora` (catálogo) diz, para cada indicador, quais campos de ordem ela vale (`ordem_por`), o que testar (`campo` < `abaixo_de`) e o `motivo`. A regra fica no desconto (R$ 0,00 de desconto) e no faturamento (RCA com meta cadastrada, mas sem nenhuma venda: `venda_bruta` < 0,01). Quem fica de fora vem em `fora_da_lista_de_menor`, e os totais não mudam. Antes, a regra do desconto valia para qualquer ordem crescente.
+- **Nomes dos RCAs:** `core/repositories/rca_repository.py` grava `data/rcas.csv` a partir da PCUSUARI (só leitura), atualizado pelo atualizador. `construir_mapa_rca_nome` usa o nome das vendas (8302) e completa com o cadastro quem nunca vendeu (ex.: 9230, RÔMULO VIENA VERAS).
+- **Tabela de cruzamento:** `colunas_no_cruzamento` do desconto mostra o desconto em R$ e em %, não só o %.
