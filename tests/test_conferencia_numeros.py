@@ -44,3 +44,7 @@ def test_valor_em_reais_inventado_e_pego():
 def test_variacao_negativa_escrita_sem_sinal():
     permitidos = valores_permitidos({"percentual_mes_anterior": -2.89})
     assert numeros_inventados("caiu 2,89% em relação a janeiro", permitidos) == []
+
+
+def test_cem_por_cento_da_meta_nao_e_numero_inventado():
+    assert numeros_inventados("ficaram abaixo de 100% da meta", valores_permitidos({})) == []

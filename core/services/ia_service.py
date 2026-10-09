@@ -444,6 +444,37 @@ REGRAS PARA TOTAL E LISTAS LONGAS (campos "total_de_todas_as_linhas" e
 - Se "periodo_consultado.descricao" disser "todo o histórico disponível",
   diga isso na resposta.
 
+REGRAS PARA QUANTIDADES:
+- Diga quantos itens atendem sobre o total (ex: "10 das 18 filiais"). Só
+  use "todas" quando forem todas mesmo.
+
+REGRAS PARA PERGUNTA COM VÁRIOS CRITÉRIOS (ex: "as filiais que precisam
+de mais atenção considerando queda, meta, desconto e NPS"):
+- Defina cada critério com um corte claro e diga qual. O corte é o valor
+  do CONJUNTO, calculado e impresso pelo código — nunca um número
+  redondo escolhido por você (a conferência barra): "desconto alto" =
+  % acima do % de desconto de todas as filiais juntas; "NPS baixo" =
+  abaixo do NPS de todas juntas; "meta não atingida" = abaixo de 100%;
+  "queda" = variação negativa.
+- Pra cada item, diga QUANTOS e QUAIS critérios ele atende, e ordene do
+  que atende mais pro que atende menos (ex: "Parnaíba — 4 de 4: ...").
+  Nunca atribua a um item um critério que os números dele contradizem
+  (ex: chamar de "NPS baixo" uma filial com um dos maiores NPS).
+- Itens com um critério muito forte sozinho (ex: o pior NPS de todos)
+  também entram, dizendo isso.
+
+REGRAS PARA "O MAIOR E O MENOR" NA MESMA PERGUNTA:
+- A lista vem inteira e ordenada: o maior é o 1º item e o menor, o
+  último. Cite os dois, com o número de cada. Se veio um item só, diga
+  que só um item tem dado — mas NUNCA conclua isso de uma lista cortada
+  em 1 ("limite": 1), que mostra só o 1º colocado.
+
+REGRAS PARA LISTA COM DUAS DIMENSÕES (ex: "agrupar_por": ["rca", "filial"]):
+- Se cada item da primeira aparece com UM só valor da segunda (ex: cada
+  RCA em uma filial só), diga isso em 1 frase (ex: "Cada um desses RCAs
+  deu desconto só na própria filial:") e mostre o item com a filial ao
+  lado — não escreva como se houvesse várias filiais por RCA.
+
 REGRAS PARA COMPARAÇÃO ENTRE DOIS ITENS (campo "comparacao_entre"):
 - Leia "como_ler" dentro de "comparacao_entre": diz de quem é cada valor
   (o lado "a", o lado "b") e como a diferença foi calculada. Use os NOMES
@@ -478,10 +509,12 @@ REGRAS PARA ANÁLISE E COMPARAÇÃO:
   ano), calculadas igual ao WinThor — use esses valores.
 - Quando o usuário perguntar quanto cresceu/aumentou/caiu/reduziu, diga a
   diferença e o percentual desses campos prontos.
-- Campo que JÁ É um percentual (atingimento, % de desconto, NPS): diga a
+- Campo que JÁ É um percentual (atingimento, % de desconto): diga a
   diferença em PONTOS PERCENTUAIS ("diferenca_{{campo}}", ex: "28,97
   pontos percentuais") e NÃO cite "percentual_{{campo}}" (seria "33,65% a
-  mais" sobre um percentual, o que confunde).
+  mais" sobre um percentual, o que confunde). NPS é NOTA, não percentual:
+  a diferença é em "pontos" (ex: "caiu 4,10 pontos, de 89,98 para
+  85,88"), nunca "pontos percentuais".
 - Se o resultado não trouxer a diferença pronta e ela for necessária,
   calcule-a EXECUTANDO CÓDIGO sobre os dados do resultado (nunca de
   cabeça); se não puder executar código, mostre os valores e diga qual é

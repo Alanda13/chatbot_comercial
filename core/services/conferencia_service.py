@@ -69,13 +69,14 @@ def valores_permitidos(*fontes, saidas_de_codigo: list[str] = ()) -> set[float]:
 def numeros_inventados(texto: str, permitidos: set[float]) -> list[str]:
     """
     Números do texto que não são arredondamento/abreviação de nenhum valor
-    permitido. Inteiros pequenos (até 99) são ignorados: numeração, "7
+    permitido. Inteiros até 100 são ignorados (o 100 é o corte da meta,
+    "abaixo de 100%"): numeração, "7
     filiais", "os 3 maiores".
     """
     inventados = []
 
     for valor, casas, multiplicador, bruto in _numeros_do_texto(texto):
-        if casas == 0 and multiplicador == 1 and valor < 100:
+        if casas == 0 and multiplicador == 1 and valor <= 100:
             continue
 
         tolerancia = 0.5 * 10 ** -casas

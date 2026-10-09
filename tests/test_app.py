@@ -285,3 +285,24 @@ def test_texto_da_conversa_tem_perguntas_respostas_e_tabela():
     assert "Você: faturamento por filial" in texto
     assert "Chatbot: Faturamento por filial:" in texto   # sem os **
     assert "R$ 100,00" in texto and "IMPERATRIZ" in texto
+
+
+def test_tabela_com_primeira_coluna_repetida_nao_quebra():
+    """'Os 5 RCAs de cada mês': "Janeiro" repete na 1ª coluna — o alinhamento
+    célula a célula do Styler quebrava com índice repetido."""
+    from ui.components.tabela import exibir_tabela
+
+    dados = [
+        {"mes": mes, "rca": rca, "rca_nome": nome, "faturamento": valor, "ano": 2026,
+         "_colunas_pedidas": ["faturamento"]}
+        for mes, rca, nome, valor in [
+            (1, 10, "ANA", 300.0), (1, 11, "BRUNO", 200.0),
+            (2, 10, "ANA", 250.0), (2, 12, "CARLA", 240.0),
+            (3, 10, "ANA", 260.0), (3, 13, "DIEGO", 230.0),
+            (4, 10, "ANA", 270.0), (4, 14, "ELISA", 220.0),
+        ]
+    ]
+    from ui.formatacao import preparar_tabela
+    assert preparar_tabela(dados, "faturamento", "consultar_dados_comerciais").iloc[:, 0].duplicated().any()
+
+    exibir_tabela(dados, "faturamento", chave="teste", nome_ferramenta="consultar_dados_comerciais")

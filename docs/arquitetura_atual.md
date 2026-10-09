@@ -1110,3 +1110,40 @@ Pedido da usuária ("igual ao ChatGPT"), com as cores da Ferronorte:
   em…" embaixo do campo (`styles.mostrar_data_atualizacao`).
 - Barra lateral: "＋ Nova conversa" (limpa o histórico) e "Esta conversa"
   (baixar/copiar).
+
+### Pergunta sobre os itens da resposta anterior (09/10/2026)
+
+"e em quais filiais eles mais deram desconto" (depois de "os RCAs que mais deram
+desconto no mês passado") virava o ranking de TODAS as filiais. Regra geral no
+prompt de interpretação (prompts/base.py): referência aos itens da resposta
+anterior ("eles", "esses RCAs"...) = a mesma consulta (período e itens) com a
+nova dimensão, e "os N maiores" vira ordenar_por com "por" + "limite_grupos". Na
+resposta (ia_service): se cada item tem um valor só da 2ª dimensão (cada RCA numa
+filial), dizer isso em vez de listar como se houvesse várias.
+Também: tabela com a 1ª coluna repetida quebrava o alinhamento à direita
+(Styler célula a célula) — agora é uma regra por coluna (ui/components/tabela.py).
+
+### Textos das análises e pergunta com vários critérios (09/10/2026)
+
+- NPS é nota: diferença em "pontos", nunca "pontos percentuais" (a regra
+  antiga juntava NPS com os percentuais).
+- Quantidades com o total ("10 das 18 filiais"). Com filtros_calculados o motor
+  manda `quantidade_antes_do_filtro` (quantos havia antes do filtro).
+- Vários critérios ("filiais que precisam de mais atenção..."): tool_manager pede
+  UMA consulta cruzando os indicadores de todos os critérios, sem limite e sem
+  filtro; a resposta define cada corte com o valor do conjunto (calculado pelo
+  código — número inventado é barrado) e diz quantos/quais critérios cada item
+  atende, em ordem.
+
+### Condições que valem juntas (09/10/2026)
+
+"Queda de faturamento E desconto subindo E NPS caindo" respondia Picos (o NPS dele
+subiu): a IA julgava as condições de olho e a conferência só barra NÚMEROS
+inventados, não conclusões. Agora (tool_manager) cada condição vira um
+filtro_calculado — com comparar_com, sobre "diferenca_{campo}" (< 0 caiu, > 0
+subiu); "abaixo da meta" = percentual_atingimento < 100 — e o sistema decide de
+forma exata ("nenhuma das 18 filiais"). A conferência também ignora o inteiro 100
+(corte da meta), que não está nos dados.
+- Quando nenhum item passa em 2+ filtros_calculados, o motor manda
+  `mais_perto_do_filtro`: quem atende a todas as condições menos uma e qual
+  faltou ("condicao_que_faltou") — a resposta mostra depois do "nenhuma".

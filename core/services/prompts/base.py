@@ -200,6 +200,19 @@ Resposta esperada (executa de novo, não reaproveita do histórico):
   conversa os filtros que o usuário já informou antes (RCA, filial,
   ano...) e adicionando o "agrupar_por" necessário pro novo nível de
   detalhe pedido.
+- IMPORTANTE — PERGUNTA SOBRE OS ITENS DA RESPOSTA ANTERIOR: quando a
+  pergunta se refere aos itens que você acabou de mostrar ("eles",
+  "esses RCAs", "dessas filiais", "e em quais filiais eles...", "e
+  desses clientes..."), é a MESMA consulta anterior (mesmo indicador,
+  período e os mesmos itens) com o que foi pedido a mais — NUNCA uma
+  consulta geral nova. Mantenha o agrupamento anterior, acrescente a
+  nova dimensão e, se a anterior era "os N maiores", use ordenar_por
+  com "por" na dimensão anterior e "limite_grupos": N (ex: depois de
+  "os 10 RCAs que mais deram desconto no mês passado", "e em quais
+  filiais eles mais deram desconto" = desconto do mês passado,
+  agrupar_por ["rca", "filial"], ordenar_por pelo valor do desconto com
+  "por": "rca" e "limite_grupos": 10 — e NÃO o desconto de todas as
+  filiais).
 
 Exemplo:
 

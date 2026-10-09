@@ -1587,3 +1587,26 @@ def test_mes_a_mes_cortado_continua_em_ordem():
     cortado = _limitar_resultados({"indicador": "desconto", "agrupar_por": ["mes"], "resultados": linhas})
 
     assert cortado["resultados"][0]["mes"] == 1
+
+
+def test_sem_ninguem_no_filtro_mostra_quem_chegou_mais_perto(monkeypatch):
+    dados = pd.DataFrame([
+        {"FILIAL": "TIMON", "COD_RCA": 1, "COD_SUPERVISOR": 9, "MES": 8, "ANO": 2026,
+         "VALORDESC": 30.0, "VENDA_TABELA": 1000.0, "VENDA_BRUTA": 1000.0},
+        {"FILIAL": "CAXIAS", "COD_RCA": 2, "COD_SUPERVISOR": 9, "MES": 8, "ANO": 2026,
+         "VALORDESC": 5.0, "VENDA_TABELA": 1000.0, "VENDA_BRUTA": 1000.0},
+    ])
+    monkeypatch.setitem(catalogo.INDICADORES["desconto"], "carregar", lambda: dados)
+
+    resposta = orq.executar_consulta({
+        "indicador": "desconto", "filtros": {"ano": [2026]}, "agrupar_por": ["filial"],
+        "filtros_calculados": [
+            {"campo": "valor_desconto", "operador": ">", "valor": 10},
+            {"campo": "percentual_desconto", "operador": ">", "valor": 5},
+        ],
+    })
+
+    assert resposta["resultados"] == []
+    perto = resposta["mais_perto_do_filtro"]["itens"]
+    assert [item["filial"] for item in perto] == ["TIMON"]
+    assert perto[0]["condicao_que_faltou"] == "percentual_desconto > 5"

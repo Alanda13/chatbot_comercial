@@ -50,15 +50,15 @@ def exibir_tabela(dados_tabela, texto_referencia, chave, nome_ferramenta=None):
         tabela_exibicao[coluna] = tabela_exibicao[coluna].str.replace(" ", "\u00a0")
 
     # Valores (R$, %, números) à direita, pra ficarem um embaixo do
-    # outro; texto (nomes de produto, família…) continua à esquerda.
+    # outro; texto (nomes de produto, família…) continua à esquerda. Uma
+    # regra por COLUNA (título e células): o estilo célula a célula
+    # (set_properties) quebra quando a 1ª coluna repete valores (ex: "os 5
+    # RCAs de cada mês" — "Janeiro" 5 vezes).
     st.table(
-        tabela_exibicao.style.set_properties(
-            subset=colunas_de_valor, **{"text-align": "right !important"}
-        ).set_table_styles({
-            # o título da coluna também à direita, em cima dos números
-            coluna: [{"selector": "th", "props": "text-align: right !important;"}]
+        tabela_exibicao.style.set_table_styles({
+            coluna: [{"selector": "", "props": "text-align: right !important;"}]
             for coluna in colunas_de_valor
-        }, overwrite=False)
+        })
         if colunas_de_valor else tabela_exibicao
     )
 

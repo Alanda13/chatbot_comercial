@@ -1598,10 +1598,44 @@ def _consultar(consulta: dict, indicador_def: dict) -> tuple[list[dict], dict, t
         resultado = _aplicar_variacao_temporal(resultado, agrupar_por, indicador_def, filtros)
         resultado = _aplicar_necessidade_diaria(resultado, agrupar_por, indicador_def, filtros)
 
-    for filtro_calculado in consulta.get("filtros_calculados") or []:
+    filtros_calculados = consulta.get("filtros_calculados") or []
+    antes_do_filtro = resultado
+
+    if filtros_calculados:
+        # Quantos havia antes do filtro: sem isso a IA via só os que passaram
+        # e escrevia "todas as 10 filiais" quando eram 10 de 18.
+        extras["itens_antes_do_filtro"] = len(resultado)
+
+    for filtro_calculado in filtros_calculados:
         resultado = _aplicar_filtro_calculado(resultado, filtro_calculado)
 
+    # Nenhum item atendeu a todas as condições: quem chegou mais perto
+    # (todas menos uma), pra resposta não parar no "nenhuma".
+    if not resultado and len(filtros_calculados) > 1:
+        extras["mais_perto_do_filtro"] = _mais_perto_do_filtro(antes_do_filtro, filtros_calculados)
+
     return resultado, extras, lados
+
+
+def _mais_perto_do_filtro(resultado: list[dict], filtros_calculados: list[dict]) -> list[dict]:
+    """Os itens que atendem a todas as condições menos uma, com a que faltou."""
+    perto = []
+
+    for item in resultado:
+        faltaram = [
+            filtro for filtro in filtros_calculados
+            if not _aplicar_filtro_calculado([item], filtro)
+        ]
+
+        if len(faltaram) == 1:
+            perto.append({
+                **item,
+                "condicao_que_faltou": (
+                    f"{faltaram[0]['campo']} {faltaram[0]['operador']} {faltaram[0]['valor']}"
+                ),
+            })
+
+    return perto
 
 
 def _ordenar(resultado: list[dict], ordenar_por: dict | None, extras: dict) -> tuple[list[dict], list | None]:
@@ -1679,6 +1713,24 @@ def _avisos_para_a_ia(
                 linha for linha in contexto["mes_em_andamento"]["resultados"]
                 if _chave(linha, agrupar_por) in mostradas
             ],
+        }
+
+    if "itens_antes_do_filtro" in extras:
+        resposta["quantidade_antes_do_filtro"] = (
+            f"{extras['itens_antes_do_filtro']} itens antes dos filtros sobre a "
+            f"métrica; {len(resultado_antes_do_limite)} atenderam. Diga os dois "
+            "números (ex: \"10 das 18 filiais\")."
+        )
+
+    if extras.get("mais_perto_do_filtro"):
+        resposta["mais_perto_do_filtro"] = {
+            "como_ler": (
+                "Nenhum item atendeu a TODAS as condições. Estes atendem a "
+                "todas menos uma ('condicao_que_faltou'): depois de dizer "
+                "'nenhuma', mostre-os como os que chegaram mais perto, com o "
+                "número da condição que faltou."
+            ),
+            "itens": extras["mais_perto_do_filtro"],
         }
 
     if extras.get("itens_filtrados"):
