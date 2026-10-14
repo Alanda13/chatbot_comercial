@@ -1,7 +1,9 @@
 """
 O chat: histórico de mensagens, campo de digitar, botão de copiar e o
-envio da pergunta (com a bolinha de "digitando" até a resposta chegar).
+envio da pergunta (com a bolinha de "digitando" e a etapa atual —
+"Entendendo a pergunta…", "Buscando os dados…" — até a resposta chegar).
 """
+import html
 import json
 
 import streamlit as st
@@ -98,6 +100,18 @@ def mostrar_historico():
                     )
 
 
+def _mostrar_digitando(placeholder, etapa=""):
+    placeholder.markdown(
+        f"""
+        <div class="digitando">
+            <span></span><span></span><span></span>
+            <em>{html.escape(etapa)}</em>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def ler_pergunta():
     """A pergunta digitada ou, se não houver, a de exemplo clicada."""
     pergunta = st.chat_input(
@@ -132,14 +146,7 @@ def responder(pergunta):
 
     with st.chat_message("assistant", avatar=AVATAR_POR_PAPEL["assistant"]):
         placeholder = st.empty()
-        placeholder.markdown(
-            """
-            <div class="digitando">
-                <span></span><span></span><span></span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        _mostrar_digitando(placeholder)
 
         # A bolha de "digitando" é sempre substituída pelo conteúdo
         # final, seja a resposta ou o erro — nunca fica travada na tela.
@@ -147,6 +154,7 @@ def responder(pergunta):
             resposta, dados_tabela, nome_ferramenta = processar_pergunta(
                 pergunta=pergunta,
                 historico=historico,
+                avisar_etapa=lambda etapa: _mostrar_digitando(placeholder, etapa),
             )
             # Com formatação (negrito, listas, tabelas) — as análises vêm em
             # markdown; com st.text os **asteriscos** apareciam crus.

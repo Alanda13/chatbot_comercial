@@ -130,8 +130,9 @@ TOTAIS_POR_GRUPO = """GRUPOS ("totais_por_grupo"):
   cada um, os itens dele que vieram em "resultados"."""
 
 FORA_DA_LISTA_DE_MENOR = """FORA DA LISTA DE "MENOR" ("fora_da_lista_de_menor"):
-- Diga primeiro quantos ficaram de fora, quem são e o "motivo", e depois,
-  "entre os demais", quem é o menor. Nunca chame de "o menor" quem está em
+- Diga primeiro quantos ficaram de fora, quem são e o "motivo" (e os de
+  "tambem_fora", cada grupo com o seu motivo), e depois, "entre os demais",
+  quem é o menor. Nunca chame de "o menor" quem está em
   "fora_da_lista_de_menor"."""
 
 MES_EM_ANDAMENTO = """MÊS EM ANDAMENTO ("mes_em_andamento"):

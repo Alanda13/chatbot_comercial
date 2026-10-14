@@ -6,7 +6,8 @@ Os CSVs são atualizados em segundo plano por `core/services/atualizador_service
 pergunta nunca espera o Oracle. Aqui ficam as peças que os módulos de
 dados compartilham:
 
-- `ler_csv` / `gravar_csv`: a gravação escreve num arquivo temporário e
+- `ler_csv` / `gravar_csv`: a leitura fica em memória até o arquivo
+  mudar; a gravação escreve num arquivo temporário e
   troca pelo definitivo de uma vez (`os.replace`), com uma trava em
   comum com a leitura — ninguém lê um CSV pela metade nem enquanto ele é
   trocado (no Windows, trocar um arquivo aberto dá erro).
@@ -42,9 +43,26 @@ def marcar_atualizador_ativo() -> None:
     _atualizador_ativo.set()
 
 
+# Cada CSV lido fica em memória até o arquivo mudar (o atualizador regrava
+# de hora em hora): ler o desconto por cliente do disco leva ~2 s a cada
+# pergunta, da memória ~0 s. A versão é a data + o tamanho do arquivo.
+_cache_csv: dict = {}
+
+
 def ler_csv(arquivo: Path, **opcoes) -> pd.DataFrame:
+    chave = (str(arquivo), repr(sorted(opcoes.items())))
+
     with _trava:
-        return pd.read_csv(arquivo, **_OPCOES_CSV, **opcoes)
+        estado = arquivo.stat()
+        versao = (estado.st_mtime_ns, estado.st_size)
+        guardado = _cache_csv.get(chave)
+
+        if guardado is None or guardado[0] != versao:
+            guardado = (versao, pd.read_csv(arquivo, **_OPCOES_CSV, **opcoes))
+            _cache_csv[chave] = guardado
+
+        # Cópia: quem lê pode mexer na tabela sem estragar a guardada.
+        return guardado[1].copy()
 
 
 def gravar_csv(tabela: pd.DataFrame, arquivo: Path) -> None:

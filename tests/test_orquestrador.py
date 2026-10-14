@@ -1668,3 +1668,74 @@ def test_menos_faturou_nao_separa_por_falta_de_desconto(monkeypatch):
 
     assert "fora_da_lista_de_menor" not in resposta
     assert len(resposta["resultados"]) == 2
+
+
+# --- ano que não é ano / período da comparação / pontos percentuais ---------
+
+
+def test_ano_que_nao_e_ano_da_erro_claro():
+    with pytest.raises(ConsultaInvalida, match="'10' não é um ano"):
+        orq.executar_consulta({"indicador": "faturamento", "filtros": {"ano": [2026, 10]}})
+
+
+def test_comparar_com_mes_anterior_sem_periodo_usa_o_mes_atual(monkeypatch):
+    monkeypatch.setitem(catalogo.INDICADORES["desconto"], "carregar", _dados_desconto)
+    resposta = orq.executar_consulta({"indicador": "desconto", "comparar_com": "mes_anterior"})
+    hoje = date.today()
+
+    assert resposta["periodo_consultado"]["mes"] == [hoje.month]
+    assert resposta["periodo_consultado"]["ano"] == [hoje.year]
+
+
+def test_diferenca_entre_percentuais_sai_em_pontos_percentuais():
+    from ui.formatacao import TIPO_POR_COLUNA, formatar_pontos_percentuais_com_sinal
+
+    assert TIPO_POR_COLUNA["diferenca_percentual_desconto"] == "pontos_percentuais_com_sinal"
+    assert formatar_pontos_percentuais_com_sinal(2.32) == "+2,32 p.p."
+    assert formatar_pontos_percentuais_com_sinal(-0.3) == "-0,30 p.p."
+
+
+def test_cliente_que_menos_comprou_e_pela_venda_bruta_com_o_motivo_de_cliente(monkeypatch):
+    """Cliente que só devolveu sai da lista com o motivo de cliente (antes
+    vinha o do RCA: "têm meta cadastrada"); pela venda bruta não há negativo."""
+    dados = pd.DataFrame([
+        {"FILIAL": "TIMON", "ESTADO": "MA", "ANO": 2026, "MES": 10, "COD_RCA": 1, "CODCLI": codigo,
+         "CLIENTE": nome, "VENDA_BRUTA": venda, "VENDA_LIQ": venda - devolucao}
+        for codigo, nome, venda, devolucao in [
+            (1, "VALMIR", 0.0, 52284.12), (2, "S A RIBEIRO", 1122.70, 13173.18), (3, "DARLISON", 0.76, 0.0),
+        ]
+    ])
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"]["fontes_por_dimensao"], "cliente", lambda: dados)
+
+    resposta = orq.executar_consulta({
+        "indicador": "faturamento", "filtros": {"ano": [2026], "mes": [10]}, "agrupar_por": ["cliente"],
+        "ordenar_por": {"campo": "venda_bruta", "ordem": "asc"},
+    })
+
+    assert [linha["cliente"] for linha in resposta["resultados"]] == [3, 2]
+    assert resposta["fora_da_lista_de_menor"]["itens"] == ["VALMIR"]
+    assert "só devolução" in resposta["fora_da_lista_de_menor"]["motivo"]
+
+
+def test_menos_faturou_poe_o_faturamento_negativo_a_parte(monkeypatch):
+    dados = pd.DataFrame([
+        {"FILIAL": "TIMON", "ESTADO": "MA", "ANO": 2026, "MES": 10, "COD_RCA": 1, "CODCLI": codigo,
+         "CLIENTE": nome, "VENDA_BRUTA": venda, "VENDA_LIQ": venda - devolucao}
+        for codigo, nome, venda, devolucao in [
+            (1, "VALMIR", 0.0, 52284.12), (2, "S A RIBEIRO", 1122.70, 13173.18), (3, "DARLISON", 0.76, 0.0),
+        ]
+    ])
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"]["fontes_por_dimensao"], "cliente", lambda: dados)
+
+    resposta = orq.executar_consulta({
+        "indicador": "faturamento", "filtros": {"ano": [2026], "mes": [10]}, "agrupar_por": ["cliente"],
+        "ordenar_por": {"campo": "faturamento", "ordem": "asc"},
+        "colunas": ["faturamento"],
+    })
+    fora = resposta["fora_da_lista_de_menor"]
+
+    assert [linha["cliente"] for linha in resposta["resultados"]] == [3]
+    assert fora["itens"] == ["VALMIR"]
+    assert fora["tambem_fora"][0]["itens"] == ["S A RIBEIRO"]
+    assert "devolveram tudo" in fora["tambem_fora"][0]["motivo"]
+    assert resposta["total_de_todas_as_linhas"]["faturamento"] == round(0.76 - 12050.48 - 52284.12, 2)

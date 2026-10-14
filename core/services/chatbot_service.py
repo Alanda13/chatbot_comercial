@@ -5,6 +5,7 @@ Este módulo recebe a pergunta do usuário, solicita a interpretação
 ao Gemini, executa ferramentas autorizadas e monta a resposta final.
 """
 import re
+import time
 
 from core.services.ia_service import interpretar_pergunta
 from core.services.ia_service import gerar_resposta_final
@@ -53,11 +54,15 @@ def _limitar_resultados(resultado: dict) -> dict:
                 resultado["tabela"] = [tabela[i] for i in ordem]
 
         resultado["resultados"] = resultados[:LIMITE_RESULTADOS_RESPOSTA]
+        # A IA copiava "Mostrando 60 de 89.719 resultados" e respondia "60
+        # dos 89.719" a "quantos clientes…": o texto diz qual é a quantidade.
         resultado["aviso"] = (
-            f"Mostrando {LIMITE_RESULTADOS_RESPOSTA} de "
-            f"{len(resultados)} resultados{criterio}. Peça um filtro mais "
-            "específico (uma filial, um RCA, ou um período menor) "
-            "para ver o restante. Se vier \"total_de_todas_as_linhas\", ele "
+            f"A lista completa tem {len(resultados)} itens; aqui vão só "
+            f"{LIMITE_RESULTADOS_RESPOSTA}{criterio}, pra citar exemplos. "
+            f"Quando disser QUANTOS são, use {len(resultados)}. Não escreva "
+            "\"mostrando 60 de…\": se for útil, diga que a lista completa "
+            "está na tabela ou que dá pra filtrar (uma filial, um RCA, um "
+            "período menor). Se vier \"total_de_todas_as_linhas\", ele "
             f"é de TODOS os {len(resultados)} itens, não só dos mostrados: "
             "nunca o chame de total \"desse grupo\" ou \"dos N maiores\"."
         )
@@ -124,9 +129,23 @@ def _numeros_fora_do_historico(
     }
 
 
+def _registrar_tempos(tempos: dict[str, float]) -> None:
+    """Uma linha no log por pergunta: quanto levou cada etapa."""
+    logger.info(
+        "Tempo | %s | total %.1f s",
+        " | ".join(f"{etapa} {segundos:.1f} s" for etapa, segundos in tempos.items()),
+        sum(tempos.values()),
+    )
+
+
+def _sem_aviso(etapa: str) -> None:
+    pass
+
+
 def processar_pergunta(
     pergunta: str,
     historico: list[dict[str, str]] | None = None,
+    avisar_etapa=_sem_aviso,
 ) -> tuple[str, list[dict] | None, str | None]:
     """
     Executa o fluxo completo do chatbot.
@@ -138,8 +157,13 @@ def processar_pergunta(
     nome_ferramenta identifica qual ferramenta gerou os dados da
     tabela (None quando nenhuma ferramenta foi executada) — o app.py
     usa isso pra saber quais colunas mostrar.
+    avisar_etapa(texto) é chamada no começo de cada etapa (a tela mostra
+    "Entendendo a pergunta…", "Buscando os dados…", "Escrevendo…").
     """
+    tempos: dict[str, float] = {}
+    inicio = time.perf_counter()
 
+    avisar_etapa("Entendendo a pergunta…")
     solicitacao = interpretar_pergunta(
         pergunta=pergunta,
         historico=historico,
@@ -171,6 +195,11 @@ def processar_pergunta(
                     None,
                     None,
                 )
+
+    tempos["entender"] = time.perf_counter() - inicio
+
+    if solicitacao.acao != "executar_ferramenta":
+        _registrar_tempos(tempos)
 
     if solicitacao.acao == "pedir_esclarecimento":
         return (
@@ -215,6 +244,9 @@ def processar_pergunta(
         solicitacao.argumentos,
     )
 
+    avisar_etapa("Buscando os dados…")
+    inicio = time.perf_counter()
+
     try:
         resultado = executar_ferramenta(
             nome_ferramenta=solicitacao.ferramenta,
@@ -241,12 +273,19 @@ def processar_pergunta(
     ):
         dados_tabela = lista_resultados[:LIMITE_RESULTADOS_RESPOSTA]
 
+    tempos["calcular"] = time.perf_counter() - inicio
+    avisar_etapa("Escrevendo a resposta…")
+    inicio = time.perf_counter()
+
     resposta_final = gerar_resposta_final(
         pergunta=pergunta,
         nome_ferramenta=solicitacao.ferramenta,
         resultado=resultado_limitado,
         historico=historico,
     )
+
+    tempos["escrever"] = time.perf_counter() - inicio
+    _registrar_tempos(tempos)
 
     return (resposta_final, dados_tabela, solicitacao.ferramenta)
     

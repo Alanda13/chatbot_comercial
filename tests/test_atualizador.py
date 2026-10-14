@@ -35,6 +35,19 @@ def test_primeiro_ciclo_do_dia_e_completo():
     assert atualizador.proxima_acao(datetime(2026, 10, 6, 7, 0), ontem, None) == "completa"
 
 
+def test_ao_abrir_so_faz_a_completa_se_ainda_nao_rodou_hoje():
+    hoje = date(2026, 10, 13)
+
+    # Já rodou hoje: ao abrir, a parcial (no horário).
+    ultima_completa, ultima_parcial = atualizador.estado_inicial(hoje, hoje)
+    assert atualizador.proxima_acao(datetime(2026, 10, 13, 10, 0), ultima_completa, ultima_parcial) == "parcial"
+
+    # Rodou ontem (ou nunca): a completa, a qualquer hora.
+    for dia in (date(2026, 10, 12), None):
+        ultima_completa, ultima_parcial = atualizador.estado_inicial(hoje, dia)
+        assert atualizador.proxima_acao(datetime(2026, 10, 13, 22, 0), ultima_completa, ultima_parcial) == "completa"
+
+
 def test_janela_parcial_e_o_mes_anterior_e_o_atual():
     assert arquivos_oracle.inicio_da_janela_parcial(date(2026, 10, 6)) == date(2026, 9, 1)
     assert arquivos_oracle.inicio_da_janela_parcial(date(2026, 1, 15)) == date(2025, 12, 1)
@@ -103,3 +116,24 @@ def test_gravar_nao_deixa_arquivo_temporario(tmp_path):
     arquivos_oracle.gravar_csv(pd.DataFrame({"A": [1]}), arquivo)
 
     assert [caminho.name for caminho in tmp_path.iterdir()] == ["x.csv"]
+
+
+def test_ler_csv_guarda_em_memoria_e_le_de_novo_quando_o_arquivo_muda(monkeypatch, tmp_path):
+    arquivo = tmp_path / "x.csv"
+    arquivos_oracle.gravar_csv(pd.DataFrame({"A": [1]}), arquivo)
+    leituras = []
+    ler_do_disco = pd.read_csv
+    monkeypatch.setattr(
+        arquivos_oracle.pd, "read_csv",
+        lambda *args, **kwargs: leituras.append(1) or ler_do_disco(*args, **kwargs),
+    )
+
+    primeira = arquivos_oracle.ler_csv(arquivo)
+    primeira.loc[0, "A"] = 99  # mexer na cópia não estraga a guardada
+    segunda = arquivos_oracle.ler_csv(arquivo)
+    arquivos_oracle.gravar_csv(pd.DataFrame({"A": [1, 2]}), arquivo)
+    terceira = arquivos_oracle.ler_csv(arquivo)
+
+    assert len(leituras) == 2
+    assert segunda["A"].tolist() == [1]
+    assert terceira["A"].tolist() == [1, 2]

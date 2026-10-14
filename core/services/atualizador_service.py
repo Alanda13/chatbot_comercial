@@ -12,16 +12,38 @@ Antes, o 1º a perguntar depois de 1 hora esperava o Oracle (06/10/2026:
   cancelamentos em meses antigos, mantendo tudo igual ao WinThor;
 - à noite não roda nada. Se o Oracle falhar, fica valendo o CSV anterior.
 
-`iniciar()` é chamado pelo app.py; roda uma única vez por processo.
+Roda num PROGRAMA SEPARADO (`python -m core.services.atualizador_service`),
+não junto com o chatbot: no mesmo programa, a atualização (milhões de
+linhas) segurava o processador e as perguntas ficavam na fila — em
+13/10/2026, "qual o NPS do ano passado?" levou 1min30 durante a completa
+e 20 s sem ela. `iniciar()` (chamado pelo app.py) só abre esse programa:
+
+- um atualizador por vez: cada um segura `data/atualizador.trava`; um
+  novo (o Streamlit recarregou o código) espera o antigo sair;
+- o atualizador para quando o chatbot fecha: ele lê a entrada (stdin)
+  que o chatbot mantém aberta e sai quando ela fecha;
+- a completa ao abrir só roda se ainda não rodou hoje
+  (`data/ultima_completa.txt`); senão, ao abrir faz a parcial.
 """
+import os
+import subprocess
+import sys
 import threading
 import time
-from datetime import datetime
+from datetime import date, datetime
 
 from core.repositories.arquivos_repository import com_tentativas, marcar_atualizador_ativo
+from core.repositories.faturamento_repository import RAIZ_PROJETO
 from core.logger import obter_logger
 
 logger = obter_logger(__name__)
+
+ARQUIVO_TRAVA = RAIZ_PROJETO / "data" / "atualizador.trava"
+ARQUIVO_ULTIMA_COMPLETA = RAIZ_PROJETO / "data" / "ultima_completa.txt"
+# Existe enquanto uma atualização roda: o chatbot mostra "(atualizando
+# agora…)". Mais velho que isso é sobra de um atualizador que caiu.
+ARQUIVO_ATUALIZANDO = RAIZ_PROJETO / "data" / "atualizando.agora"
+_SEGUNDOS_MAXIMOS_ATUALIZANDO = 30 * 60
 
 HORA_INICIO = 7
 HORA_FIM = 19
@@ -30,7 +52,7 @@ _SEGUNDOS_ENTRE_VERIFICACOES = 60
 
 _trava_inicio = threading.Lock()
 _iniciado = False
-_atualizando = threading.Event()
+_processo = None  # o atualizador aberto por este chatbot (mantém o stdin aberto)
 
 
 def _bases():
@@ -41,6 +63,7 @@ def _bases():
     from core.repositories import faturamento_diario_repository as faturamento_diario_data
     from core.repositories import produto_repository as produto_data
     from core.repositories import rca_repository
+    from core.repositories import situacao_cliente_repository
     from core.repositories import venda_repository
 
     return [
@@ -56,13 +79,16 @@ def _bases():
          [produto_data.ARQUIVO_DESCONTO_PRODUTO, produto_data.ARQUIVO_PRODUTOS]),
         ("desconto por venda", venda_repository.atualizar,
          [venda_repository.ARQUIVO_DESCONTO_VENDA]),
+        ("compras dos clientes", situacao_cliente_repository.atualizar,
+         [situacao_cliente_repository.ARQUIVO_COMPRAS_CLIENTES]),
         ("cadastro de RCAs", rca_repository.atualizar, [rca_repository.ARQUIVO_RCAS]),
     ]
 
 
 def rodar_atualizacao(completa: bool) -> None:
     """Atualiza todas as bases; a falha de uma não impede as outras."""
-    _atualizando.set()
+    ARQUIVO_ATUALIZANDO.parent.mkdir(parents=True, exist_ok=True)
+    ARQUIVO_ATUALIZANDO.touch()
     tipo = "completa" if completa else "parcial"
 
     try:
@@ -78,7 +104,7 @@ def rodar_atualizacao(completa: bool) -> None:
                     f"Atualização {tipo} de {descricao} falhou — seguindo com o CSV anterior."
                 )
     finally:
-        _atualizando.clear()
+        ARQUIVO_ATUALIZANDO.unlink(missing_ok=True)
 
 
 def proxima_acao(
@@ -107,9 +133,26 @@ def proxima_acao(
     return None
 
 
+def estado_inicial(hoje: date, dia_da_ultima_completa: date | None):
+    """
+    (ultima_completa, ultima_parcial) ao abrir. Completa já feita hoje: ao
+    abrir faz só a parcial (antes, cada vez que o chatbot reabria refazia
+    os ~10 min da completa). Senão, a completa, a qualquer hora.
+    """
+    if dia_da_ultima_completa == hoje:
+        return hoje, None
+    return None, time.time()
+
+
+def _ler_ultima_completa() -> date | None:
+    try:
+        return date.fromisoformat(ARQUIVO_ULTIMA_COMPLETA.read_text().strip())
+    except (OSError, ValueError):
+        return None
+
+
 def _laco() -> None:
-    ultima_completa = None
-    ultima_parcial = time.time()
+    ultima_completa, ultima_parcial = estado_inicial(date.today(), _ler_ultima_completa())
 
     while True:
         agora = datetime.now()
@@ -119,6 +162,7 @@ def _laco() -> None:
             rodar_atualizacao(completa=True)
             ultima_completa = agora.date()
             ultima_parcial = time.time()
+            ARQUIVO_ULTIMA_COMPLETA.write_text(ultima_completa.isoformat())
         elif acao == "parcial":
             rodar_atualizacao(completa=False)
             ultima_parcial = time.time()
@@ -127,7 +171,8 @@ def _laco() -> None:
 
 
 def iniciar() -> None:
-    global _iniciado
+    """Abre o atualizador como programa separado (uma vez por chatbot)."""
+    global _iniciado, _processo
 
     with _trava_inicio:
         if _iniciado:
@@ -135,7 +180,46 @@ def iniciar() -> None:
         _iniciado = True
 
     marcar_atualizador_ativo()
-    threading.Thread(target=_laco, name="atualizador-oracle", daemon=True).start()
+    _processo = subprocess.Popen(
+        [sys.executable, "-m", "core.services.atualizador_service"],
+        cwd=RAIZ_PROJETO,
+        stdin=subprocess.PIPE,
+    )
+
+
+def _sair_quando_o_chatbot_fechar() -> None:
+    sys.stdin.read()  # só volta quando o chatbot fecha a entrada
+    logger.info("Chatbot fechado — atualizador encerrado.")
+    os._exit(0)
+
+
+def _travar(arquivo):
+    """Tenta segurar a trava (sem esperar). True se conseguiu."""
+    try:
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(arquivo.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(arquivo.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except OSError:
+        return False
+
+
+def _rodar_como_programa() -> None:
+    threading.Thread(target=_sair_quando_o_chatbot_fechar, daemon=True).start()
+
+    ARQUIVO_TRAVA.parent.mkdir(parents=True, exist_ok=True)
+    trava = open(ARQUIVO_TRAVA, "a+")  # fica aberta (e travada) até o programa sair
+
+    if not _travar(trava):
+        logger.info("Outro atualizador rodando — esperando ele sair.")
+        while not _travar(trava):
+            time.sleep(5)
+
+    marcar_atualizador_ativo()
+    _laco()
 
 
 def descrever_ultima_atualizacao() -> str | None:
@@ -151,7 +235,16 @@ def descrever_ultima_atualizacao() -> str | None:
     momento = datetime.fromtimestamp(min(arquivo.stat().st_mtime for arquivo in arquivos))
     texto = f"Dados atualizados em {momento:%d/%m/%Y} às {momento:%H:%M}"
 
-    if _atualizando.is_set():
+    try:
+        idade = time.time() - ARQUIVO_ATUALIZANDO.stat().st_mtime
+    except OSError:
+        idade = None
+
+    if idade is not None and idade < _SEGUNDOS_MAXIMOS_ATUALIZANDO:
         texto += " (atualizando agora…)"
 
     return texto
+
+
+if __name__ == "__main__":
+    _rodar_como_programa()

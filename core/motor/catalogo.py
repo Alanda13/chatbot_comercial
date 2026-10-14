@@ -38,7 +38,7 @@ prompt_claude_code_migracao.md, adaptados às fontes de dado reais do
 projeto: CSV via pandas para faturamento/faturamento diário/meta/meta de
 tonelada, e Azure SQL (carregado inteiro pro pandas) para o NPS.
 
-Indicadores sem "carregar" real (inadimplencia, clientes)
+Indicadores sem "carregar" real (inadimplencia)
 ainda não têm nenhuma fonte de dado conectada.
 
 Este arquivo é a ÚNICA fonte de verdade sobre o que o motor genérico
@@ -51,6 +51,7 @@ from core.repositories.cliente_repository import (
     resolver_empresas,
 )
 from core.repositories.faturamento_repository import carregar_faturamento_mensal
+from core.repositories.situacao_cliente_repository import carregar_situacao_clientes
 from core.repositories.venda_repository import carregar_desconto_venda, resolver_vendas
 from core.repositories.produto_repository import (
     carregar_desconto_produto,
@@ -92,6 +93,10 @@ ATRIBUTOS_DIMENSAO = {
         "cliente_nome": ("CLIENTE", "Cliente"),
         "cnpj": ("CNPJ", "CNPJ"),
         "cidade": ("CIDADE", "Cidade"),
+        # Só no indicador clientes (os outros arquivos não têm essas colunas).
+        "situacao": ("SITUACAO", "Situação"),
+        "ultima_compra": ("ULTIMA_COMPRA", "Última compra"),
+        "filial_ultima_compra": ("FILIAL_ULTIMA_COMPRA", "Filial da última compra"),
     },
     "produto": {
         "produto_nome": ("PRODUTO", "Produto"),
@@ -171,7 +176,21 @@ INDICADORES = {
         "menor_ignora": {
             "ordem_por": ("faturamento", "venda_bruta"),
             "campo": "venda_bruta", "abaixo_de": 0.01,
-            "motivo": "têm meta cadastrada, mas não venderam nada no período",
+            "motivo": "não tiveram venda no período (só devolução)",
+            "motivo_por_dimensao": {
+                "rca": "têm meta cadastrada, mas não venderam nada no período",
+            },
+            # Faturamento negativo (devolução de compras antigas maior que a
+            # venda do mês) também vem à parte: "os clientes que menos
+            # compraram" começava por quem mais devolveu (14/10/2026).
+            "tambem": [{
+                "ordem_por": ("faturamento",),
+                "campo": "faturamento", "abaixo_de": 0.01,
+                "motivo": (
+                    "devolveram tudo o que compraram ou mais (devolução igual ou "
+                    "maior que a venda no período: faturamento zero ou negativo)"
+                ),
+            }],
         },
         "derivados": [
             {
@@ -524,7 +543,7 @@ INDICADORES = {
     },
     # Abaixo, indicadores registrados no catálogo mas SEM fonte real
     # conectada ainda ("carregar": None) — documentam o que o sistema
-    # deveria ter (inadimplencia, clientes: ainda sem nenhuma fonte
+    # deveria ter (inadimplencia: ainda sem nenhuma fonte
     # real, CSV ou view Oracle/WinThor, no projeto).
     "inadimplencia": {
         "carregar": None,
@@ -540,12 +559,86 @@ INDICADORES = {
         ],
         "unidade": "%",
     },
-    "clientes": {
-        "carregar": None,
-        "granularidade_periodo": "mensal",
-        "campos": {"valor_compra": None, "qtd_compras": None},
-        "dimensoes": {"cliente": None, "filial": None, "rca": None},
-        "unidade": "R$ / qtd",
+}
+
+# Clientes ativos, em risco, inativos, novos e recuperados (regras da
+# supervisora, ver core/repositories/situacao_cliente_repository.py). Cada
+# campo conta os CLIENTES diferentes ("nunique"): o cliente que comprou com
+# 2 RCAs da filial conta 1 vez. Ativos/em risco/inativos são uma FOTO
+# ("foto_por"): num período de vários meses vale o último (no mês atual,
+# hoje); novos e recuperados juntam o período todo.
+_FOTO_MENSAL = {"foto_por": ("ANO", "MES")}
+# "conta": o que o campo conta — agrupado pelo próprio cliente, cada um
+# "tem" 0 ou 1, e ordenar por isso não responde nada (ver
+# orquestrador._validar_ordem_por_contagem).
+_CONTA_CLIENTE = {"conta": "cliente"}
+_FOTO_E_CONTA = {**_FOTO_MENSAL, **_CONTA_CLIENTE}
+
+INDICADORES["clientes"] = {
+    "carregar": carregar_situacao_clientes,
+    "granularidade_periodo": "mensal",
+    # Sem período: a situação de hoje.
+    "periodo_padrao": "mes_atual",
+    "campos": {
+        "clientes_ativos": ("CLIENTE_ATIVO", "nunique", _FOTO_E_CONTA),
+        "clientes_em_risco": ("CLIENTE_EM_RISCO", "nunique", _FOTO_E_CONTA),
+        # Inativos = de 90 dias a 1 ano (os que dá pra recuperar); os parados
+        # há mais tempo vêm à parte (decisão da usuária em 14/10/2026).
+        "clientes_inativos": ("CLIENTE_INATIVO", "nunique", _FOTO_E_CONTA),
+        "clientes_parados_ha_mais_de_1_ano": ("CLIENTE_PARADO_HA_MAIS_DE_1_ANO", "nunique", _FOTO_E_CONTA),
+        # Dos ativos, os que só compraram em outra filial / com outro RCA
+        # nos últimos 90 dias (a resposta avisa).
+        "ativos_so_em_outra_filial": ("CLIENTE_SO_OUTRA_FILIAL", "nunique", _FOTO_E_CONTA),
+        "ativos_so_com_outro_rca": ("CLIENTE_SO_OUTRO_RCA", "nunique", _FOTO_E_CONTA),
+        "clientes_novos": ("CLIENTE_NOVO", "nunique", _CONTA_CLIENTE),
+        "clientes_recuperados": ("CLIENTE_RECUPERADO", "nunique", _CONTA_CLIENTE),
+        # Por cliente: os dias desde a última compra (em qualquer filial).
+        # Agrupado por filial/RCA, o maior entre os clientes. É campo (não
+        # só informação do cliente) pra dar pra ordenar: "os 5 em risco
+        # há mais tempo sem comprar" sai pronto do motor.
+        "dias_sem_comprar": ("DIAS_SEM_COMPRAR", "max", _FOTO_MENSAL),
+    },
+    "dimensoes": {
+        "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
+        "supervisor": "COD_SUPERVISOR", "mes": "MES", "ano": "ANO",
+        "cliente": "CODCLI", "empresa": "EMPRESA",
+    },
+    "resolver_dimensao": {
+        "filial": resolver_nome_filial,
+        "estado": resolver_estado,
+        "rca": resolver_codigos_rca,
+        "supervisor": resolver_codigos_supervisor,
+        "cliente": resolver_codigos_cliente,
+        "empresa": resolver_empresas,
+    },
+    "rca_nome_mapa": construir_mapa_rca_nome,
+    "rca_requer_meta_cadastrada": True,
+    "campo_principal": "clientes_ativos",
+    "unidade": "clientes",
+    # Vai junto com o resultado pra quem escreve a resposta (ver
+    # orquestrador._avisos_para_a_ia).
+    "como_ler": (
+        "Ativo = comprou há menos de 90 dias (em risco = 60 a 89 dias, também "
+        "ativo). Inativo = de 90 dias a 1 ano sem comprar: os que dá pra "
+        "recuperar. Ao falar de inativos, diga TAMBÉM, numa frase à parte, os "
+        "parados há mais de 1 ano (clientes_parados_ha_mais_de_1_ano) — ex: "
+        "'Timon tem N clientes inativos (parados de 90 dias a 1 ano), os "
+        "com mais chance de voltar. Além deles, M estão parados há mais "
+        "de 1 ano.' Numa consulta de uma filial (ou RCA), se "
+        "ativos_so_em_outra_filial (ou ativos_so_com_outro_rca) for maior que "
+        "zero, diga quantos dos ativos só compraram em outra filial (com outro "
+        "RCA) nos últimos 90 dias. Os dados começam em 2020."
+    ),
+    "exibicao": {
+        "clientes_ativos": {"tipo": "texto", "rotulo": "Clientes Ativos", "sempre": True},
+        "clientes_em_risco": {"tipo": "texto", "rotulo": "Em Risco de Perda", "palavras": ["risco", "perd"]},
+        "clientes_inativos": {"tipo": "texto", "rotulo": "Inativos até 1 ano", "palavras": ["inativ"]},
+        "clientes_parados_ha_mais_de_1_ano": {"tipo": "texto", "rotulo": "Parados há mais de 1 ano", "palavras": ["inativ", "parad", "mais de 1 ano", "mais de um ano"]},
+        "clientes_novos": {"tipo": "texto", "rotulo": "Novos", "palavras": ["novo"]},
+        "clientes_recuperados": {"tipo": "texto", "rotulo": "Recuperados", "palavras": ["recuper"]},
+        "ativos_so_em_outra_filial": {"tipo": "texto", "rotulo": "Ativos só por outra filial", "palavras": ["outra filia"]},
+        "ativos_so_com_outro_rca": {"tipo": "texto", "rotulo": "Ativos só por outro RCA", "palavras": ["outro rca", "outro vendedor"]},
+        "dias_sem_comprar": {"tipo": "texto", "rotulo": "Dias sem comprar", "palavras": ["dias sem", "sem comprar"]},
     },
 }
 
@@ -679,7 +772,9 @@ def gerar_colunas_tabela() -> list[dict]:
         tipo = especificacao["tipo"]
         rotulo = especificacao["rotulo"]
         tipo_diferenca = {
-            "percentual": "percentual_com_sinal", "texto": "numero_com_sinal",
+            # Diferença entre dois % é em pontos percentuais (3,04% → 5,36%
+            # = +2,32 p.p.), não em %.
+            "percentual": "pontos_percentuais_com_sinal", "texto": "numero_com_sinal",
             "moeda": "moeda_com_sinal",
         }.get(tipo, tipo)
         sempre = {"sempre": True} if nome_campo in campos_principais else {}

@@ -1197,3 +1197,104 @@ O botão "⬇️ Baixar em Excel" usa `ui/exportar_excel.py` (`gerar_excel`), no
 - **Regra de "menor" por campo ordenado:** `menor_ignora` (catálogo) diz, para cada indicador, quais campos de ordem ela vale (`ordem_por`), o que testar (`campo` < `abaixo_de`) e o `motivo`. A regra fica no desconto (R$ 0,00 de desconto) e no faturamento (RCA com meta cadastrada, mas sem nenhuma venda: `venda_bruta` < 0,01). Quem fica de fora vem em `fora_da_lista_de_menor`, e os totais não mudam. Antes, a regra do desconto valia para qualquer ordem crescente.
 - **Nomes dos RCAs:** `core/repositories/rca_repository.py` grava `data/rcas.csv` a partir da PCUSUARI (só leitura), atualizado pelo atualizador. `construir_mapa_rca_nome` usa o nome das vendas (8302) e completa com o cadastro quem nunca vendeu (ex.: 9230, RÔMULO VIENA VERAS).
 - **Tabela de cruzamento:** `colunas_no_cruzamento` do desconto mostra o desconto em R$ e em %, não só o %.
+
+## Velocidade: cache dos CSVs, tempo por etapa e etapas na tela (13/10/2026)
+
+- **Cache dos CSVs:** `ler_csv` (`core/repositories/arquivos_repository.py`) guarda cada arquivo lido em memória até ele mudar. A versão é a data + o tamanho do arquivo: quando o atualizador grava um CSV novo, a próxima leitura busca o novo. Quem lê recebe uma cópia, e a guardada nunca é alterada. Ler o desconto por cliente caiu de ~1,7 s para ~0,07 s; as 42 consultas do gabarito, de 38,4 s para 24,5 s, com os resultados idênticos. O desconto por venda continua com o cache próprio, que guarda também as junções com cliente e RCA (~7 s).
+- **Tempo por etapa:** `processar_pergunta` (`chatbot_service.py`) grava uma linha no log por pergunta: `Tempo | entender 2.1 s | calcular 0.4 s | escrever 3.2 s | total 5.7 s`. "Entender" é a 1ª chamada ao Gemini, "calcular" é o motor e "escrever" é a 2ª chamada (com a conferência dos números).
+- **Etapas na tela:** a bolinha de "digitando" mostra a etapa atual: "Entendendo a pergunta…", "Buscando os dados…", "Escrevendo a resposta…" (parâmetro `avisar_etapa` de `processar_pergunta`).
+- **Atualizador em programa separado:** a atualização rodava no mesmo programa do chatbot e segurava o processador (milhões de linhas): "qual o NPS do ano passado?" levou 1min30 durante a completa e 20 s sem ela. Agora `iniciar()` abre `python -m core.services.atualizador_service` à parte. Um atualizador por vez (trava em `data/atualizador.trava`; um novo espera o antigo sair); ele sai quando o chatbot fecha (lê o stdin que o chatbot mantém aberto); "(atualizando agora…)" vem de `data/atualizando.agora`.
+- **Completa uma vez por dia:** o dia da última completa fica em `data/ultima_completa.txt`. Ao abrir, se ela já rodou hoje, faz só a parcial (antes, cada reinício refazia os ~10 min da completa).
+
+## Indicador de clientes (13/10/2026)
+
+Regras da supervisora, contadas em dias e olhando as compras em **qualquer
+filial** (o cliente é da Ferronorte):
+
+- **ativo**: comprou há menos de 90 dias;
+- **em risco de perda**: de 60 a 89 dias sem comprar (continua ativo);
+- **inativo**: 90 dias ou mais (até 12 meses);
+- **novo**: 1ª compra (desde 2020) no mês;
+- **recuperado**: voltou a comprar depois de 90+ dias parado.
+
+"Cliente de Timon/do RCA" = comprou ali nos últimos 12 meses (o PCCLIENT
+não tem filial preenchida e o RCA do cadastro só bate em 4% dos casos).
+Quem está ativo só por compras em outra filial (outro RCA) é contado à
+parte, pra resposta avisar. Cada código de cliente (loja) conta 1.
+
+- **Dados**: `data/compras_clientes.csv` (os dias de compra por
+  cliente/filial/RCA desde 2024, da `VIEW_VENDAS_RESUMO_FATURAMENTO` com os
+  filtros de venda válida), atualizado pelo atualizador como os outros.
+  `core/repositories/situacao_cliente_repository.py` monta a "foto" de cada
+  mês desde 2025 na memória (~8 s na 1ª pergunta depois de o arquivo mudar).
+- **Motor**: duas peças gerais. Agregação `"nunique"` (conta clientes
+  diferentes, sai inteiro) e a opção `"foto_por"` no campo: num período de
+  vários meses vale o último mês (ativos "em 2026" = a foto de hoje), em vez
+  de somar; agrupado por mês, cada mês tem a sua. A resposta traz
+  `situacao_na_data` com a data da foto.
+- `periodo_assumido` agora diz o período usado de verdade (no clientes, o
+  mês atual), em vez de "o ano atual" fixo.
+- `dias_sem_comprar` é campo (agregação `"max"`, foto), não só informação do
+  cliente: "os 5 em risco há mais tempo sem comprar" sai ordenado e cortado
+  pelo motor (antes a IA escolhia sozinha e errou: havia vários com 89 dias).
+  Período assumido num indicador foto diz "vale a situação de hoje".
+- Lista mês a mês/ano a ano: a variação é calculada para TODOS os campos
+  ("percentual_{campo}_mes_anterior"), não só o principal; a tabela mostra a
+  de cada número logo ao lado dele ("Variação Inativos (mês anterior)"). A
+  "percentual_mes_anterior" do campo principal continua igual.
+
+## Ano inválido, período da comparação e pontos percentuais (14/10/2026)
+
+- "Ano" que não é ano (a IA mandou `{"ano": [2026, 10]}` querendo outubro)
+  agora dá erro claro, em vez de comparar "jan-set de 2026 e 10".
+- Sem período na pergunta, o período assumido acompanha a comparação:
+  `comparar_com: mes_anterior` → mês atual (antes valia o padrão do
+  desconto, o ano atual, e saía "jan-set x setembro").
+- Diferença entre dois percentuais aparece como "+2,32 p.p." na tabela.
+
+## Cliente que mais/menos comprou = venda bruta (14/10/2026)
+
+- "Comprou" (cliente) = `venda_bruta`, sem descontar devolução — como a
+  rotina 8306 (Análise Cliente RFV), que usa `SUM(VLVENDA)` com os mesmos
+  filtros de venda válida do projeto. "Faturou" continua venda − devolução
+  (8280). Antes "os clientes que menos compraram" listava faturamento
+  negativo (quem devolveu mais do que comprou).
+- `menor_ignora` ganhou `motivo_por_dimensao`: "têm meta cadastrada, mas
+  não venderam nada" só vale pra RCA; nos outros, "não tiveram venda no
+  período (só devolução)".
+- `menor_ignora` ganhou `tambem` (outros grupos à parte, cada um com o seu
+  motivo, opcionalmente só pra uma ordem): no faturamento, ordenando pelo
+  faturamento, quem tem faturamento zero ou negativo (devolveu tudo ou mais
+  do que comprou) vem em `tambem_fora`. Ordenando pela venda bruta, fica na
+  lista. Totais não mudam.
+- O indicador `clientes` não ordena uma contagem de clientes agrupando por
+  cliente (campo com `"conta": "cliente"`): cada um teria 0 ou 1.
+
+## Clientes: inativos até 1 ano + parados há mais de 1 ano (14/10/2026)
+
+- Compras dos clientes desde 2020 (`compras_clientes.csv`, ~54 MB; busca
+  completa ~2 min 20 s). A foto começa em 2021.
+- Inativo = 90 dias a 1 ano (os recuperáveis); `clientes_parados_ha_mais_de_1_ano`
+  conta à parte (decisão da usuária: o total de todos os parados desmotivava).
+  90 dias = o mesmo do WinThor (`PCCONSUM.NUMDIASCLIINATIV` = 90).
+- "Cliente de Timon" = comprou ali nos 12 meses antes da última compra DELE
+  (antes: antes de hoje) — o parado há 2 anos continua de onde comprava.
+- A foto de cada mês é montada só quando pedida (`carregar` com
+  `recebe_filtros = True` recebe os filtros do período; até 24 fotos em
+  memória). Todos os meses de uma vez dariam ~10 milhões de linhas.
+- `como_ler` no catálogo: o motor manda junto do resultado
+  (`como_ler_o_indicador`). A 2ª chamada da IA (que escreve) não lê a
+  descrição da ferramenta — por isso "diga também os parados há mais de 1
+  ano" não chegava a ela.
+- `_aplicar_agrupamento` monta as linhas com `to_dict` (antes `iterrows`):
+  a lista de 190 mil clientes caiu de 20 s pra 3 s.
+- Clientes parados há mais de N dias: `agrupar_por cliente` + `filtros_calculados`
+  em `dias_sem_comprar` (exemplo na descrição da ferramenta); a quantidade é
+  quantos atenderam. Sem recurso novo no motor.
+- A resposta traz `filtros_sobre_a_metrica` (o critério usado): a conferência
+  de números aceita o "730" de "mais de 730 dias", e a IA sabe o critério.
+- Avisos reescritos sem jargão ("mostrando 60 de…", "itens antes dos filtros
+  sobre a métrica"), que a IA copiava na resposta.
+- Ordenar por uma contagem de clientes agrupando por cliente (cada um 0 ou 1)
+  não dá mais erro: o motor tira a ordem e segue (o erro bloqueava "os novos
+  clientes de Timon" quando a IA pedia essa ordem junto do filtro).

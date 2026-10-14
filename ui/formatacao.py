@@ -85,6 +85,9 @@ TIPO_POR_COLUNA = {
 # ferramenta agrupada por mês/ano, então têm o tipo registrado à parte.
 TIPO_POR_COLUNA["percentual_mes_anterior"] = "percentual_com_sinal"
 TIPO_POR_COLUNA["percentual_ano_anterior"] = "percentual_com_sinal"
+# A variação de cada campo numa lista mês a mês/ano a ano
+# ("percentual_{campo}_mes_anterior"): título e tipo montados na tabela.
+_PERIODOS_DA_VARIACAO = {"mes_anterior": "mês anterior", "ano_anterior": "ano anterior"}
 
 # Nome/CNPJ/cidade que acompanham uma dimensão (ex: cliente) — vêm do
 # catálogo, não de uma lista escrita aqui.
@@ -150,6 +153,15 @@ def formatar_percentual_com_sinal(valor):
     return f"{sinal}{valor:.2f}%".replace(".", ",")
 
 
+def formatar_pontos_percentuais_com_sinal(valor):
+    """Diferença entre dois percentuais (ex: 3,04% → 5,36% = +2,32 p.p.)."""
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return "sem dados"
+
+    sinal = "+" if valor >= 0 else ""
+    return f"{sinal}{valor:.2f} p.p.".replace(".", ",", 1)
+
+
 def formatar_percentual_atingimento(valor):
     """Formata o percentual de atingimento de meta (ex: 122,37%)."""
     if valor is None or (isinstance(valor, float) and pd.isna(valor)):
@@ -179,6 +191,7 @@ FORMATADORES_POR_TIPO = {
     "moeda_com_sinal": formatar_moeda_com_sinal,
     "percentual": formatar_percentual_atingimento,
     "percentual_com_sinal": formatar_percentual_com_sinal,
+    "pontos_percentuais_com_sinal": formatar_pontos_percentuais_com_sinal,
     "numero_com_sinal": formatar_numero_com_sinal,
 }
 
@@ -309,7 +322,7 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
         df = df.drop(columns="_colunas_pedidas")
 
     if "_rotulos" in df.columns:
-        rotulos = df["_rotulos"].iloc[0]
+        rotulos = dict(df["_rotulos"].iloc[0])
         df = df.drop(columns="_rotulos")
 
     # Valores pra preencher os placeholders "{ano}"/"{ano_anterior}"
@@ -382,12 +395,34 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
         if pediu_toneladas and not mencionou_reais and "faturamento" in colunas_metricas:
             colunas_metricas.remove("faturamento")
 
-    # Se os dados trazem a variação em relação ao mês/ano anterior,
-    # inclui essa coluna automaticamente — é sempre relevante quando
-    # presente, não depende de palavra-chave na pergunta.
-    for nome in ("percentual_mes_anterior", "percentual_ano_anterior"):
-        if nome in df.columns and nome not in colunas_metricas:
-            colunas_metricas.append(nome)
+    # Lista mês a mês/ano a ano: a variação de CADA número mostrado vem
+    # logo depois dele ("Clientes Ativos | Variação Clientes Ativos |
+    # Inativos | Variação Inativos"). Sem nenhuma (ferramentas que não são
+    # do motor), a variação geral, como antes.
+    com_variacao = []
+
+    for coluna in colunas_metricas:
+        com_variacao.append(coluna)
+
+        for periodo in _PERIODOS_DA_VARIACAO:
+            nome = f"percentual_{coluna}_{periodo}"
+
+            if nome in df.columns:
+                com_variacao.append(nome)
+                TIPO_POR_COLUNA.setdefault(nome, "percentual_com_sinal")
+                rotulos.setdefault(
+                    nome,
+                    f"Variação {RENOMEAR_COLUNAS.get(coluna, coluna)} "
+                    f"({_PERIODOS_DA_VARIACAO[periodo]})",
+                )
+
+    if com_variacao == colunas_metricas:
+        for nome in ("percentual_mes_anterior", "percentual_ano_anterior"):
+            if nome in df.columns and nome not in colunas_metricas:
+                com_variacao.append(nome)
+
+    variacoes = [coluna for coluna in com_variacao if coluna not in colunas_metricas]
+    colunas_metricas = com_variacao
 
     df = df[colunas_base + colunas_metricas].copy()
 
@@ -419,10 +454,7 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
 
     # Uma métrica só + as variações ao lado: o valor fica com o nome puro
     # da coluna ("2024 | 2025 | 2025 — Variação"), sem repetir a métrica.
-    metricas_de_valor = [
-        c for c in colunas_metricas
-        if c not in ("percentual_mes_anterior", "percentual_ano_anterior")
-    ]
+    metricas_de_valor = [c for c in colunas_metricas if c not in variacoes]
 
     return _pivotar(
         df,

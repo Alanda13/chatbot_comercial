@@ -1,12 +1,4 @@
-"""
-O Excel do botão "⬇️ Baixar em Excel", no formato institucional (o mesmo
-do resumo gerencial do supervisor): faixa azul com a logo, título e
-subtítulo; cabeçalho azul; linhas zebradas; largura automática; cabeçalho
-fixo ao rolar.
 
-A tabela chega já formatada pra tela ("R$ 1.234,56", "2,29%"): aqui esses
-textos voltam a ser NÚMEROS, com o formato do Excel, pra dar pra somar.
-"""
 import io
 import math
 import re

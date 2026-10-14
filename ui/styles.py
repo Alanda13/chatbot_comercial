@@ -182,10 +182,12 @@ _CSS_TABELA = """
 }
 """
 
-# Três bolinhas enquanto a resposta não chega.
+# Três bolinhas e a etapa atual enquanto a resposta não chega.
 _CSS_DIGITANDO = """
-            .digitando { display: flex; gap: 4px; padding: 6px 0; }
+            .digitando { display: flex; align-items: center; gap: 4px; padding: 6px 0; }
+            .digitando em { margin-left: 8px; font-size: 0.9rem; color: #5B6670; }
             .digitando span {
+                flex: none;
                 width: 8px; height: 8px; border-radius: 50%;
                 background-color: currentColor; opacity: 0.4;
                 animation: piscar 1.4s infinite ease-in-out both;
