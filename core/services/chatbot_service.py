@@ -36,9 +36,8 @@ def _limitar_resultados(resultado: dict) -> dict:
         criterio = ""
         campo = _campo_pra_cortar(resultado)
 
-        # Sem ordem pedida, a lista vem em ordem alfabética: cortar nela
-        # mandava pra IA as 60 primeiras do alfabeto como se fossem "as
-        # maiores" (famílias de Metalon, 07/10/2026). Ordena antes.
+        # Sem ordem pedida, a lista vem em ordem alfabética: ordena pelo campo
+        # principal antes de cortar.
         if campo:
             ordem = sorted(
                 range(len(resultados)),
@@ -54,8 +53,7 @@ def _limitar_resultados(resultado: dict) -> dict:
                 resultado["tabela"] = [tabela[i] for i in ordem]
 
         resultado["resultados"] = resultados[:LIMITE_RESULTADOS_RESPOSTA]
-        # A IA copiava "Mostrando 60 de 89.719 resultados" e respondia "60
-        # dos 89.719" a "quantos clientes…": o texto diz qual é a quantidade.
+        # O aviso diz a quantidade total, pra IA não responder "60 de N".
         resultado["aviso"] = (
             f"A lista completa tem {len(resultados)} itens; aqui vão só "
             f"{LIMITE_RESULTADOS_RESPOSTA}{criterio}, pra citar exemplos. "

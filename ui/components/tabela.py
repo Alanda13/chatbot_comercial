@@ -40,9 +40,8 @@ def exibir_tabela(dados_tabela, texto_referencia, chave, nome_ferramenta=None, p
     # conversão.
     tabela_exibicao = tabela.astype(str)
 
-    # st.table é uma tabela estática, sem barra de ferramentas — não
-    # tem botão de tela cheia nem de baixar CSV, evitando os problemas
-    # de layout que apareciam com st.dataframe.
+    # st.table é uma tabela estática, sem barra de ferramentas (sem tela
+    # cheia nem download).
     tabela_exibicao = tabela_exibicao.set_index(tabela_exibicao.columns[0])
     colunas_de_valor = _colunas_de_valor(tabela_exibicao)
 

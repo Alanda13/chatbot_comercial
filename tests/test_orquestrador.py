@@ -582,13 +582,10 @@ def test_aplicar_agrupamento_campo_unico_por_nao_multiplica_valor_repetido(
     monkeypatch,
 ):
     """
-    Regressão do problema real do meta_tonelada: um campo cujo valor se
-    repete em toda linha de RCA da mesma filial/mês (ex: meta por
-    filial) não pode ser somado direto — precisa descartar as
-    duplicatas antes, senão o valor sai multiplicado pela quantidade de
-    RCAs daquela filial. Registra um indicador de teste com essa opção
-    ("unico_por") e confere que o valor final bate com o esperado, não
-    com o valor multiplicado.
+    Um campo cujo valor se repete em toda linha de RCA da mesma filial/mês
+    (ex: meta por filial) não pode ser somado direto: com "unico_por", as
+    duplicatas saem antes e o valor não sai multiplicado pela quantidade de
+    RCAs.
     """
     dados = pd.DataFrame(
         [
@@ -772,10 +769,7 @@ def test_executar_consulta_ordenar_por_ascendente_menor(monkeypatch):
 def test_executar_consulta_meta_agrupada_por_supervisor_vira_inteiro(
     monkeypatch,
 ):
-    """
-    Regressão: COD_SUPERVISOR vinha formatado como "9.0" em vez de "9"
-    (faltava "supervisor" na lista de dimensões convertidas pra int).
-    """
+    """COD_SUPERVISOR sai como "9", não "9.0"."""
     monkeypatch.setitem(catalogo.INDICADORES["meta"], "carregar", _dados_meta)
 
     resultado = orq.executar_consulta(
@@ -1000,8 +994,7 @@ def test_resultado_informa_o_periodo_consultado_e_o_comparado(monkeypatch):
         }
     )
 
-    # "mês passado" em 01/10/2026 é SETEMBRO — vai escrito no resultado
-    # pra IA não deduzir o mês sozinha.
+    # "mês passado" em 01/10/2026 é SETEMBRO, escrito no resultado.
     assert resultado["periodo_consultado"]["descricao"] == "setembro de 2026"
     assert resultado["periodo_comparado"]["descricao"] == "agosto de 2026"
 
@@ -1041,9 +1034,8 @@ def test_contagens_continuam_inteiras_no_resultado(monkeypatch):
 
 def test_variacao_mes_a_mes_funciona_com_periodo_personalizado(monkeypatch):
     """
-    Regressão: a variação em relação ao mesmo mês do ano anterior só
-    era calculada quando o(s) ano(s) vinham em "filtros" — se vinham
-    por "periodo_personalizado", ela sumia em silêncio.
+    A variação contra o mesmo mês do ano anterior também vale com o ano em
+    "periodo_personalizado".
     """
     monkeypatch.setitem(catalogo.INDICADORES["nps"], "carregar", _dados_nps)
 
@@ -1134,7 +1126,7 @@ def _faturamento_dois_anos():
 
 
 def test_agrupar_por_filial_e_ano_traz_a_variacao_em_relacao_ao_ano_anterior(monkeypatch):
-    """Antes só havia variação entre anos quando o mês também era agrupado."""
+    """Há variação entre anos mesmo sem agrupar por mês."""
     monkeypatch.setitem(catalogo.INDICADORES["faturamento"], "carregar", _faturamento_dois_anos)
 
     resultado = orq.executar_consulta(
@@ -1192,13 +1184,9 @@ def test_rca_com_meta_zero_numa_filial_nao_vaza_de_outra_filial_onde_tem_meta(
     monkeypatch,
 ):
     """
-    Regressão: código genérico (ex: conta "MATRIZ") reaproveitado em
-    várias filiais, com meta de verdade só numa delas. Antes, quando a
-    consulta trazia várias filiais de uma vez (sem filtro de filial), a
-    validade do código era calculada somando a meta dele em TODAS as
-    filiais juntas — a meta de uma única filial "vazava" e o código
-    aparecia como RCA válido também nas filiais onde não tinha meta
-    nenhuma.
+    Código genérico (ex: conta "MATRIZ") reaproveitado em várias filiais,
+    com meta só numa delas: consultando várias filiais de uma vez, ele só é
+    RCA válido na filial em que tem meta.
     """
     dados_faturamento_teste = pd.DataFrame(
         [
@@ -1260,7 +1248,7 @@ def test_rca_com_meta_zero_numa_filial_nao_vaza_de_outra_filial_onde_tem_meta(
     assert por_filial["TIMON"] == [8403]  # o código 1 NÃO aparece aqui
 
 
-# --- correções de 05/10/2026 (teste de faturamento) ---
+# --- faturamento ---
 
 def test_agrupado_por_2_anos_ignora_comparar_com(monkeypatch):
     """
@@ -1284,7 +1272,7 @@ def test_agrupado_por_2_anos_ignora_comparar_com(monkeypatch):
 
 
 def test_comparacao_com_periodo_principal_sem_venda_mostra_o_outro(monkeypatch):
-    """10/08/2025 (domingo, sem venda) x 20/08/2025: antes sumia tudo."""
+    """10/08/2025 (domingo, sem venda) x 20/08/2025: a comparação não some."""
     dados = pd.DataFrame([
         {"FILIAL": "TIMON", "DATA": pd.Timestamp("2025-08-20"), "VENDA_LIQ": 100.0,
          "VENDA_BRUTA": 110.0, "VALORDESC": 1.0, "QT_NOTAS": 3, "COD_RCA": 1},
@@ -1371,9 +1359,8 @@ def _meta_set_out_2026():
 
 def test_acumulado_do_ano_usa_so_meses_fechados(monkeypatch):
     """
-    Em 05/10, "atingimento de 2026" somava a meta de outubro inteira contra
-    5 dias de venda (Timon: 97,0% até setembro virava 86,1%). O acumulado
-    usa só os meses fechados e o mês em andamento vem à parte.
+    O atingimento do ano atual usa só os meses fechados; o mês em
+    andamento vem à parte.
     """
     monkeypatch.setattr(orq, "date", _Hoje5DeOutubro)
     monkeypatch.setitem(catalogo.INDICADORES["meta"], "carregar", _meta_set_out_2026)
@@ -1404,10 +1391,9 @@ def test_mes_pedido_ou_mes_a_mes_nao_separa(monkeypatch):
 
 def test_menos_desconto_separa_quem_nao_deu_e_mantem_o_total(monkeypatch):
     """
-    'Quem menos deu desconto na sexta' respondia um RCA com R$ 0,00 — ou
-    com centavos de arredondamento (meio centavo por item em kg). Abaixo
-    de R$ 1,00 sai da lista e vem em "fora_da_lista_de_menor"; o total segue somando
-    tudo (igual ao WinThor).
+    'Quem menos deu desconto': RCA com menos de R$ 1,00 (zero ou centavos
+    de arredondamento) sai da lista e vem em "fora_da_lista_de_menor"; o
+    total segue somando tudo.
     """
     dados = pd.DataFrame([
         {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": codigo, "DATA": pd.Timestamp("2026-10-02"),
@@ -1479,9 +1465,10 @@ def test_periodo_padrao_vale_tambem_pro_indicador_cruzado(monkeypatch):
 
 
 def test_tabela_mostra_so_os_campos_da_ordem_e_dos_filtros(monkeypatch):
-    """'RCAs com mais desconto que não bateram a meta' saía com 7 colunas
-    (até "Faturamento de Tabela"): sem "colunas" da IA, só os campos
-    usados na ordem e nos filtros."""
+    """
+    Sem "colunas" da IA, a tabela tem só os campos usados na ordem e nos
+    filtros.
+    """
     monkeypatch.setitem(catalogo.INDICADORES["desconto"], "carregar", _dados_desconto)
 
     resposta = orq.executar_consulta({
@@ -1494,8 +1481,10 @@ def test_tabela_mostra_so_os_campos_da_ordem_e_dos_filtros(monkeypatch):
 
 
 def test_comparar_ano_atual_usa_os_mesmos_meses_nos_dois_anos(monkeypatch):
-    """Em 05/10/2026, 2026 (9 meses) x 2025 (12) dava quase toda filial
-    caindo. Agora os dois anos usam jan-set."""
+    """
+    Ano atual incompleto x ano anterior: os dois usam os mesmos meses
+    fechados (jan-set).
+    """
     dados = pd.DataFrame([
         {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": 1, "ANO": ano, "MES": mes,
          "VENDA_LIQ": 100.0, "VENDA_BRUTA": 100.0, "VALORDESC": 0.0, "PESOLIQ": 0.0, "QT_NOTAS": 1}
@@ -1514,7 +1503,7 @@ def test_comparar_ano_atual_usa_os_mesmos_meses_nos_dois_anos(monkeypatch):
 
 
 def test_cruzamento_mostra_o_campo_que_resume_cada_indicador(monkeypatch):
-    """'NPS e atingimento por filial' ordenado pelo NPS saía só com o NPS."""
+    """'NPS e atingimento por filial' ordenado pelo NPS mostra os dois."""
     consulta = {"indicador": "nps", "cruzar_com": ["meta"], "ordenar_por": {"campo": "nps"}}
 
     assert orq._colunas_usadas_na_pergunta(consulta, catalogo.INDICADORES["nps"]) == [
@@ -1523,8 +1512,7 @@ def test_cruzamento_mostra_o_campo_que_resume_cada_indicador(monkeypatch):
 
 
 def test_tabela_escolhida_pelo_sistema_compara_so_o_campo_da_pergunta(monkeypatch):
-    """'Quem mais cresceu deu mais desconto?' saía com 9 colunas: cada campo
-    ganhava anterior/diferença/variação. Só o foco da pergunta é comparado."""
+    """Só o foco da pergunta é comparado (anterior/diferença/variação)."""
     linhas = orq._linhas_da_tabela(
         [{"filial": "TIMON", "faturamento": 100.0, "faturamento_anterior": 90.0,
           "percentual_faturamento": 11.1, "percentual_desconto": 3.0,
@@ -1614,10 +1602,9 @@ def test_sem_ninguem_no_filtro_mostra_quem_chegou_mais_perto(monkeypatch):
 
 def test_menos_faturou_separa_rca_que_so_tem_meta(monkeypatch):
     """
-    'Os 5 RCAs que menos faturaram' vinha com 3 RCAs de R$ 0,00 — só
-    tinham meta cadastrada, não venderam nada. Saem da lista e vêm à
-    parte; o total segue somando tudo. Cruzado com desconto, a tabela
-    mostra o desconto em R$ e em %.
+    'Os 5 RCAs que menos faturaram': quem só tem meta cadastrada (R$ 0,00)
+    sai da lista e vem à parte; o total segue somando tudo. Cruzado com
+    desconto, a tabela mostra o desconto em R$ e em %.
     """
     dados = pd.DataFrame([
         {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": codigo, "ANO": 2026, "MES": 1,
@@ -1647,8 +1634,10 @@ def test_menos_faturou_separa_rca_que_so_tem_meta(monkeypatch):
 
 
 def test_menos_faturou_nao_separa_por_falta_de_desconto(monkeypatch):
-    """A regra é do campo ORDENADO: 'quem menos faturou' não tira quem não
-    deu desconto (antes a regra do desconto valia pra qualquer ordem)."""
+    """
+    A regra é do campo ORDENADO: 'quem menos faturou' não tira quem não
+    deu desconto.
+    """
     dados = pd.DataFrame([
         {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": codigo, "ANO": 2026, "MES": 1,
          "VENDA_BRUTA": 500.0, "VENDA_LIQ": 500.0, "VALORDESC": desconto,
@@ -1696,8 +1685,10 @@ def test_diferenca_entre_percentuais_sai_em_pontos_percentuais():
 
 
 def test_cliente_que_menos_comprou_e_pela_venda_bruta_com_o_motivo_de_cliente(monkeypatch):
-    """Cliente que só devolveu sai da lista com o motivo de cliente (antes
-    vinha o do RCA: "têm meta cadastrada"); pela venda bruta não há negativo."""
+    """
+    Cliente que só devolveu sai da lista com o motivo de cliente; pela
+    venda bruta não há negativo.
+    """
     dados = pd.DataFrame([
         {"FILIAL": "TIMON", "ESTADO": "MA", "ANO": 2026, "MES": 10, "COD_RCA": 1, "CODCLI": codigo,
          "CLIENTE": nome, "VENDA_BRUTA": venda, "VENDA_LIQ": venda - devolucao}

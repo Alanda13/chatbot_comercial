@@ -1,12 +1,10 @@
 """
 Regras da resposta final, separadas por assunto.
 
-Antes, toda resposta recebia as ~550 linhas de regras (de NPS, meta de
-tonelada, RCA com nome repetido...) — até "qual o faturamento de Timon".
-O modelo se perdia e esquecia regras. Agora `regras_da_resposta` monta só
-as que se aplicam ao que veio nos dados. Muitos avisos já vêm escritos
-pelo próprio motor nos dados (ex: "periodo_assumido", "criterio_da_ordem",
-"mes_atual_incompleto") — aqui basta mandar seguir.
+`regras_da_resposta` monta só as que se aplicam ao que veio nos dados.
+Muitos avisos já vêm escritos pelo motor nos dados (ex:
+"periodo_assumido", "criterio_da_ordem", "mes_atual_incompleto") — aqui
+basta mandar seguir.
 """
 import json
 

@@ -172,9 +172,8 @@ def _validar_anos(consulta: dict) -> None:
 def _sem_ordem_por_contagem(consulta: dict) -> dict:
     """
     Ordenar por uma contagem de X agrupando pelo próprio X (ex: "clientes
-    novos" de cada cliente) não muda nada: cada um tem 0 ou 1. A ordem sai
-    e a consulta segue (antes dava erro, e "os novos clientes de Timon"
-    não respondia quando a IA pedia essa ordem junto do filtro).
+    novos" de cada cliente) não muda nada: cada um tem 0 ou 1. A ordem sai e
+    a consulta segue.
     """
     ordenar_por = consulta.get("ordenar_por") or {}
     agrupar_por = consulta.get("agrupar_por") or []
@@ -332,10 +331,9 @@ def _validar_cruzamento(indicadores: list[str], agrupar_por: list[str]) -> None:
 def _normalizar_comparacoes(consulta: dict) -> dict:
     """
     "comparar_com" (período x período) junto com "comparar_filtros" (item x
-    item) tem uma leitura só: cada item, período contra período (ex: "Timon
-    e Lourival, 1º semestre de 2025 x 2024"). Vira uma consulta agrupada
-    pela dimensão, com os dois itens nos filtros — um deslize da IA em
-    misturar os dois não vira erro pro usuário.
+    item): cada item, período contra período (ex: "Timon e Lourival, 1º
+    semestre de 2025 x 2024"). Vira uma consulta agrupada pela dimensão, com
+    os dois itens nos filtros.
     """
     comparar_filtros = consulta.get("comparar_filtros")
 
@@ -545,8 +543,8 @@ def _filtros_efetivos(indicador_def: dict, consulta: dict) -> dict:
 def _descrever_periodo(filtros: dict) -> dict | None:
     """
     O período usado de fato, com a descrição pronta ("setembro de 2026",
-    "de 01/09/2026 a 30/09/2026") — a IA não precisa deduzir a que mês
-    "mês passado" se refere (ela errava).
+    "de 01/09/2026 a 30/09/2026"), pra IA não deduzir a que mês "mês
+    passado" se refere.
     """
     periodo = {
         chave: filtros[chave] for chave in ("dia", "mes", "ano") if filtros.get(chave)
@@ -625,9 +623,9 @@ def _separar_mes_em_andamento(consulta: dict, indicadores: list[str]) -> dict | 
     """
     Indicadores com meta ("acumulado_so_meses_fechados"): o acumulado do
     ano atual usa só os meses fechados — senão a meta do mês INTEIRO entra
-    contra poucos dias de venda (Timon: 97,0% até setembro virava 86,1%).
-    O mês em andamento é consultado à parte (resposta["mes_em_andamento"]).
-    Só pro ano atual sozinho, sem agrupar por mês e sem comparação.
+    contra poucos dias de venda. O mês em andamento é consultado à parte
+    (resposta["mes_em_andamento"]). Só pro ano atual sozinho, sem agrupar
+    por mês e sem comparação.
     """
     if not any(
         catalogo.INDICADORES[nome].get("acumulado_so_meses_fechados")
@@ -980,11 +978,19 @@ def _aplicar_agrupamento(
     for tabela in tabelas_agregadas[1:]:
         agrupado = agrupado.join(tabela, how="outer")
 
-    agrupado = (agrupado.fillna(0) if agrupar_por else agrupado).reset_index()
+    # Grupo que não aparece num dos lados do join: soma/contagem 0;
+    # maior/menor fica vazio.
+    if agrupar_por:
+        agrupado = agrupado.fillna({
+            nome: 0 for nome, especificacao in campos.items()
+            if _desempacotar_campo(especificacao)[1] not in ("max", "min")
+        })
+
+    agrupado = agrupado.reset_index()
     resultados = []
 
-    # Linha como dicionário (e não iterrows/Series): ler valor a valor do
-    # pandas levava 20 s numa lista de 190 mil clientes.
+    # Linha como dicionário (e não iterrows/Series): bem mais rápido em
+    # listas grandes.
     for linha in agrupado.to_dict("records"):
         item = {}
 
@@ -1008,7 +1014,8 @@ def _aplicar_agrupamento(
             item[dimensao] = valor
 
         for nome_campo in campos:
-            item[nome_campo] = _numero(linha[nome_campo], nome_campo in inteiros)
+            valor = linha[nome_campo]
+            item[nome_campo] = None if pd.isna(valor) else _numero(valor, nome_campo in inteiros)
 
         resultados.append(item)
 
@@ -1515,9 +1522,7 @@ def _colunas_usadas_na_pergunta(consulta: dict, indicador_def: dict) -> list[str
     """
     Sem "colunas" da IA, a tabela mostra só o que a pergunta usou: o campo
     da ordem, os dos filtros calculados e, num cruzamento, o principal de
-    cada indicador — ou as "colunas_no_cruzamento" dele (desconto: R$ e %)
-    (antes a tela escolhia por palavras da resposta e saía com colunas que
-    ninguém pediu).
+    cada indicador — ou as "colunas_no_cruzamento" dele (desconto: R$ e %).
     """
     campos = [
         (consulta.get("ordenar_por") or {}).get("campo"),
@@ -1633,9 +1638,8 @@ def _ajustar_periodo(consulta: dict, indicador_def: dict) -> tuple[dict, dict]:
     indicadores = [consulta["indicador"], *(consulta.get("cruzar_com") or [])]
     periodo_consultado = _descrever_periodo(_filtros_efetivos(indicador_def, consulta))
 
-    # Sem período, somaria todo o histórico desde 2020 (ex: "desconto do
-    # Mateus em Timon" dava R$ 205 mil, quase tudo de 2020): vale o
-    # "periodo_padrao" de qualquer indicador da consulta (o ano atual).
+    # Sem período, vale o "periodo_padrao" de qualquer indicador da consulta
+    # (o ano atual), em vez de somar todo o histórico desde 2020.
     periodo_padrao = next(
         (
             catalogo.INDICADORES[nome]["periodo_padrao"]
@@ -1653,8 +1657,7 @@ def _ajustar_periodo(consulta: dict, indicador_def: dict) -> tuple[dict, dict]:
         periodo_padrao = None
 
     # "comparado ao mês anterior" sem dizer o período = este mês x o
-    # anterior (antes valia o padrão do indicador, o ano atual, e saía
-    # "janeiro a setembro x setembro").
+    # anterior.
     periodo_da_comparacao = _PERIODO_DA_COMPARACAO.get(consulta.get("comparar_com"))
 
     if periodo_consultado is None and periodo_da_comparacao:
@@ -1789,8 +1792,7 @@ def _consultar(consulta: dict, indicador_def: dict) -> tuple[list[dict], dict, t
     antes_do_filtro = resultado
 
     if filtros_calculados:
-        # Quantos havia antes do filtro: sem isso a IA via só os que passaram
-        # e escrevia "todas as 10 filiais" quando eram 10 de 18.
+        # Quantos havia antes do filtro, pra resposta dizer "10 de 18".
         extras["itens_antes_do_filtro"] = len(resultado)
 
     for filtro_calculado in filtros_calculados:
@@ -1864,7 +1866,7 @@ def _avisos_para_a_ia(
         )
 
     if ordenar_por and ordenar_por.get("campo"):
-        # A IA dizia "maior percentual" numa lista ordenada pelo valor em R$.
+        # Diz por qual campo a lista foi ordenada (R$ ou %).
         sentido = "do menor para o maior" if ordenar_por.get("ordem") == "asc" else "do maior para o menor"
         dentro = f" dentro de cada {ordenar_por['por']}" if ordenar_por.get("por") else ""
         tipo = _tipo_do_campo(ordenar_por["campo"], indicadores)
@@ -1909,8 +1911,7 @@ def _avisos_para_a_ia(
 
     if contexto["periodo_assumido"]:
         periodo = contexto["periodo_consultado"]["descricao"]
-        # Num indicador "foto" (ex: clientes), "outubro de 2026" confundia:
-        # o que vale é a situação de hoje.
+        # Num indicador "foto" (ex: clientes), vale a situação na data.
         usado = (
             f"a situação {foto[1]} (os outros campos são de {periodo})"
             if foto else periodo
@@ -1931,7 +1932,7 @@ def _avisos_para_a_ia(
         }
 
     if "itens_antes_do_filtro" in extras:
-        # A IA copiava "itens antes dos filtros sobre a métrica" na resposta.
+        # Texto pronto, sem os nomes internos dos campos.
         resposta["quantidade_antes_do_filtro"] = (
             f"{len(resultado_antes_do_limite)} de {extras['itens_antes_do_filtro']} "
             "atenderam ao critério. Diga os dois números com o nome do que foi "
@@ -1978,13 +1979,61 @@ def _avisos_para_a_ia(
             )
 
 
+def _lista_de_itens(indicador_def: dict, consulta: dict, resultado: list[dict]) -> dict | None:
+    """
+    A opção "lista_de_itens" do indicador (ex: clientes), quando a consulta
+    é uma lista dessa dimensão — agrupada só por ela, sem mês/ano (aí a
+    ordem natural é a do tempo).
+    """
+    lista = indicador_def.get("lista_de_itens")
+
+    if not lista or not resultado or (consulta.get("agrupar_por") or []) != [lista["dimensao"]]:
+        return None
+
+    return lista
+
+
+def _avisos_da_lista(
+    resposta: dict, lista: dict, consulta: dict, resultado_antes_do_limite: list[dict]
+) -> None:
+    """Quantos de TODA a lista em cada valor de "resumir_por" (ex: situação)
+    e, sem ordem pedida, a ordem usada — a IA só vê os primeiros itens."""
+    indicadores = [consulta["indicador"], *(consulta.get("cruzar_com") or [])]
+    resumir_por = lista.get("resumir_por")
+
+    if resumir_por and resumir_por in resultado_antes_do_limite[0]:
+        quantos: dict[str, int] = {}
+
+        for linha in resultado_antes_do_limite:
+            valor = str(linha.get(resumir_por))
+            quantos[valor] = quantos.get(valor, 0) + 1
+
+        rotulo = catalogo.ATRIBUTOS_DIMENSAO[lista["dimensao"]][resumir_por][1].lower()
+        resposta[f"quantos_por_{resumir_por}"] = {
+            "como_ler": (
+                f"Quantos da lista INTEIRA ({len(resultado_antes_do_limite)}) "
+                f"em cada {rotulo}. Com mais de uma, diga o total e logo em "
+                "seguida quantos em cada uma — não deixe o total parecer de "
+                "uma só."
+            ),
+            "quantidade": dict(sorted(quantos.items(), key=lambda item: -item[1])),
+        }
+
+    if lista.get("ordem") and not consulta.get("ordenar_por"):
+        campo, ordem = lista["ordem"]
+        sentido = "do menor para o maior" if ordem == "asc" else "do maior para o menor"
+        resposta["criterio_da_ordem"] = (
+            f"Sem ordem pedida: a lista vem por {_rotulo_do_campo(campo, indicadores).lower()}, "
+            f"{sentido}. Se citar exemplos, diga essa ordem."
+        )
+
+
 def _momento_da_foto(
     indicadores: list[str], agrupar_por: list[str], periodo: dict | None
 ) -> tuple[list[str], str] | None:
     """
     Campos "foto" (ex: clientes ativos) não somam o período: dizem a
-    situação no último dia dele. A IA falava "ativos em 2026" como se fosse
-    o ano todo — aqui vão os rótulos desses campos e a data certa.
+    situação no último dia dele. Devolve os rótulos desses campos e a data.
     """
     fotos = [
         _rotulo_do_campo(campo, indicadores)
@@ -2023,8 +2072,7 @@ def _tabela_da_tela(
         [indicador_def["campo_principal"]]
         if lados and indicador_def.get("campo_principal") else None
     )
-    # Colunas escolhidas pelo sistema: a comparação só pro 1º campo (antes
-    # cada campo ganhava 3 colunas e a tabela saía com 9).
+    # Colunas escolhidas pelo sistema: a comparação só pro 1º campo.
     comparar = None
     rotulos = None
 
@@ -2087,6 +2135,16 @@ def executar_consulta(consulta: dict) -> dict:
         consulta.get("ordenar_por"),
         consulta.get("agrupar_por"),
     )
+    lista = _lista_de_itens(indicador_def, consulta, resultado)
+
+    if lista and lista.get("ordem") and not consulta.get("ordenar_por"):
+        # Só reordena: quem não tem valor no campo vai pro fim, sem sair.
+        campo, ordem = lista["ordem"]
+        com_valor = [linha for linha in resultado if linha.get(campo) is not None]
+        resultado = _aplicar_ordenacao(com_valor, {"campo": campo, "ordem": ordem}) + [
+            linha for linha in resultado if linha.get(campo) is None
+        ]
+
     resultado_antes_do_limite = resultado
     resultado, totais_por_grupo = _ordenar(resultado, consulta.get("ordenar_por"), extras)
 
@@ -2112,6 +2170,9 @@ def executar_consulta(consulta: dict) -> dict:
         resposta["fora_da_lista_de_menor"] = fora_da_lista
 
     _avisos_para_a_ia(resposta, consulta, indicador_def, contexto, extras, resultado_antes_do_limite)
+
+    if lista:
+        _avisos_da_lista(resposta, lista, consulta, resultado_antes_do_limite)
 
     if consulta.get("comparar_com"):
         resposta["periodo_comparado"] = _descrever_periodo(

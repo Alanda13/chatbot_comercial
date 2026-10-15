@@ -156,8 +156,7 @@ def responder(pergunta):
                 historico=historico,
                 avisar_etapa=lambda etapa: _mostrar_digitando(placeholder, etapa),
             )
-            # Com formatação (negrito, listas, tabelas) — as análises vêm em
-            # markdown; com st.text os **asteriscos** apareciam crus.
+            # Com formatação (negrito, listas, tabelas): as análises vêm em markdown.
             placeholder.markdown(escapar_para_markdown(resposta))
 
             botao_copiar(resposta)

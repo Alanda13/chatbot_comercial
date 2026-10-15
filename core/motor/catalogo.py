@@ -170,9 +170,8 @@ INDICADORES = {
         },
         "rca_nome_mapa": construir_mapa_rca_nome,
         "rca_requer_meta_cadastrada": True,
-        # "Quem MENOS faturou": o RCA com meta cadastrada (8139) que não
-        # vendeu nada entra no arquivo com R$ 0,00 — sai da lista e vem à
-        # parte (decisão da usuária em 09/10/2026). Totais não mudam.
+        # "Quem MENOS faturou": o RCA com meta cadastrada que não vendeu nada
+        # (R$ 0,00) sai da lista e vem à parte. Totais não mudam.
         "menor_ignora": {
             "ordem_por": ("faturamento", "venda_bruta"),
             "campo": "venda_bruta", "abaixo_de": 0.01,
@@ -180,9 +179,8 @@ INDICADORES = {
             "motivo_por_dimensao": {
                 "rca": "têm meta cadastrada, mas não venderam nada no período",
             },
-            # Faturamento negativo (devolução de compras antigas maior que a
-            # venda do mês) também vem à parte: "os clientes que menos
-            # compraram" começava por quem mais devolveu (14/10/2026).
+            # Faturamento negativo (devolução maior que a venda do mês) também vem
+            # à parte.
             "tambem": [{
                 "ordem_por": ("faturamento",),
                 "campo": "faturamento", "abaixo_de": 0.01,
@@ -402,9 +400,8 @@ INDICADORES = {
         # Cruzado com outro indicador, a tabela mostra o desconto em R$ e em %.
         "colunas_no_cruzamento": ["valor_desconto", "percentual_desconto"],
         "carregar": carregar_faturamento_mensal,
-        # Sem período a consulta somaria desde 2020 (ex: "desconto do Mateus
-        # em Timon" dava R$ 205 mil, quase tudo de 2020): usa o ano atual e
-        # a resposta avisa (decisão da usuária em 06/10/2026).
+        # Sem período, usa o ano atual (senão somaria desde 2020) e a resposta
+        # avisa.
         "periodo_padrao": "ano_atual",
         # Uma venda (nota/pedido) já tem data: sem período assumido — senão
         # "a nota 245704" de 2025 não seria achada em "2026".
@@ -474,10 +471,10 @@ INDICADORES = {
             "venda_bruta": {"tipo": "moeda", "rotulo": "Venda Bruta", "palavras": ["venda bruta"]},
         },
     },
-    # Desconto por DIA (hoje, ontem, semana, datas): mesma conta da 8302,
-    # vinda do arquivo diário (GFN_MVIEW_VENDAS_ATUAL, onde VLDESCONTO já
-    # vem multiplicado pela quantidade — bate com o "desconto" mensal:
-    # Timon ago/2026 = R$ 310.567,19 nos dois). Sem supervisor/cliente:
+    # Desconto por DIA (hoje, ontem, semana, datas): mesma conta da 8302
+    # (VLDESCONTO × QT), vinda do arquivo diário — mesma fonte do mensal
+    # (VIEW_VENDAS_RESUMO_FATURAMENTO), então bate com o "desconto" mensal:
+    # Timon ago/2026 = R$ 310.567,19 nos dois. Sem supervisor/cliente:
     # o arquivo diário não tem essas colunas.
     "desconto_diario": {
         # "Quem MENOS deu desconto": abaixo de R$ 1,00 é arredondamento
@@ -561,16 +558,15 @@ INDICADORES = {
     },
 }
 
-# Clientes ativos, em risco, inativos, novos e recuperados (regras da
-# supervisora, ver core/repositories/situacao_cliente_repository.py). Cada
-# campo conta os CLIENTES diferentes ("nunique"): o cliente que comprou com
-# 2 RCAs da filial conta 1 vez. Ativos/em risco/inativos são uma FOTO
+# Clientes ativos, em risco, inativos, novos e recuperados (regras em
+# core/repositories/situacao_cliente_repository.py). Cada campo conta os
+# CLIENTES diferentes ("nunique"). Ativos/em risco/inativos são uma FOTO
 # ("foto_por"): num período de vários meses vale o último (no mês atual,
 # hoje); novos e recuperados juntam o período todo.
 _FOTO_MENSAL = {"foto_por": ("ANO", "MES")}
 # "conta": o que o campo conta — agrupado pelo próprio cliente, cada um
 # "tem" 0 ou 1, e ordenar por isso não responde nada (ver
-# orquestrador._validar_ordem_por_contagem).
+# orquestrador._sem_ordem_por_contagem).
 _CONTA_CLIENTE = {"conta": "cliente"}
 _FOTO_E_CONTA = {**_FOTO_MENSAL, **_CONTA_CLIENTE}
 
@@ -582,8 +578,7 @@ INDICADORES["clientes"] = {
     "campos": {
         "clientes_ativos": ("CLIENTE_ATIVO", "nunique", _FOTO_E_CONTA),
         "clientes_em_risco": ("CLIENTE_EM_RISCO", "nunique", _FOTO_E_CONTA),
-        # Inativos = de 90 dias a 1 ano (os que dá pra recuperar); os parados
-        # há mais tempo vêm à parte (decisão da usuária em 14/10/2026).
+        # Inativos = de 90 dias a 1 ano; os parados há mais tempo vêm à parte.
         "clientes_inativos": ("CLIENTE_INATIVO", "nunique", _FOTO_E_CONTA),
         "clientes_parados_ha_mais_de_1_ano": ("CLIENTE_PARADO_HA_MAIS_DE_1_ANO", "nunique", _FOTO_E_CONTA),
         # Dos ativos, os que só compraram em outra filial / com outro RCA
@@ -592,11 +587,20 @@ INDICADORES["clientes"] = {
         "ativos_so_com_outro_rca": ("CLIENTE_SO_OUTRO_RCA", "nunique", _FOTO_E_CONTA),
         "clientes_novos": ("CLIENTE_NOVO", "nunique", _CONTA_CLIENTE),
         "clientes_recuperados": ("CLIENTE_RECUPERADO", "nunique", _CONTA_CLIENTE),
-        # Por cliente: os dias desde a última compra (em qualquer filial).
-        # Agrupado por filial/RCA, o maior entre os clientes. É campo (não
-        # só informação do cliente) pra dar pra ordenar: "os 5 em risco
-        # há mais tempo sem comprar" sai pronto do motor.
-        "dias_sem_comprar": ("DIAS_SEM_COMPRAR", "max", _FOTO_MENSAL),
+        # Dias desde a última compra, em qualquer filial. Agrupado (empresa,
+        # filial), vale o menor: a compra mais recente entre as lojas.
+        "dias_sem_comprar": ("DIAS_SEM_COMPRAR", "min", _FOTO_MENSAL),
+        # O maior tempo que o cliente ficou parado antes de voltar a comprar
+        # no período (0 = não voltou): "ficou 5 meses parado e voltou".
+        "dias_parado_antes_de_voltar": ("DIAS_PARADO_ANTES_DE_VOLTAR", "max"),
+    },
+    # Lista de clientes: quantos de TODA a lista em cada situação e, sem
+    # ordem pedida, os que pararam há menos tempo primeiro (ver
+    # orquestrador._lista_de_itens).
+    "lista_de_itens": {
+        "dimensao": "cliente",
+        "resumir_por": "situacao",
+        "ordem": ("dias_sem_comprar", "asc"),
     },
     "dimensoes": {
         "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
@@ -639,6 +643,7 @@ INDICADORES["clientes"] = {
         "ativos_so_em_outra_filial": {"tipo": "texto", "rotulo": "Ativos só por outra filial", "palavras": ["outra filia"]},
         "ativos_so_com_outro_rca": {"tipo": "texto", "rotulo": "Ativos só por outro RCA", "palavras": ["outro rca", "outro vendedor"]},
         "dias_sem_comprar": {"tipo": "texto", "rotulo": "Dias sem comprar", "palavras": ["dias sem", "sem comprar"]},
+        "dias_parado_antes_de_voltar": {"tipo": "texto", "rotulo": "Dias parado antes de voltar", "palavras": ["voltou", "voltaram", "volta a comprar", "voltar a comprar"]},
     },
 }
 

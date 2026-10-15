@@ -2,12 +2,10 @@
 Confere se todo número de uma resposta existe nos dados — a trava contra
 número inventado, valendo pra resposta final (não só pro histórico).
 
-Em 06/10/2026, numa análise ("as filiais com NPS acima de 90 dão mais
-desconto?"), o código executado pela IA calculava "sem Parnaíba: 2,70%",
-mas o texto saía com 2,75%, 2,23% ou 3,17%. A conferência aceita um número
-do texto quando ele é um ARREDONDAMENTO ou ABREVIAÇÃO de algum valor que
-existe nos dados (resultado do sistema, saída do código, pergunta):
-"3,14%" ← 3,1387; "R$ 8,57 mi" ← 8.566.753,98. O resto é inventado.
+Aceita um número do texto quando ele é um ARREDONDAMENTO ou ABREVIAÇÃO
+de algum valor que existe nos dados (resultado do sistema, saída do
+código, pergunta): "3,14%" ← 3,1387; "R$ 8,57 mi" ← 8.566.753,98. O resto
+é inventado.
 """
 import re
 

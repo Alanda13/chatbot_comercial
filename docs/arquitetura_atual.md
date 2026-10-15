@@ -1298,3 +1298,42 @@ parte, pra resposta avisar. Cada código de cliente (loja) conta 1.
 - Ordenar por uma contagem de clientes agrupando por cliente (cada um 0 ou 1)
   não dá mais erro: o motor tira a ordem e segue (o erro bloqueava "os novos
   clientes de Timon" quando a IA pedia essa ordem junto do filtro).
+
+### Prazos "sem comprar há…" e lista de clientes (15/10/2026)
+
+- Leitura dos prazos (decisão da usuária, na descrição da ferramenta): "há 2
+  dias" = exatamente 2; "há 2 semanas/meses/anos" = de 2 até completar 3 (2
+  meses = 60 a 89 dias); "exatamente" = só aquele; "mais de" = dali pra cima.
+  A resposta diz a faixa em dias.
+- Campo novo `dias_parado_antes_de_voltar`: o maior tempo que o cliente ficou
+  parado antes de uma compra no período (0 = não voltou), de qualquer
+  tamanho. "Ficou 5 meses parado e voltou" = esse campo >= 150; antes a IA
+  usava os dias sem comprar de HOJE com os recuperados (90+ dias), e errava.
+- `dias_sem_comprar` agrupado (empresa, filial) é o MENOR entre as lojas (a
+  compra mais recente de qualquer uma): com o maior, o MATEUS saía com 2.142.
+- Opção `lista_de_itens` do catálogo (clientes): numa lista agrupada só por
+  cliente, `quantos_por_situacao` conta a lista INTEIRA (a IA vê só 60) e,
+  sem ordem pedida, a lista vem por dias sem comprar, do menor para o maior
+  (`criterio_da_ordem` diz isso; antes o corte em 60 punha os em risco no topo).
+- No join dos campos, maior/menor de grupo ausente fica vazio (None), não 0:
+  o cliente que voltou em fevereiro e já não é da filial na foto de hoje
+  saía "0 dias sem comprar".
+
+### Arquivo diário sai da GFN_MVIEW_VENDAS_ATUAL (15/10/2026)
+
+- A supervisora avisou que a `GFN_MVIEW_VENDAS_ATUAL` (fonte da rotina 8302)
+  está desatualizada. Conferido: os dias fechados batem, mas os recentes
+  atrasam (14/10/2026: mview R$ 4.419.338,76 x view R$ 4.416.735,76, nota
+  cancelada ainda contando; 15/10: vendas mais novas faltando).
+- `faturamento_diario.csv` e `faturamento_diario_forma_pagamento.csv` passam a
+  vir da `VIEW_VENDAS_RESUMO_FATURAMENTO` com `_FILTRO_VENDA_VALIDA` (a fonte e
+  os filtros da 8280 e do mensal), desconto `VLDESCONTO × QT` (por unidade
+  nesta view) e nome do RCA do `PCUSUARI`.
+- Validado em ago/2026: Timon venda R$ 9.614.269,20, tabela R$ 9.920.150,98,
+  desconto R$ 310.567,19 (= mensal); empresa desconto R$ 2.259.420,82;
+  líquida Timon R$ 9.588.545,70 x mensal R$ 9.588.545,71 (arredondamento da
+  devolução por dia).
+- Mais lento: completa ~3 min (diário) e ~4,5 min (forma de pagamento);
+  parcial ~20 s cada. Roda em segundo plano.
+- O peso continua vindo de `GFN_MVIEW_VENDAS_HIST`/`_ANO_ATUAL` (única fonte de
+  peso) — a confirmar com a supervisora se também atrasam.

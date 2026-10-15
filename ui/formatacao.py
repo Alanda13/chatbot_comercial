@@ -334,11 +334,7 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
         if campo in df.columns and df[campo].nunique() == 1:
             valores_para_rotulo[campo] = df[campo].iloc[0]
 
-    # A tabela mostra tudo o que a consulta trouxe. (Antes ela era cortada
-    # pelas filiais/RCAs citados no texto — pensado pra "qual filial teve o
-    # maior NPS", que hoje já vem cortado pelo motor via ordenar_por. Numa
-    # pergunta de relação, que precisa de todas as filiais, a tabela ficava
-    # só com as citadas, e "Parnaíba" no texto não casava com "PARNAIBA".)
+    # A tabela mostra tudo o que a consulta trouxe.
     colunas_base = [
         coluna for coluna in DIMENSOES_DA_TABELA if coluna in df.columns
     ]
@@ -484,7 +480,7 @@ def descrever_periodo(dados_tabela, texto_referencia):
         return f"Anos: {', '.join(str(ano) for ano in anos_nos_dados)}"
 
     # Só 20xx (os dados começam em 2020) e nunca um número logo depois de
-    # "código" — "AURORA ANDRADE-F01 (código 1901)" virava "Ano: 1901".
+    # "código" (ex: "AURORA ANDRADE-F01 (código 1901)").
     anos_completos = re.findall(
         r"(?<!código )(?<!codigo )\b20\d{2}\b", texto_referencia, flags=re.IGNORECASE
     )

@@ -61,10 +61,9 @@ _NOME_CONTA_EMPRESA = (
     r"METALURGICA FERRONORTE"
 )
 
-# Mesmos filtros de negócio usados para achar venda válida (nota não
-# cancelada, tipo de nota, código fiscal, condição de venda) — validados
-# contra o CSV nos 6 anos, batendo exato. Reaproveitados tanto pra venda
-# (VIEW_VENDAS_RESUMO_FATURAMENTO) quanto pro peso (GFN_MVIEW_VENDAS_*).
+# Filtros de venda válida (nota não cancelada, tipo de nota, código
+# fiscal, condição de venda), os mesmos da rotina 8280. Usados na venda
+# (VIEW_VENDAS_RESUMO_FATURAMENTO) e no peso (GFN_MVIEW_VENDAS_*).
 _FILTRO_VENDA_VALIDA = """
       AND DTCANCEL IS NULL
       AND ESPECIE NOT IN ('NS', 'CO')
@@ -79,24 +78,18 @@ _FILTRO_VENDA_VALIDA = """
 # UNION ALL nomeia as colunas explicitamente.
 _COLUNAS_PESO = "DTMOV, CODFILIAL, CODUSUR, TOTPESOLIQ, UNIDADE, QTVENDA"
 
-# Peso: pra produto vendido por peça (UNIDADE != 'KG'), TOTPESOLIQ já é
-# quantidade × peso cadastrado do produto — correto. Pra produto vendido
-# direto em quilos (UNIDADE = 'KG', ex: chapas de aço), a quantidade JÁ é
-# o peso — nesse caso TOTPESOLIQ está multiplicando o peso por ele mesmo
-# (bug confirmado no próprio WinThor, não só nessa view: o cabeçalho da
-# nota, PCNFSAID.TOTPESOLIQ, tem o mesmo erro). Reduziu a margem de erro
-# de 3,17% pra 1,18% no ano de 2025 (ver docs/arquitetura_atual.md).
+# Peso: produto vendido por peça (UNIDADE != 'KG') usa TOTPESOLIQ
+# (quantidade × peso cadastrado). Produto vendido em quilos (UNIDADE =
+# 'KG') usa a quantidade, que já é o peso: nele o TOTPESOLIQ multiplica o
+# peso por ele mesmo (erro do próprio WinThor).
 _PESO_POR_LINHA = "CASE WHEN UNIDADE = 'KG' THEN QTVENDA ELSE TOTPESOLIQ END"
 
 
-# Desconto (VALORDESC) = desconto concedido, igual à rotina 8302 e ao
-# faturamento diário: nesta view, VLDESCONTO vem direto de PCMOV e é o
-# desconto POR UNIDADE (preço de tabela − preço vendido, zero quando o
-# item sai na tabela ou acima dela) — por isso multiplica pela
-# quantidade. Multiplicado, bate centavo a centavo com a 8302 (R$
-# 2.259.420,82 em ago/2026). Não é "venda − tabela" (o VALORDESC da 8280):
-# essa conta sai negativa e deixa a venda acima da tabela abater o
-# desconto dos outros itens.
+# Desconto (VALORDESC) = desconto concedido, mesma conta da rotina 8302:
+# nesta view o VLDESCONTO é POR UNIDADE (preço de tabela − preço vendido,
+# zero quando o item sai na tabela ou acima), por isso multiplica pela
+# quantidade. Não é "venda − tabela" (o VALORDESC da 8280), em que a venda
+# acima da tabela abate o desconto dos outros itens.
 def _consultar_vendas(cursor, desde: date) -> pd.DataFrame:
     cursor.execute(
         f"""
@@ -256,19 +249,14 @@ def gerar_tabela(
 
     chave = ["CODFILIAL", "ANO", "MES", "CODUSUR"]
     dados = vendas.merge(peso, on=chave, how="left")
-    # "outer": devolução de quem NÃO vendeu no mês também desconta — igual
-    # à 8280 (ex: Timon mar/2025, RCA 8952 sem venda e R$ 79.500 de
-    # devolução). Com "left" ela sumia: R$ 270 mil a mais de faturamento
-    # em 2025 (25 devoluções). Conferido com a 8280 em 07/10/2026.
+    # "outer": devolução de quem NÃO vendeu no mês também desconta, como na
+    # rotina 8280.
     dados = dados.merge(devolucao, on=chave, how="outer")
-    # "outer": a meta de quem NÃO vendeu no mês também entra (ex: a conta
-    # "COMERCIAL FERRONORTE LTDA-F09-TIMON", R$ 466 mil em set/2026) — igual
-    # à rotina 8139. Com "left" essa meta sumia e a meta da filial ficava
-    # menor que a do banco (R$ 67 mi a menos em jan-out/2026).
+    # "outer": a meta de quem NÃO vendeu no mês também entra, como na rotina
+    # 8139.
     meta = meta[meta["VALOR_META"] > 0]
-    # Meta de mês que ainda não chegou (nov/dez) fica fora: senão "a meta
-    # de 2026" somaria o ano inteiro contra o realizado só até hoje (o
-    # atingimento das filiais caía pra 53%-76% em out/2026).
+    # Meta de mês que ainda não chegou fica fora: o realizado só vai até
+    # hoje.
     hoje = date.today()
     meta = meta[(meta["ANO"] * 100 + meta["MES"]) <= hoje.year * 100 + hoje.month]
     dados = dados.merge(meta, on=chave, how="outer")

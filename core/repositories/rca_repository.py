@@ -1,10 +1,8 @@
 """
 Cadastro dos RCAs (PCUSUARI): código → nome.
 
-O nome do RCA vinha só das vendas (8302): quem tem meta cadastrada mas
-nunca vendeu (ex: 9230, RÔMULO VIENA VERAS) ficava sem nome e a tabela
-mostrava "sem dados". O cadastro cobre todos — gerado do Oracle (só
-leitura) e atualizado em segundo plano por
+Cobre também quem tem meta cadastrada mas nunca vendeu. Gerado do Oracle
+(só leitura) e atualizado em segundo plano por
 `core/services/atualizador_service.py`, como os outros CSVs.
 """
 import pandas as pd

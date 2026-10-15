@@ -1,32 +1,27 @@
 """
 Situação dos clientes (ativo, em risco, inativo, novo, recuperado).
 
-Regras da supervisora (13/10/2026), contadas em dias, olhando as compras
-do cliente em QUALQUER filial (o cliente é da Ferronorte):
-- ativo: comprou há menos de 90 dias (os mesmos 90 dias do WinThor:
+Contada em dias, pelas compras do cliente em QUALQUER filial:
+- ativo: comprou há menos de 90 dias (os 90 dias do WinThor:
   PCCONSUM.NUMDIASCLIINATIV);
 - em risco de perda: de 60 a 89 dias sem comprar (continua ativo);
-- inativo: de 90 dias a 1 ano sem comprar — os que dá pra recuperar;
-- parado há mais de 1 ano: contado à parte (decisão da usuária em
-  14/10/2026: o número de todos os parados desde 2020 desmotivava);
+- inativo: de 90 dias a 1 ano sem comprar;
+- parado há mais de 1 ano: contado à parte;
 - novo: a 1ª compra (desde 2020) foi naquele mês;
-- recuperado: no mês, voltou a comprar depois de 90 dias ou mais parado.
+- recuperado: no mês, voltou a comprar depois de 90 dias ou mais parado
+  (DIAS_PARADO_ANTES_DE_VOLTAR guarda quanto tempo ficou parado, de
+  qualquer tamanho).
 
 "Cliente de Timon" / "do RCA 8952" = comprou em Timon (com o RCA) nos 12
-meses antes da SUA última compra — o cadastro (PCCLIENT) não tem filial
-preenchida e o RCA do cadastro só bate com quem vende em 4% dos casos.
-Contar a partir da última compra (e não de hoje) mantém o parado há 2 anos
-como cliente de onde comprava, e uma compra antiga em Timon não faz de
-quem hoje só compra em Caxias um cliente de Timon. Quem está ativo só por
-compras em OUTRA filial (ou com outro RCA) é marcado, pra resposta avisar.
+meses antes da SUA última compra — o cadastro (PCCLIENT) não tem a filial
+preenchida. Quem está ativo só por compras em OUTRA filial (ou com outro
+RCA) é marcado, pra resposta avisar.
 
 Um CSV, gerado do Oracle e atualizado em segundo plano por
-`core/services/atualizador_service.py` (mesma regra dos outros):
-`compras_clientes.csv` — os dias em que cada cliente comprou, por
-filial/RCA, desde 2020. A "foto" de um mês (a situação no último dia; no
-mês atual, hoje) é montada na memória só quando uma pergunta pede aquele
-mês: todos os meses de todos os clientes desde 2020 dariam ~10 milhões de
-linhas.
+`core/services/atualizador_service.py`: `compras_clientes.csv` — os dias
+em que cada cliente comprou, por filial/RCA, desde 2020. A "foto" de um
+mês (a situação no último dia; no mês atual, hoje) é montada na memória
+só quando uma pergunta pede aquele mês.
 """
 import calendar
 from collections import OrderedDict
@@ -126,15 +121,22 @@ def _primeiro_mes(compras: pd.DataFrame) -> pd.Series:
 
 
 def _meses_recuperados(compras: pd.DataFrame) -> pd.DataFrame:
-    """(CODCLI, mês) em que o cliente voltou a comprar depois de 90+ dias
-    parado."""
+    """(CODCLI, mês) em que o cliente voltou a comprar, com o maior tempo
+    que ele ficou parado antes de uma compra daquele mês
+    (DIAS_PARADO_ANTES_DE_VOLTAR, de qualquer tamanho: "voltou depois de 2
+    meses parado" também responde). Recuperado = 90 dias ou mais."""
     dias = compras[["CODCLI", "DATA"]].drop_duplicates().sort_values(["CODCLI", "DATA"])
-    anterior = dias.groupby("CODCLI")["DATA"].shift()
-    voltou = (dias["DATA"] - anterior).dt.days >= DIAS_INATIVO
-    return pd.DataFrame({
-        "CODCLI": dias.loc[voltou, "CODCLI"],
-        "MES_NUMERO": _numero_do_mes(dias.loc[voltou, "DATA"]),
-    }).drop_duplicates()
+    parado = (dias["DATA"] - dias.groupby("CODCLI")["DATA"].shift()).dt.days
+    voltas = pd.DataFrame({
+        "CODCLI": dias["CODCLI"],
+        "MES_NUMERO": _numero_do_mes(dias["DATA"]),
+        "DIAS_PARADO_ANTES_DE_VOLTAR": parado,
+    }).dropna()
+    return (
+        voltas.groupby(["CODCLI", "MES_NUMERO"], as_index=False)["DIAS_PARADO_ANTES_DE_VOLTAR"]
+        .max()
+        .astype({"DIAS_PARADO_ANTES_DE_VOLTAR": "int64"})
+    )
 
 
 def _foto_do_mes(
@@ -174,9 +176,12 @@ def _foto_do_mes(
     foto["INATIVO"] = ~ativo & ~parado_ha_mais_de_1_ano
     foto["PARADO_HA_MAIS_DE_1_ANO"] = parado_ha_mais_de_1_ano
     foto["NOVO"] = foto["CODCLI"].map(primeiro_mes) == mes_numero
-    foto["RECUPERADO"] = foto["CODCLI"].isin(
-        recuperados.loc[recuperados["MES_NUMERO"] == mes_numero, "CODCLI"]
-    )
+    # Sem compra no mês (ou 1ª compra): 0.
+    foto["DIAS_PARADO_ANTES_DE_VOLTAR"] = foto["CODCLI"].map(
+        recuperados.loc[recuperados["MES_NUMERO"] == mes_numero]
+        .set_index("CODCLI")["DIAS_PARADO_ANTES_DE_VOLTAR"]
+    ).fillna(0).astype("int64")
+    foto["RECUPERADO"] = foto["DIAS_PARADO_ANTES_DE_VOLTAR"] >= DIAS_INATIVO
     # Ativo só por compra em outra filial / com outro RCA: a resposta avisa.
     foto["SO_OUTRA_FILIAL"] = ativo & (
         (referencia - foto["ULTIMA_NA_FILIAL"]).dt.days >= DIAS_INATIVO
@@ -193,7 +198,7 @@ _MARCAS = [
 ]
 COLUNAS_SITUACAO = [
     "ANO", "MES", "CODCLI", "CODFILIAL", "COD_RCA", "COD_SUPERVISOR", *_MARCAS,
-    "DIAS_SEM_COMPRAR", "DATA_ULTIMA_COMPRA", "FILIAL_ULTIMA_COMPRA", "RCA_ULTIMA_COMPRA",
+    "DIAS_SEM_COMPRAR", "DIAS_PARADO_ANTES_DE_VOLTAR", "DATA_ULTIMA_COMPRA", "FILIAL_ULTIMA_COMPRA", "RCA_ULTIMA_COMPRA",
 ]
 
 
@@ -250,8 +255,8 @@ def _para_consulta(situacao: pd.DataFrame) -> pd.DataFrame:
         dados["ATIVO"] + dados["EM_RISCO"] + 3 * dados["PARADO_HA_MAIS_DE_1_ANO"],
         ["Inativo", "Ativo", "Em risco de perda", "Parado há mais de 1 ano"],
     )
-    # Formata cada data/filial uma vez só (poucas datas em centenas de mil
-    # linhas): formatar linha a linha levava segundos.
+    # Formata cada data/filial uma vez só (são poucas, repetidas em muitas
+    # linhas).
     datas = dados["DATA_ULTIMA_COMPRA"].astype("category")
     dados["ULTIMA_COMPRA"] = datas.cat.rename_categories(
         datas.cat.categories.strftime("%d/%m/%Y")

@@ -14,7 +14,7 @@ from ui.formatacao import preparar_tabela, vale_a_pena_mostrar_tabela
 
 
 def _sem_markdown(texto: str) -> str:
-    """Tira o negrito do markdown (**texto**) — no arquivo ficava cru."""
+    """Tira o negrito do markdown (**texto**)."""
     return re.sub(r"\*\*(.+?)\*\*", r"\1", texto)
 
 

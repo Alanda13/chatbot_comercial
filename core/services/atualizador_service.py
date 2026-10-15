@@ -1,22 +1,17 @@
 """
 Atualiza os CSVs do Oracle em segundo plano — quem pergunta nunca espera.
 
-Antes, o 1º a perguntar depois de 1 hora esperava o Oracle (06/10/2026:
-~5 min, o diário e o mensal regerados um depois do outro). Agora:
-
 - ao abrir o chatbot: atualização COMPLETA (desde 2020), em segundo plano
   — enquanto isso, as perguntas usam os CSVs que já existem;
-- de hora em hora, das 7h às 19h: PARCIAL (só o mês atual e o anterior —
-  mensal ~36 s em vez de ~159 s, diário ~9 s em vez de ~29 s);
+- de hora em hora, das 7h às 19h: PARCIAL (só o mês atual e o anterior);
 - o 1º ciclo de cada dia (a partir das 7h) é COMPLETO: pega devoluções e
-  cancelamentos em meses antigos, mantendo tudo igual ao WinThor;
+  cancelamentos em meses antigos;
 - à noite não roda nada. Se o Oracle falhar, fica valendo o CSV anterior.
 
-Roda num PROGRAMA SEPARADO (`python -m core.services.atualizador_service`),
-não junto com o chatbot: no mesmo programa, a atualização (milhões de
-linhas) segurava o processador e as perguntas ficavam na fila — em
-13/10/2026, "qual o NPS do ano passado?" levou 1min30 durante a completa
-e 20 s sem ela. `iniciar()` (chamado pelo app.py) só abre esse programa:
+Roda num PROGRAMA SEPARADO (`python -m core.services.atualizador_service`):
+no mesmo programa do chatbot, a atualização (milhões de linhas) ocuparia o
+processador e atrasaria as perguntas. `iniciar()` (chamado pelo app.py) só
+abre esse programa:
 
 - um atualizador por vez: cada um segura `data/atualizador.trava`; um
   novo (o Streamlit recarregou o código) espera o antigo sair;
@@ -135,9 +130,8 @@ def proxima_acao(
 
 def estado_inicial(hoje: date, dia_da_ultima_completa: date | None):
     """
-    (ultima_completa, ultima_parcial) ao abrir. Completa já feita hoje: ao
-    abrir faz só a parcial (antes, cada vez que o chatbot reabria refazia
-    os ~10 min da completa). Senão, a completa, a qualquer hora.
+    (ultima_completa, ultima_parcial) ao abrir: completa já feita hoje, só
+    a parcial; senão, a completa, a qualquer hora.
     """
     if dia_da_ultima_completa == hoje:
         return hoje, None

@@ -29,7 +29,7 @@ def test_arredondamentos_e_abreviacoes_dos_dados_passam():
 
 
 def test_numero_diferente_do_codigo_e_pego():
-    """O código imprimiu 2,70%; o texto saiu com 2,75% (caso real)."""
+    """O código imprimiu 2,70%; o texto saiu com 2,75%."""
     texto = "Sem Parnaíba, o grupo cai para 2,75%."
 
     assert numeros_inventados(texto, _permitidos()) == ["2,75"]

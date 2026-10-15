@@ -220,10 +220,8 @@ def test_por_precisa_estar_no_agrupamento(motor):
 
 def test_sem_limite_por_grupo_mantem_meses_em_ordem_e_variacao_em_reais(monkeypatch):
     """
-    "Histórico mês a mês dos maiores RCAs": os meses ficam em ordem
-    (antes vinham do maior desconto pro menor) e a variação é do desconto
-    em R$ — não do % (9,05% → 9,07% = "+0,22%" escondia uma queda de R$
-    115 mil pra R$ 19 mil).
+    "Histórico mês a mês dos maiores RCAs": os meses ficam em ordem e a
+    variação é do desconto em R$, não do %.
     """
     dados = pd.DataFrame(
         [

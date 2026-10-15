@@ -188,8 +188,7 @@ def test_gerar_resposta_final_sem_historico_nao_quebra(monkeypatch):
 
 
 def test_calendario_recente_da_a_data_de_cada_dia():
-    """'Sexta da semana passada' em 05/10/2026 = 02/10/2026 — sem isso a IA
-    consultava a semana inteira e dizia que era a sexta."""
+    """'Sexta da semana passada' em 05/10/2026 = 02/10/2026."""
     from datetime import date
     from core.services.ia_service import calendario_recente
 

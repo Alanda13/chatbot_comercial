@@ -31,9 +31,7 @@ _DIAS_DA_SEMANA = (
 def calendario_recente(hoje: date | None = None) -> str:
     """
     A data de cada dia desta semana e da semana passada (segunda a
-    domingo). Sem isso a IA não sabia que "sexta da semana passada" era
-    02/10/2026 e consultava a semana inteira, respondendo como se fosse
-    a sexta.
+    domingo), pra IA saber a data de "sexta da semana passada".
     """
     hoje = hoje or date.today()
     segunda = hoje - timedelta(days=hoje.weekday())
@@ -201,8 +199,7 @@ def _formatar_historico_para_resposta(
     return "\n".join(linhas)
 
 
-# Na tentativa sem execução de código, a IA não pode fazer conta nenhuma
-# (sem isso, ela calculava "de cabeça" o % dos grupos e errava).
+# Na tentativa sem execução de código, a IA não pode fazer conta nenhuma.
 _SEM_CODIGO = (
     "\n\nATENÇÃO: nesta resposta você NÃO pode executar código. Então NÃO "
     "calcule nada (nem % de grupo, nem média, nem total): use só os números "
@@ -314,11 +311,9 @@ Responda diretamente ao usuário.
         tools=[types.Tool(code_execution=types.ToolCodeExecution())],
         temperature=0,
     )
-    # Trava contra número inventado: o código calculava certo, mas o texto
-    # às vezes saía com outro número (06/10/2026: "sem Parnaíba" 2,70% no
-    # código e 2,75%/2,23%/3,17% no texto). Todo número do texto tem que
-    # existir nos dados (resultado, saída do código, pergunta, histórico);
-    # senão tenta de novo e, por último, sem execução de código.
+    # Trava contra número inventado: todo número do texto tem que existir nos
+    # dados (resultado, saída do código, pergunta, histórico); senão tenta de
+    # novo e, por último, sem execução de código.
     dados_conhecidos = (resultado, pergunta, historico or [])
     tentativas = [com_codigo, com_codigo, None]
 

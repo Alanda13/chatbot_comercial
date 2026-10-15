@@ -97,10 +97,11 @@ def _largura(planilha, coluna):
 
 
 def _montar_faixa(planilha, titulo, subtitulo, caminho_logo, colunas_da_tabela):
-    """Topo do tamanho da tabela: a logo na 1ª linha (em fundo branco — as
-    letras azuis sumiam no azul) e, embaixo, a faixa azul com a pergunta e
-    o subtítulo. A pergunta que não cabe na largura da tabela quebra em
-    mais linhas (a faixa passando da tabela ficava estranha)."""
+    """
+    Topo do tamanho da tabela: a logo na 1ª linha (em fundo branco) e,
+    embaixo, a faixa azul com a pergunta e o subtítulo. A pergunta que não
+    cabe na largura da tabela quebra em mais linhas.
+    """
     if caminho_logo:
         _colocar_logo(planilha, caminho_logo)
     planilha.row_dimensions[1].height = _ALTURA_LOGO * 0.75 + 6  # px → pt

@@ -10,12 +10,8 @@ _DADOS_FILIAL_2_ANOS = [
 
 def test_tabela_filial_x_2_anos_consultar_dados_comerciais():
     """
-    Regressão: uma consulta de "consultar_dados_comerciais" agrupada por
-    filial e ano (2 anos) não pode quebrar a resposta inteira — antes de
-    "consultar_dados_comerciais" ter uma entrada em
-    CONFIG_TABELA_POR_FERRAMENTA, isso levantava KeyError(None) dentro de
-    preparar_tabela, e o texto certo da IA era substituído por "None" na
-    tela (o erro era capturado e sua mensagem virava a resposta exibida).
+    Uma consulta de "consultar_dados_comerciais" agrupada por filial e ano
+    (2 anos) monta a tabela sem erro e mantém o texto da IA.
     """
     tabela = preparar_tabela(
         _DADOS_FILIAL_2_ANOS,
@@ -191,8 +187,7 @@ def test_colunas_pedidas_trazem_a_comparacao_do_campo_pedido():
 
 
 def test_numeros_saem_em_portugues_e_contagens_sem_casa_decimal():
-    """Antes saíam "96.28" e "1058.0" (a coluna virava decimal por causa
-    de uma filial sem dado)."""
+    """Decimais com vírgula e contagens sem ".0", mesmo com filial sem dado."""
     dados = [
         {"filial": "TIMON", "nps": 96.28, "total_respostas": 1058.0},
         {"filial": "MARITUBA", "nps": None, "total_respostas": None},
@@ -205,8 +200,10 @@ def test_numeros_saem_em_portugues_e_contagens_sem_casa_decimal():
 
 
 def test_nps_das_filiais_comparadas_fica_lado_a_lado_antes_das_outras_colunas():
-    """Regressão: com Respostas e Variação junto, o NPS de uma filial ficava
-    separado do NPS da outra por essas colunas, e a comparação se perdia."""
+    """
+    Com Respostas e Variação junto, o NPS das filiais comparadas fica lado
+    a lado.
+    """
     dados = _nps_mensal(["LOURIVAL", "SANTA INÊS"], [1, 2, 3])
 
     tabela = preparar_tabela(
@@ -288,8 +285,10 @@ def test_texto_da_conversa_tem_perguntas_respostas_e_tabela():
 
 
 def test_tabela_com_primeira_coluna_repetida_nao_quebra():
-    """'Os 5 RCAs de cada mês': "Janeiro" repete na 1ª coluna — o alinhamento
-    célula a célula do Styler quebrava com índice repetido."""
+    """
+    'Os 5 RCAs de cada mês': "Janeiro" repete na 1ª coluna sem quebrar o
+    alinhamento do Styler.
+    """
     from ui.components.tabela import exibir_tabela
 
     dados = [

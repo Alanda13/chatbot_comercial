@@ -28,8 +28,7 @@ def test_gerar_tabela_mantem_meta_sem_venda_e_marca_conta_da_empresa(monkeypatch
     """
     Igual à rotina 8139: a meta de quem não vendeu no mês entra (ex: a
     conta "COMERCIAL FERRONORTE LTDA-F09-TIMON"), com venda zero e o
-    supervisor do cadastro — antes ela sumia e a meta da filial ficava
-    menor que a do banco.
+    supervisor do cadastro.
     """
     import pandas as pd
 

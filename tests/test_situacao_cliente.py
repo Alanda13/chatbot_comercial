@@ -37,7 +37,7 @@ def _foto(ano, mes, filial=TIMON):
     return foto.set_index("CODCLI")
 
 
-def test_situacao_de_hoje_pelas_regras_da_supervisora():
+def test_situacao_de_hoje():
     foto = _foto(2026, 10)
 
     assert set(foto.index) == {ZE, ANA, BIA, CARLOS, DANI, VELHO}   # a EVA não é de Timon
@@ -80,6 +80,26 @@ def test_volta_depois_de_90_dias_e_recuperado():
     assert _foto(2026, 7).loc[CARLOS, "RECUPERADO"] == 1
 
 
+def test_guarda_quanto_tempo_ficou_parado_antes_de_voltar():
+    # A Dani ficou de 01/03 a 02/10 (215 dias) parada; o Carlos, de
+    # 10/01/2025 a 28/07/2026 (564). Quem não comprou no mês: 0.
+    outubro, julho = _foto(2026, 10), _foto(2026, 7)
+
+    assert outubro.loc[DANI, "DIAS_PARADO_ANTES_DE_VOLTAR"] == 215
+    assert outubro.loc[CARLOS, "DIAS_PARADO_ANTES_DE_VOLTAR"] == 0
+    assert julho.loc[CARLOS, "DIAS_PARADO_ANTES_DE_VOLTAR"] == 564
+
+
+def test_parada_curta_conta_os_dias_mas_nao_e_recuperado():
+    compras = pd.DataFrame({
+        "CODCLI": [1, 1], "CODFILIAL": TIMON, "COD_RCA": 10, "COD_SUPERVISOR": 1,
+        "DATA": pd.to_datetime(["2026-08-01", "2026-10-01"]),   # 61 dias
+    })
+    foto = situacao.montar_situacao(compras, [(2026, 10)], hoje=date(2026, 10, 5)).iloc[0]
+
+    assert foto["DIAS_PARADO_ANTES_DE_VOLTAR"] == 61 and foto["RECUPERADO"] == 0
+
+
 def test_atualizacao_parcial_troca_so_os_meses_recentes(monkeypatch, tmp_path):
     arquivo = tmp_path / "compras_clientes.csv"
     monkeypatch.setattr(situacao, "ARQUIVO_COMPRAS_CLIENTES", arquivo)
@@ -106,6 +126,11 @@ def _situacao_para_o_motor():
     dados["ESTADO"] = "MA"
     for marca in situacao._MARCAS:
         dados[f"CLIENTE_{marca}"] = dados["CODCLI"].where(dados[marca] == 1).astype("Int32")
+    dados["SITUACAO"] = pd.Series(
+        ["Inativo", "Ativo", "Em risco de perda", "Parado há mais de 1 ano"]
+    ).iloc[dados["ATIVO"] + dados["EM_RISCO"] + 3 * dados["PARADO_HA_MAIS_DE_1_ANO"]].to_numpy()
+    # Empresa: o Zé e o Velho são lojas da mesma.
+    dados["EMPRESA"] = dados["CODCLI"].map({ZE: "E1", VELHO: "E1"}).fillna(dados["CODCLI"].astype(str))
     return dados
 
 
@@ -200,8 +225,8 @@ def test_lista_mes_a_mes_traz_a_variacao_de_cada_numero(monkeypatch, motor):
 
 
 def test_ordem_por_contagem_de_clientes_por_cliente_e_ignorada(motor):
-    # "os novos clientes de Timon": a IA pedia a ordem pelos novos (0 ou 1
-    # por cliente) junto do filtro — a ordem sai e a lista vem.
+    # A ordem pelos novos (0 ou 1 por cliente) junto do filtro sai e a lista
+    # vem.
     resposta = _consultar(
         periodo="personalizado", periodo_personalizado={"meses": [10], "anos": [2026]},
         agrupar_por=["cliente"],
@@ -232,3 +257,72 @@ def test_resposta_traz_o_como_ler_do_indicador(motor):
     resposta = _consultar()
 
     assert "parados há mais de 1 ano" in resposta["como_ler_o_indicador"]["clientes"]
+
+
+# --- prazos ("sem comprar há…") e a lista de clientes ----------------------
+
+_OUTUBRO = {"periodo": "personalizado", "periodo_personalizado": {"meses": [10], "anos": [2026]}}
+
+
+def _lista(*filtros, **consulta):
+    resposta = _consultar(
+        **{**_OUTUBRO, **consulta}, agrupar_por=["cliente"],
+        filtros_calculados=[
+            {"campo": campo, "operador": operador, "valor": valor}
+            for campo, operador, valor in filtros
+        ],
+    )
+    return resposta, [linha["cliente"] for linha in resposta["resultados"]]
+
+
+def test_ha_mais_de_2_meses_separa_por_situacao_e_vem_dos_mais_recentes(motor):
+    # Carlos 69 dias (em risco), Bia 120 (inativa), Velho 638 (parado).
+    resposta, clientes = _lista(("dias_sem_comprar", ">=", 60))
+
+    assert clientes == [CARLOS, BIA, VELHO]
+    assert resposta["quantos_por_situacao"]["quantidade"] == {
+        "Em risco de perda": 1, "Inativo": 1, "Parado há mais de 1 ano": 1,
+    }
+    assert "do menor para o maior" in resposta["criterio_da_ordem"]
+
+
+def test_ha_2_meses_e_de_60_a_89_dias(motor):
+    _, clientes = _lista(("dias_sem_comprar", ">=", 60), ("dias_sem_comprar", "<=", 89))
+
+    assert clientes == [CARLOS]
+
+
+def test_ha_7_dias_e_exatamente_7(motor):
+    _, clientes = _lista(("dias_sem_comprar", "==", 7))
+
+    assert clientes == [ZE]
+
+
+def test_ordem_pedida_vale_mais_que_a_da_lista(motor):
+    resposta, clientes = _lista(
+        ("dias_sem_comprar", ">=", 60),
+        ordenar_por={"campo": "dias_sem_comprar", "ordem": "desc"},
+    )
+
+    assert clientes == [VELHO, BIA, CARLOS]
+    assert "Sem ordem pedida" not in resposta["criterio_da_ordem"]
+
+
+def test_ficou_5_meses_parado_e_voltou(motor):
+    # Set/out de 2026: só a Dani voltou depois de 150+ dias (215).
+    resposta, clientes = _lista(
+        ("dias_parado_antes_de_voltar", ">=", 150),
+        periodo="personalizado", periodo_personalizado={"meses": [9, 10], "anos": [2026]},
+    )
+
+    assert clientes == [DANI]
+    assert resposta["resultados"][0]["dias_parado_antes_de_voltar"] == 215
+
+
+def test_empresa_esta_sem_comprar_desde_a_compra_mais_recente_das_lojas(motor):
+    # Zé (7 dias) e Velho (638) são lojas da mesma empresa.
+    resposta = _consultar(**_OUTUBRO, agrupar_por=["empresa"])
+    empresa = {linha["empresa"]: linha for linha in resposta["resultados"]}["E1"]
+
+    assert empresa["dias_sem_comprar"] == 7
+    assert "quantos_por_situacao" not in resposta

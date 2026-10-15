@@ -1,22 +1,21 @@
 """
 Carregamento e preparação dos dados de Faturamento por dia.
 
-O CSV (`faturamento_diario.csv`) funciona como um cache em disco,
-atualizado em segundo plano por `core/services/atualizador_service.py` — mesmo mecanismo
-do faturamento mensal (ver `core/repositories/arquivos_repository.py`).
+O CSV (`faturamento_diario.csv`) é um cache em disco, atualizado em
+segundo plano por `core/services/atualizador_service.py` (ver
+`core/repositories/arquivos_repository.py`).
 
-Fonte dos dados (Oracle, schema FNORTE, só leitura — ver
-docs/arquitetura_atual.md):
-- Venda (bruta, desconto, nº de notas), nome do RCA: `GFN_MVIEW_VENDAS_ATUAL`.
+Fontes (Oracle, schema FNORTE, só leitura):
+- Venda (bruta, de tabela, desconto, nº de notas):
+  `VIEW_VENDAS_RESUMO_FATURAMENTO`, com os filtros de venda válida — a
+  mesma fonte do faturamento mensal. Desconto = `VLDESCONTO × QT` (nesta
+  view é por unidade).
+- Nome do RCA: cadastro (`PCUSUARI`).
 - Devolução: `VIEW_DEVOL_RESUMO_FATURAMENTO`.
 
 Forma de pagamento (`faturamento_diario_forma_pagamento.csv`, usado só
-quando a pergunta filtra/agrupa por forma de pagamento — ver
-`carregar_faturamento_diario_forma_pagamento`): mesmas duas fontes acima, cada
-uma já tem a coluna `CODCOB` — agrupar por ela também (com `PCCOB` pro
-nome) reproduz exatamente o valor por forma de pagamento, incluindo a
-devolução (validado nos 2 anos que o CSV antigo cobria, 0 de
-diferença).
+quando a pergunta filtra/agrupa por forma de pagamento): as mesmas
+fontes, agrupadas também por `CODCOB` (nome em `PCCOB`).
 """
 from datetime import date
 from pathlib import Path
@@ -30,6 +29,7 @@ from core.repositories.arquivos_repository import (
     ler_csv,
 )
 from core.repositories.oracle import get_connection
+from core.repositories.faturamento_repository import _FILTRO_VENDA_VALIDA
 from core.repositories.filiais_repository import padronizar_filiais
 from core.repositories.filial_utils import (
     encontrar_filial_mais_proxima,
@@ -70,16 +70,21 @@ COLUNAS_SAIDA_COBRANCA = [
 
 def _consultar_vendas(cursor, desde: date) -> pd.DataFrame:
     cursor.execute(
-        """
-        SELECT CODFILIAL, TRUNC(DTMOV) DATA, CODUSUR,
-               MAX(NOME) NOME_RCA,
-               COUNT(DISTINCT NUMTRANSVENDA) QT_NOTAS,
-               ROUND(SUM(VLVENDA), 2) VENDA_BRUTA,
-               ROUND(SUM(VLTABELA), 2) VENDA_TABELA,
-               ROUND(SUM(VLDESCONTO), 4) VALORDESC
-        FROM GFN_MVIEW_VENDAS_ATUAL
-        WHERE DTMOV >= :desde
-        GROUP BY CODFILIAL, TRUNC(DTMOV), CODUSUR
+        f"""
+        SELECT V.CODFILIAL, V.DATA, V.CODUSUR, U.NOME NOME_RCA,
+               V.QT_NOTAS, V.VENDA_BRUTA, V.VENDA_TABELA, V.VALORDESC
+        FROM (
+            SELECT CODFILIAL, TRUNC(DTSAIDA) DATA, CODUSUR,
+                   COUNT(DISTINCT NUMTRANSVENDA) QT_NOTAS,
+                   ROUND(SUM(VLVENDA), 2) VENDA_BRUTA,
+                   ROUND(SUM(VLTABELA), 2) VENDA_TABELA,
+                   ROUND(SUM(VLDESCONTO * QT), 4) VALORDESC
+            FROM VIEW_VENDAS_RESUMO_FATURAMENTO
+            WHERE DTSAIDA >= :desde
+            {_FILTRO_VENDA_VALIDA}
+            GROUP BY CODFILIAL, TRUNC(DTSAIDA), CODUSUR
+        ) V
+        LEFT JOIN PCUSUARI U ON (U.CODUSUR = V.CODUSUR)
         """,
         desde=desde,
     )
@@ -131,16 +136,20 @@ def gerar_tabela(desde: date = DESDE_PADRAO) -> pd.DataFrame:
 
 def _consultar_vendas_cobranca(cursor, desde: date) -> pd.DataFrame:
     cursor.execute(
-        """
-        SELECT V.CODFILIAL, TRUNC(V.DTMOV) DATA, V.CODUSUR,
-               V.CODCOB, MAX(C.COBRANCA) COBRANCA,
-               COUNT(DISTINCT V.NUMTRANSVENDA) QT_NOTAS,
-               ROUND(SUM(V.VLVENDA), 2) VENDA_BRUTA,
-               ROUND(SUM(V.VLDESCONTO), 2) VALORDESC
-        FROM GFN_MVIEW_VENDAS_ATUAL V
+        f"""
+        SELECT V.CODFILIAL, V.DATA, V.CODUSUR, V.CODCOB, C.COBRANCA,
+               V.QT_NOTAS, V.VENDA_BRUTA, V.VALORDESC
+        FROM (
+            SELECT CODFILIAL, TRUNC(DTSAIDA) DATA, CODUSUR, CODCOB,
+                   COUNT(DISTINCT NUMTRANSVENDA) QT_NOTAS,
+                   ROUND(SUM(VLVENDA), 2) VENDA_BRUTA,
+                   ROUND(SUM(VLDESCONTO * QT), 4) VALORDESC
+            FROM VIEW_VENDAS_RESUMO_FATURAMENTO
+            WHERE DTSAIDA >= :desde
+            {_FILTRO_VENDA_VALIDA}
+            GROUP BY CODFILIAL, TRUNC(DTSAIDA), CODUSUR, CODCOB
+        ) V
         LEFT JOIN PCCOB C ON (C.CODCOB = V.CODCOB)
-        WHERE V.DTMOV >= :desde
-        GROUP BY V.CODFILIAL, TRUNC(V.DTMOV), V.CODUSUR, V.CODCOB
         """,
         desde=desde,
     )
@@ -271,8 +280,7 @@ def construir_mapa_rca_nome() -> dict[int, str]:
     """
     Constrói um mapa de código do RCA para o nome do vendedor.
 
-    O nome vem das vendas (8302, coluna NOME_RCA — a 8280 só tem o
-    código); quando o mesmo código aparece com nomes diferentes ao longo
+    O nome vem do arquivo diário (coluna NOME_RCA, do cadastro PCUSUARI); quando o mesmo código aparece com nomes diferentes ao longo
     do tempo, fica o primeiro nome encontrado. Quem nunca vendeu (só tem
     meta cadastrada) pega o nome do cadastro de RCAs (PCUSUARI).
     """

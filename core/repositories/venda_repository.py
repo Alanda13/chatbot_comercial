@@ -2,19 +2,16 @@
 Desconto por VENDA (nota fiscal = pedido, 1 pra 1 no WinThor).
 
 Um CSV, gerado do Oracle e atualizado em segundo plano por
-`core/services/atualizador_service.py` (mesma regra dos outros):
-`desconto_venda.csv` — uma linha por nota, desde 2025 (decisão da usuária
-em 09/10/2026: ~700 mil notas por ano; desde 2020 seriam 4,3 milhões).
-Os totais por filial/RCA/cliente/produto desde 2020 continuam nos outros
-arquivos.
+`core/services/atualizador_service.py`: `desconto_venda.csv` — uma linha
+por nota, desde 2025. Os totais por filial/RCA/cliente/produto desde 2020
+estão nos outros arquivos.
 
 Mesma conta de desconto da rotina 8302 (VLDESCONTO x QT) e mesmos filtros
-de venda válida do faturamento mensal. A nota não traz devolução: o
-número que importa aqui é o desconto dado NA venda.
+de venda válida do faturamento mensal. A nota não traz devolução.
 
 A "venda" é identificada pela transação (NUMTRANSVENDA, única); o número
-da nota se repete entre filiais (cada uma tem a sua numeração) — por isso
-"a nota 123456" pode achar mais de uma venda.
+da nota se repete entre filiais — por isso "a nota 123456" pode achar
+mais de uma venda.
 """
 from datetime import date
 
@@ -91,9 +88,8 @@ def atualizar(completa: bool) -> None:
     else:
         desde = inicio_da_janela_parcial()
         antigo = antes_da_janela_mensal(ler_csv(ARQUIVO_DESCONTO_VENDA), desde)
-        # A data lida do CSV é texto e a do Oracle é data: sem converter,
-        # o arquivo saía com dois formatos ("2025-01-02" e "2026-10-08
-        # 00:00:00") e não abria mais.
+        # A data lida do CSV é texto e a do Oracle é data: converte pra gravar
+        # num formato só.
         antigo["DATA"] = pd.to_datetime(antigo["DATA"], format="ISO8601")
         dados = pd.concat([antigo, _buscar(desde)], ignore_index=True)
 

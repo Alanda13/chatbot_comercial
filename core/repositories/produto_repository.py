@@ -2,20 +2,18 @@
 Carregamento dos dados de desconto por produto (e por grupo e família).
 
 Dois CSVs, gerados do Oracle e atualizados em segundo plano por
-`core/services/atualizador_service.py` (mesma regra dos outros):
+`core/services/atualizador_service.py`:
 
 - `desconto_produto.csv`: desconto e faturamento de tabela por
-  filial/ano/mês/produto, desde 2020 (~1 milhão de linhas). Sem RCA
-  (decisão de 07/10/2026, pra ficar leve). Mesma conta do desconto mensal
-  (igual à rotina 8302).
+  filial/ano/mês/produto, desde 2020, sem RCA. Mesma conta do desconto
+  mensal.
 - `produtos.csv`: código, descrição, GRUPO e FAMÍLIA de cada produto.
 
-GRUPO e FAMÍLIA não existem no Oracle: vêm da planilha BASE_PRODUTOS,
-mantida por um gerente na pasta da rede (o "grupo" é a coluna
-GRUPO_OU_KPI — confirmado pela supervisora). A planilha é copiada pra
-`data/` quando muda; se a rede estiver fora, vale a última cópia.
-Produto que não está na planilha (cadastro novo) fica "SEM GRUPO" — nunca
-some dos totais.
+GRUPO e FAMÍLIA não existem no Oracle: vêm da planilha BASE_PRODUTOS, na
+pasta da rede (o "grupo" é a coluna GRUPO_OU_KPI). A planilha é copiada
+pra `data/` quando muda; se a rede estiver fora, vale a última cópia.
+Produto que não está na planilha fica "SEM GRUPO" — nunca some dos
+totais.
 """
 import re
 import shutil
