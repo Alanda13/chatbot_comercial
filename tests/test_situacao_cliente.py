@@ -131,6 +131,7 @@ def _situacao_para_o_motor():
     ).iloc[dados["ATIVO"] + dados["EM_RISCO"] + 3 * dados["PARADO_HA_MAIS_DE_1_ANO"]].to_numpy()
     # Empresa: o Zé e o Velho são lojas da mesma.
     dados["EMPRESA"] = dados["CODCLI"].map({ZE: "E1", VELHO: "E1"}).fillna(dados["CODCLI"].astype(str))
+    dados["ULTIMA_COMPRA"] = dados["DATA_ULTIMA_COMPRA"].dt.strftime("%d/%m/%Y")
     return dados
 
 
@@ -153,6 +154,21 @@ def test_ativos_de_timon_contam_cada_cliente_uma_vez(motor):
     assert linha["clientes_parados_ha_mais_de_1_ano"] == 1
     assert linha["clientes_novos"] == 1 and linha["clientes_recuperados"] == 1
     assert isinstance(linha["clientes_ativos"], int)
+
+
+def test_aviso_de_outra_filial_ou_outro_rca_so_na_consulta_por_ela(motor):
+    """'Ativos só por outra filial' só numa consulta por filial; 'só por
+    outro RCA' só numa por RCA; na empresa toda, nenhum dos dois."""
+    outubro = {"periodo": "personalizado", "periodo_personalizado": {"meses": [10], "anos": [2026]}}
+
+    da_filial = _consultar(**outubro)["resultados"][0]
+    assert "ativos_so_em_outra_filial" in da_filial and "ativos_so_com_outro_rca" not in da_filial
+
+    da_empresa = orq.executar_consulta({"indicador": "clientes", **outubro})["resultados"][0]
+    assert "ativos_so_em_outra_filial" not in da_empresa and "ativos_so_com_outro_rca" not in da_empresa
+
+    por_filial = orq.executar_consulta({"indicador": "clientes", "agrupar_por": ["filial"], **outubro})
+    assert "ativos_so_com_outro_rca" not in por_filial["total_de_todas_as_linhas"]
 
 
 def test_periodo_de_varios_meses_usa_a_foto_do_ultimo(monkeypatch, motor):
@@ -325,4 +341,32 @@ def test_empresa_esta_sem_comprar_desde_a_compra_mais_recente_das_lojas(motor):
     empresa = {linha["empresa"]: linha for linha in resposta["resultados"]}["E1"]
 
     assert empresa["dias_sem_comprar"] == 7
+    # A data também é a da loja que comprou por último (o Zé, há 7 dias).
+    assert empresa["ultima_compra"] == "28/09/2026"
     assert "quantos_por_situacao" not in resposta
+
+
+def test_lista_de_clientes_sem_coluna_de_contagem_e_com_o_dia_da_situacao(motor):
+    """Numa lista por cliente, "em risco" é 1 em toda linha: sai da tabela
+    (a situação já diz). A legenda é o dia da situação, não o ano."""
+    resposta = _consultar(
+        **_OUTUBRO, agrupar_por=["cliente"],
+        filtros_calculados=[{"campo": "clientes_em_risco", "operador": ">", "valor": 0}],
+        colunas=["clientes_em_risco", "dias_sem_comprar"],
+    )
+    linha = resposta["tabela"][0]
+
+    assert linha["_colunas_pedidas"] == ["dias_sem_comprar"]
+    assert linha["_legenda"].startswith("Situação ")
+
+
+def test_lista_de_clientes_sem_colunas_pedidas_mostra_os_dias_sem_comprar(motor):
+    """'Quais clientes estão em risco' sem "colunas": tirada a contagem (1
+    por cliente), a tabela mostra o campo da ordem da lista — sem nenhuma
+    coluna de valor, a tela não mostrava tabela nenhuma."""
+    resposta = _consultar(
+        **_OUTUBRO, agrupar_por=["cliente"],
+        filtros_calculados=[{"campo": "clientes_em_risco", "operador": ">", "valor": 0}],
+    )
+
+    assert resposta["tabela"][0]["_colunas_pedidas"] == ["dias_sem_comprar"]

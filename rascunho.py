@@ -11,6 +11,11 @@
 - Devolução: `VIEW_DEVOL_RESUMO_FATURAMENTO` — mesma fonte já validada
   no mensal, também bate exato no diário.
 
+não inclui forma de pagamento cobranca - esse dado é mais complexo
+a devolução parece ser alocada por forma de pagamento de um jeito
+ainda nao entendido e fica pendente tratado a parte. o arquivo
+carregar faturamento cobrança continua manual por enquanto. 
+
 NÃO inclui forma de pagamento (`COBRANCA`) — esse dado é mais complexo
 (a devolução parece ser alocada por forma de pagamento de um jeito
 ainda não entendido) e fica pendente, tratado à parte. O arquivo
@@ -29,6 +34,13 @@ Uso:
 import argparse
 from datetime import date
 from pathlib import Path
+import argparse
+from datetime import date
+from pathlib import Path
+
+import pandas as pd
+
+raiz_projeto = Path(__file__).resolve().parent.parent
 
 import pandas as pd
 
@@ -43,7 +55,6 @@ COLUNAS_SAIDA = [
     "CODFILIAL", "DATA", "COD_RCA", "NOME_RCA",
     "VENDA_BRUTA", "VALORDESC", "VENDA_LIQ", "QT_NOTAS",
 ]
-
 
 def _consultar_vendas(cursor, desde: date) -> pd.DataFrame:
     cursor.execute(

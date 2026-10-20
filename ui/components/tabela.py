@@ -11,6 +11,10 @@ from config.settings import CAMINHO_LOGO_SIDEBAR
 from ui.exportar_excel import gerar_excel
 from ui.formatacao import descrever_periodo, preparar_tabela
 
+# A tela mostra até estas linhas (uma lista de 14 mil travaria a página); o
+# Excel leva todas.
+LINHAS_NA_TELA = 100
+
 
 # "R$ 3.831.746,29", "−R$ 963,53", "2,29%", "+5,64%", "1.234", "sem dados".
 _VALOR = re.compile(r"^([+−-]?(R\$ )?[\d.,]+%?|sem dados|menos de 0,01%)$")
@@ -38,7 +42,7 @@ def exibir_tabela(dados_tabela, texto_referencia, chave, nome_ferramenta=None, p
     # numérico em alguns meses e "sem dados" em outros). O Excel
     # (mais abaixo) continua usando os dados originais, sem essa
     # conversão.
-    tabela_exibicao = tabela.astype(str)
+    tabela_exibicao = tabela.head(LINHAS_NA_TELA).astype(str)
 
     # st.table é uma tabela estática, sem barra de ferramentas (sem tela
     # cheia nem download).
@@ -62,6 +66,12 @@ def exibir_tabela(dados_tabela, texto_referencia, chave, nome_ferramenta=None, p
         })
         if colunas_de_valor else tabela_exibicao
     )
+
+    if len(tabela) > LINHAS_NA_TELA:
+        st.caption(
+            f"Mostrando {LINHAS_NA_TELA} de {len(tabela):,} linhas. Baixe em Excel "
+            "para ver todas.".replace(",", ".")
+        )
 
     agora = datetime.now()
     subtitulo = " · ".join(

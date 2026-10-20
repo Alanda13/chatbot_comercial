@@ -14,9 +14,14 @@ def test_calcular_desconto():
     assert mm.calcular_desconto(10000, 100000) == 10.0
 
 
-def test_calcular_desconto_agosto_2026():
-    # Valores de todas as filiais em ago/2026.
-    assert mm.calcular_desconto(2259420.82, 102510486.55) == 2.2041
+def test_calcular_desconto_timon_agosto_2025():
+    # Desconto da rotina 8280 ÷ venda bruta.
+    assert mm.calcular_desconto(216266.75, 10357311.11) == 2.0881
+
+
+def test_calcular_desconto_negativo():
+    # Vendeu acima da tabela mais do que deu de desconto.
+    assert mm.calcular_desconto(-2433.53, 13524.00) == -17.9942
 
 
 def test_calcular_desconto_guarda_4_casas_pra_ordenar_percentuais_pequenos():
@@ -26,7 +31,7 @@ def test_calcular_desconto_guarda_4_casas_pra_ordenar_percentuais_pequenos():
     assert mm.calcular_desconto(1.00, 50000) == 0.002
 
 
-def test_calcular_desconto_sem_faturamento_tabela_retorna_none():
+def test_calcular_desconto_sem_venda_bruta_retorna_none():
     assert mm.calcular_desconto(10000, 0) is None
     assert mm.calcular_desconto(None, 100000) is None
 

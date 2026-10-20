@@ -10,6 +10,7 @@ from datetime import datetime
 import streamlit as st
 import streamlit.components.v1 as components
 
+from ui.components.tabela import LINHAS_NA_TELA
 from ui.formatacao import preparar_tabela, vale_a_pena_mostrar_tabela
 
 
@@ -35,7 +36,10 @@ def montar_texto_da_conversa(mensagens: list[dict], quando: datetime) -> str:
 
         if dados and vale_a_pena_mostrar_tabela(dados, conteudo, ferramenta):
             tabela = preparar_tabela(dados, conteudo, ferramenta)
-            partes.append(tabela.to_string(index=False))
+            partes.append(tabela.head(LINHAS_NA_TELA).to_string(index=False))
+
+            if len(tabela) > LINHAS_NA_TELA:
+                partes.append(f"(mostrando {LINHAS_NA_TELA} de {len(tabela)} linhas; a lista inteira sai no Excel)")
 
     return "\n\n".join(partes) + "\n"
 

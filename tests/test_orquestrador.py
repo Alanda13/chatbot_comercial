@@ -1417,6 +1417,33 @@ def test_menos_desconto_separa_quem_nao_deu_e_mantem_o_total(monkeypatch):
     assert resposta["total_de_todas_as_linhas"]["valor_desconto"] == 67.96
 
 
+def test_menos_desconto_separa_desconto_negativo_com_o_seu_motivo(monkeypatch):
+    """Desconto negativo (vendeu acima da tabela mais do que descontou) sai
+    da lista com motivo próprio; o total soma tudo, como a rotina 8280."""
+    dados = pd.DataFrame([
+        {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": codigo, "DATA": pd.Timestamp("2026-10-02"),
+         "VALORDESC": desconto, "VENDA_TABELA": 1000.0, "VENDA_BRUTA": 1000.0 - desconto}
+        for codigo, desconto in [(1, -25.0), (2, 0.07), (3, 17.89), (4, 50.0)]
+    ])
+    monkeypatch.setitem(catalogo.INDICADORES["desconto_diario"], "carregar", lambda: dados)
+    monkeypatch.setitem(catalogo.INDICADORES["desconto_diario"], "rca_requer_meta_cadastrada", False)
+    monkeypatch.setitem(catalogo.INDICADORES["desconto_diario"], "rca_nome_mapa", None)
+
+    resposta = orq.executar_consulta({
+        "indicador": "desconto_diario",
+        "periodo": "personalizado",
+        "periodo_personalizado": {"data_inicial": "2026-10-02", "data_final": "2026-10-02"},
+        "agrupar_por": ["rca"],
+        "ordenar_por": {"campo": "valor_desconto", "ordem": "asc", "limite": 1},
+    })
+
+    fora = resposta["fora_da_lista_de_menor"]
+    assert [linha["rca"] for linha in resposta["resultados"]] == [3]
+    assert fora["quantidade"] == 1 and "acima da tabela" in fora["motivo"]
+    assert fora["tambem_fora"][0]["quantidade"] == 1 and "arredondamento" in fora["tambem_fora"][0]["motivo"]
+    assert resposta["total_de_todas_as_linhas"]["valor_desconto"] == 42.96
+
+
 def test_mais_desconto_nao_separa(monkeypatch):
     dados = pd.DataFrame([
         {"FILIAL": "TIMON", "ESTADO": "MA", "COD_RCA": codigo, "DATA": pd.Timestamp("2026-10-02"),
@@ -1730,3 +1757,32 @@ def test_menos_faturou_poe_o_faturamento_negativo_a_parte(monkeypatch):
     assert fora["tambem_fora"][0]["itens"] == ["S A RIBEIRO"]
     assert "devolveram tudo" in fora["tambem_fora"][0]["motivo"]
     assert resposta["total_de_todas_as_linhas"]["faturamento"] == round(0.76 - 12050.48 - 52284.12, 2)
+
+
+@pytest.mark.parametrize("comparar_com, filtros, esperado", [
+    ("mes_anterior", {"mes": [8], "ano": [2024]}, {"meses": [7], "anos": [2024]}),
+    ("mes_anterior", {"mes": [1], "ano": [2025]}, {"meses": [12], "anos": [2024]}),
+    ("mes_anterior", {"mes": [4, 5, 6], "ano": [2025]}, {"meses": [1, 2, 3], "anos": [2025]}),
+    ("ano_anterior", {"ano": [2025]}, {"anos": [2024]}),
+    ("mesmo_mes_ano_anterior", {"mes": [8], "ano": [2024]}, {"anos": [2023], "meses": [8]}),
+    ("ontem", {"dia": {"data_inicial": "2025-03-01", "data_final": "2025-03-01"}},
+     {"data_inicial": "2025-02-28", "data_final": "2025-02-28"}),
+    ("semana_anterior", {"dia": {"data_inicial": "2025-08-11", "data_final": "2025-08-17"}},
+     {"data_inicial": "2025-08-04", "data_final": "2025-08-10"}),
+    ("mes_anterior", {"dia": {"data_inicial": "2025-03-01", "data_final": "2025-03-31"}},
+     {"data_inicial": "2025-02-01", "data_final": "2025-02-28"}),
+])
+def test_anterior_e_contado_a_partir_do_periodo_da_pergunta(comparar_com, filtros, esperado):
+    """'Agosto/2024 x mês anterior' é julho/2024, não o mês anterior a hoje;
+    '2025 x ano anterior' é 2024, não 2025 contra ele mesmo."""
+    assert orq._anterior_ao_periodo(comparar_com, filtros) == esperado
+
+
+def test_mes_anterior_que_cruza_o_ano_pede_o_periodo_exato():
+    with pytest.raises(orq.ConsultaInvalida, match="personalizado"):
+        orq._anterior_ao_periodo("mes_anterior", {"mes": [2, 3], "ano": [2025]})
+
+
+def test_sem_periodo_na_pergunta_a_comparacao_continua_a_partir_de_hoje():
+    consulta = {"indicador": "faturamento", "filtros": {"filial": ["TIMON"]}, "comparar_com": "mes_anterior"}
+    assert orq._comparacao_a_partir_do_periodo(consulta, catalogo.INDICADORES["faturamento"]) == consulta

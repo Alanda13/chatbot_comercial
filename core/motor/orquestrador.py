@@ -367,6 +367,36 @@ def _campos_do_indicador(indicador_def: dict) -> list[str]:
     ]
 
 
+def _sem_campos_fora_do_recorte(resultado: list[dict], consulta: dict) -> list[dict]:
+    """
+    Campo com a opção "so_com" (uma dimensão) só sai quando a consulta filtra,
+    agrupa ou compara por ela — ex: "ativos só por outra filial" não tem
+    sentido numa consulta da empresa toda nem numa só de RCA.
+    """
+    recorte = {
+        *(consulta.get("filtros") or {}),
+        *(consulta.get("agrupar_por") or []),
+        *(consulta.get("comparar_filtros") or {}),
+    }
+    fora = [
+        campo
+        for nome in [consulta["indicador"], *(consulta.get("cruzar_com") or [])]
+        for campo, especificacao in catalogo.INDICADORES[nome]["campos"].items()
+        if (dimensao := _desempacotar_campo(especificacao)[2].get("so_com")) and dimensao not in recorte
+    ]
+
+    if not fora:
+        return resultado
+
+    def tirar(chave: str) -> bool:
+        return any(
+            chave in (campo, f"{campo}_anterior", f"diferenca_{campo}", f"percentual_{campo}")
+            for campo in fora
+        )
+
+    return [{chave: valor for chave, valor in linha.items() if not tirar(chave)} for linha in resultado]
+
+
 def _derivados_do_cruzamento(indicadores: list[str]) -> list[dict]:
     """Derivados que dependem de dois indicadores (catalogo.CRUZAMENTOS)
     cujos indicadores estão TODOS na consulta."""
@@ -928,6 +958,9 @@ def _atributos_por_item(dados: pd.DataFrame, dimensao: str, coluna: str):
 
     if not atributos:
         return None
+
+    if catalogo.COLUNA_DO_MAIS_RECENTE in dados.columns:
+        dados = dados.sort_values(catalogo.COLUNA_DO_MAIS_RECENTE, ascending=False)
 
     return atributos, dados.groupby(coluna)[list(atributos.values())].first()
 
@@ -1629,6 +1662,78 @@ _PERIODO_DA_COMPARACAO = {
 }
 
 
+def _mudar_mes(dia: date, meses: int, fim_do_mes: bool = False) -> date:
+    """O mesmo dia `meses` meses antes/depois (29/02 → 28/02); com
+    `fim_do_mes`, o último dia do mês de destino."""
+    ano, mes = divmod(dia.year * 12 + dia.month - 1 + meses, 12)
+    ultimo = calendar.monthrange(ano, mes + 1)[1]
+    return date(ano, mes + 1, ultimo if fim_do_mes else min(dia.day, ultimo))
+
+
+def _anterior_ao_periodo(comparar_com: str, filtros: dict) -> dict:
+    """
+    O período "anterior" contado a partir do período consultado, como
+    comparar_com_personalizado: agosto/2024 x "mes_anterior" = julho/2024;
+    2025 x "ano_anterior" = 2024.
+    """
+    if "dia" in filtros:
+        inicio, fim = _inicio_e_fim(filtros["dia"])
+        fim_do_mes = fim == _mudar_mes(fim, 0, fim_do_mes=True)
+
+        if comparar_com == "ontem":
+            tamanho = timedelta(days=(fim - inicio).days + 1)
+            inicio, fim = inicio - tamanho, fim - tamanho
+        elif comparar_com == "semana_anterior":
+            inicio, fim = inicio - timedelta(days=7), fim - timedelta(days=7)
+        else:
+            meses = -1 if comparar_com == "mes_anterior" else -12
+            inicio, fim = _mudar_mes(inicio, meses), _mudar_mes(fim, meses, fim_do_mes)
+
+        return {"data_inicial": inicio.isoformat(), "data_final": fim.isoformat()}
+
+    anos = sorted(int(ano) for ano in _como_lista(filtros.get("ano", [])))
+    meses = sorted(int(mes) for mes in _como_lista(filtros.get("mes", [])))
+
+    if comparar_com in ("ano_anterior", "mesmo_mes_ano_anterior"):
+        return {"anos": [ano - 1 for ano in anos], **({"meses": meses} if meses else {})}
+
+    # "mes_anterior": os mesmos N meses seguidos, logo antes (dentro de um ano).
+    seguidos = meses and meses == list(range(meses[0], meses[-1] + 1))
+    primeiro = date(anos[0], meses[0], 1) if seguidos and len(anos) == 1 else None
+    antes = [_mudar_mes(primeiro, -n) for n in range(len(meses), 0, -1)] if primeiro else []
+
+    if not antes or len({dia.year for dia in antes}) > 1:
+        raise ConsultaInvalida(
+            "Não dá pra saber qual é o 'mês anterior' desse período — use "
+            "comparar_com 'personalizado' com o período exato da comparação."
+        )
+
+    return {"meses": [dia.month for dia in antes], "anos": [antes[0].year]}
+
+
+def _comparacao_a_partir_do_periodo(consulta: dict, indicador_def: dict) -> dict:
+    """
+    Período definido na pergunta (filtros ou "personalizado") + "comparar_com"
+    relativo (mês/ano anterior, ontem…): o anterior é o do período pedido,
+    não o de hoje. Sem período definido, vale o de hoje (_PERIODO_DA_COMPARACAO).
+    """
+    comparar_com = consulta.get("comparar_com")
+
+    if comparar_com not in _PERIODO_DA_COMPARACAO or consulta.get("periodo") not in (None, "personalizado"):
+        return consulta
+
+    filtros = _filtros_efetivos(indicador_def, consulta)
+
+    if not {"ano", "dia"} & set(filtros):
+        return consulta
+
+    return {
+        **consulta,
+        "comparar_com": "personalizado",
+        "comparar_com_personalizado": _anterior_ao_periodo(comparar_com, filtros),
+    }
+
+
 def _ajustar_periodo(consulta: dict, indicador_def: dict) -> tuple[dict, dict]:
     """
     Os ajustes de período antes de consultar. Devolve a consulta ajustada e
@@ -1636,6 +1741,7 @@ def _ajustar_periodo(consulta: dict, indicador_def: dict) -> tuple[dict, dict]:
     os mesmos meses nos anos e o parcial do mês em andamento.
     """
     indicadores = [consulta["indicador"], *(consulta.get("cruzar_com") or [])]
+    consulta = _comparacao_a_partir_do_periodo(consulta, indicador_def)
     periodo_consultado = _descrever_periodo(_filtros_efetivos(indicador_def, consulta))
 
     # Sem período, vale o "periodo_padrao" de qualquer indicador da consulta
@@ -2091,6 +2197,25 @@ def _tabela_da_tela(
     if not colunas:
         return
 
+    # Contagem do próprio item agrupado (ex: "clientes em risco" numa lista
+    # de clientes) é 1 em toda linha: a situação já diz isso.
+    agrupar_por = consulta.get("agrupar_por") or []
+    colunas = [
+        coluna for coluna in colunas
+        if not any(
+            (especificacao := catalogo.INDICADORES[nome]["campos"].get(coluna))
+            and _desempacotar_campo(especificacao)[2].get("conta") in agrupar_por
+            for nome in indicadores
+        )
+    ]
+
+    # Lista sem outra coluna (ex: "quais clientes estão em risco"): o campo
+    # pelo qual a lista vem ordenada (dias sem comprar).
+    lista = indicador_def.get("lista_de_itens") or {}
+
+    if not colunas and lista.get("ordem") and agrupar_por == [lista["dimensao"]]:
+        colunas = [lista["ordem"][0]]
+
     if lados:
         lado_a, lado_b = lados
         rotulos = {}
@@ -2102,6 +2227,20 @@ def _tabela_da_tela(
             rotulos[f"percentual_{coluna}"] = f"Diferença % ({lado_a} vs {lado_b})"
 
     resposta["tabela"] = _linhas_da_tabela(resposta["resultados"], colunas, rotulos, comparar)
+
+    # Tabela só de campos "foto" (ex: lista de clientes em risco): a legenda
+    # é o dia da situação, não o ano.
+    foto = _momento_da_foto(indicadores, agrupar_por, resposta.get("periodo_consultado"))
+    so_fotos = all(
+        _desempacotar_campo(catalogo.INDICADORES[nome]["campos"][coluna])[2].get("foto_por")
+        for coluna in colunas
+        for nome in indicadores
+        if coluna in catalogo.INDICADORES[nome]["campos"]
+    )
+
+    if foto and so_fotos and "de cada mês" not in foto[1]:
+        for linha in resposta["tabela"]:
+            linha["_legenda"] = f"Situação {foto[1]}"
 
 
 def executar_consulta(consulta: dict) -> dict:
@@ -2128,6 +2267,10 @@ def executar_consulta(consulta: dict) -> dict:
 
     consulta, contexto = _ajustar_periodo(consulta, indicador_def)
     resultado, extras, lados = _consultar(consulta, indicador_def)
+    resultado = _sem_campos_fora_do_recorte(resultado, consulta)
+
+    if extras.get("total"):
+        extras["total"] = _sem_campos_fora_do_recorte([extras["total"]], consulta)[0]
 
     resultado, fora_da_lista = _separar_sem_valor(
         resultado,

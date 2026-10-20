@@ -325,6 +325,9 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
         rotulos = dict(df["_rotulos"].iloc[0])
         df = df.drop(columns="_rotulos")
 
+    if "_legenda" in df.columns:
+        df = df.drop(columns="_legenda")
+
     # Valores pra preencher os placeholders "{ano}"/"{ano_anterior}"
     # que um "rotulo" de CONFIG_TABELA_POR_FERRAMENTA pode usar —
     # capturados AQUI, antes de qualquer corte de coluna, porque
@@ -465,8 +468,15 @@ def descrever_periodo(dados_tabela, texto_referencia):
     """
     Tenta descobrir o(s) ano(s) envolvido(s) pra mostrar como legenda
     acima da tabela — primeiro olhando os próprios dados, depois como
-    último recurso procurando um ano escrito na pergunta.
+    último recurso procurando um ano escrito na pergunta. A legenda que
+    o motor manda ("_legenda", ex: "Situação de hoje, 20/10/2026") vale
+    mais.
     """
+    primeira = dados_tabela[0] if dados_tabela and isinstance(dados_tabela[0], dict) else {}
+
+    if primeira.get("_legenda"):
+        return primeira["_legenda"]
+
     anos_nos_dados = sorted({
         item.get("ano")
         for item in dados_tabela

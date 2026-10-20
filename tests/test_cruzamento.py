@@ -309,7 +309,7 @@ def test_desconto_cruza_com_faturamento_por_rca(_bases_por_rca):
 
     por_rca = {item["rca"]: item for item in resultado["resultados"]}
 
-    assert por_rca[8403]["percentual_desconto"] == 3.0
+    assert por_rca[8403]["percentual_desconto"] == 3.1579   # 30 ÷ 950 de venda bruta
     assert por_rca[8403]["faturamento"] == 900.0
     assert por_rca[9232]["percentual_desconto"] == 2.0
     assert por_rca[9232]["faturamento"] == 500.0

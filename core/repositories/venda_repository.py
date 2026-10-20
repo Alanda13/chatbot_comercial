@@ -6,7 +6,7 @@ Um CSV, gerado do Oracle e atualizado em segundo plano por
 por nota, desde 2025. Os totais por filial/RCA/cliente/produto desde 2020
 estão nos outros arquivos.
 
-Mesma conta de desconto da rotina 8302 (VLDESCONTO x QT) e mesmos filtros
+Mesma conta de desconto do faturamento mensal (tabela − vendido) e mesmos filtros
 de venda válida do faturamento mensal. A nota não traz devolução.
 
 A "venda" é identificada pela transação (NUMTRANSVENDA, única); o número
@@ -56,7 +56,7 @@ def _buscar(desde: date) -> pd.DataFrame:
                    MAX(V.NUMNOTA) NUMNOTA, MAX(V.NUMPED) NUMPED,
                    MAX(V.CODCLI) CODCLI, MAX(V.CODUSUR) COD_RCA,
                    MAX(V.CODSUPERVISOR) COD_SUPERVISOR, COUNT(*) QT_ITENS,
-                   ROUND(SUM(V.VLDESCONTO * V.QT), 4) VALORDESC,
+                   ROUND(SUM(V.VLTABELA) - SUM(V.VLVENDA), 2) VALORDESC,
                    ROUND(SUM(V.VLTABELA), 2) VENDA_TABELA,
                    ROUND(SUM(V.VLVENDA), 2) VENDA_BRUTA
             FROM VIEW_VENDAS_RESUMO_FATURAMENTO V

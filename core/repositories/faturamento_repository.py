@@ -85,11 +85,9 @@ _COLUNAS_PESO = "DTMOV, CODFILIAL, CODUSUR, TOTPESOLIQ, UNIDADE, QTVENDA"
 _PESO_POR_LINHA = "CASE WHEN UNIDADE = 'KG' THEN QTVENDA ELSE TOTPESOLIQ END"
 
 
-# Desconto (VALORDESC) = desconto concedido, mesma conta da rotina 8302:
-# nesta view o VLDESCONTO é POR UNIDADE (preço de tabela − preço vendido,
-# zero quando o item sai na tabela ou acima), por isso multiplica pela
-# quantidade. Não é "venda − tabela" (o VALORDESC da 8280), em que a venda
-# acima da tabela abate o desconto dos outros itens.
+# Desconto (VALORDESC) = venda de tabela − venda bruta, a conta da rotina
+# 8280 (lá com o sinal invertido): a venda acima da tabela abate o desconto
+# dos outros itens, e o desconto fica negativo quando ela é maior.
 def _consultar_vendas(cursor, desde: date) -> pd.DataFrame:
     cursor.execute(
         f"""
@@ -99,7 +97,7 @@ def _consultar_vendas(cursor, desde: date) -> pd.DataFrame:
                COUNT(DISTINCT V.NUMTRANSVENDA) QT_NOTAS,
                ROUND(SUM(V.VLVENDA), 2) VENDA_BRUTA,
                ROUND(SUM(V.VLTABELA), 2) VENDA_TABELA,
-               ROUND(SUM(V.VLDESCONTO * V.QT), 2) VALORDESC
+               ROUND(SUM(V.VLTABELA) - SUM(V.VLVENDA), 2) VALORDESC
         FROM VIEW_VENDAS_RESUMO_FATURAMENTO V
         LEFT JOIN PCSUPERV S ON (S.CODSUPERVISOR = V.CODSUPERVISOR)
         WHERE V.DTSAIDA >= :desde

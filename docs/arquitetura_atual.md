@@ -1337,3 +1337,87 @@ parte, pra resposta avisar. Cada código de cliente (loja) conta 1.
   parcial ~20 s cada. Roda em segundo plano.
 - O peso continua vindo de `GFN_MVIEW_VENDAS_HIST`/`_ANO_ATUAL` (única fonte de
   peso) — a confirmar com a supervisora se também atrasam.
+
+### Desconto passa a seguir a rotina 8280 (16/10/2026)
+
+- Decisão da usuária (com a supervisora): desconto = venda de tabela − venda
+  bruta (`ROUND(SUM(VLTABELA) - SUM(VLVENDA), 2)`), a conta da 8280 sem o
+  sinal invertido. Antes era `SUM(VLDESCONTO × QT)` (a conta da 8302), em que
+  a venda acima da tabela não abatia o desconto dos outros itens.
+- Timon ago/2025: R$ 342.868,14 (8302) → R$ 216.266,75 (= 8280). Nota 136094
+  (14/08/2025): R$ 6,35 → R$ 1,78 (= 8280).
+- % desconto = desconto ÷ venda bruta (a divisão das duas rotinas); antes ÷
+  venda de tabela. Timon ago/2025: 2,09%. O PERCDESC da própria 8280 não foi
+  copiado: soma o VLDESCONTO por unidade sem a quantidade (0,09%).
+- Desconto negativo = vendeu acima da tabela mais do que descontou. Em "quem
+  menos deu desconto" sai da lista com motivo próprio (`menor_ignora` com
+  `tambem` pro abaixo de R$ 1,00); os totais somam tudo.
+- Vale pra todos os arquivos (mensal, diário, forma de pagamento, cliente,
+  produto, venda). Os CSVs existentes foram recalculados a partir das colunas
+  VENDA_TABELA e VENDA_BRUTA; o de forma de pagamento (sem coluna de tabela)
+  foi gerado de novo do Oracle.
+- Por que a 8280 dá menos: ela é um saldo. Na 8302 (arquivo exportado de
+  2024–2025), 82.461 de 318.194 linhas por RCA/dia/cobrança têm venda acima
+  da tabela; em algumas filiais (Ferroleste João XXIII) são 84% das linhas.
+  Linhas fora do normal pesam muito: FN Administração 01/07/2025, R$ 2.050.000
+  vendidos com tabela zero.
+
+### Aviso de "outra filial / outro RCA" só no recorte certo (20/10/2026)
+
+- "Clientes ativos em Timon" respondia também "759 só compraram com outro
+  RCA", que não cabe numa consulta de filial.
+- Nova opção de campo no catálogo, `so_com` (uma dimensão): o campo só sai
+  quando a consulta filtra, agrupa ou compara por ela
+  (`orquestrador._sem_campos_fora_do_recorte`, também no total).
+  `ativos_so_em_outra_filial` = `so_com: filial`; `ativos_so_com_outro_rca` =
+  `so_com: rca`. Na empresa toda, nenhum dos dois.
+
+### Lista de clientes inteira na tabela (20/10/2026)
+
+- "Quais clientes estão em risco em Timon" saía com 10 dos 528 na tabela e no
+  Excel, e o texto dizia "a lista completa está na tabela". A instrução da
+  ferramenta mandava "limite": 10 em toda pergunta sem quantidade. Agora o
+  limite 10 é só de ranking ("quem mais/menos", "os maiores"); lista de quem
+  atende uma condição vem sem limite (a IA continua recebendo só 60).
+- Numa lista agrupada pelo próprio item, as colunas de contagem dele (opção
+  "conta" do campo, ex: "Em Risco de Perda" = 1 por cliente) saem da tabela.
+- Tabela só de campos "foto": o motor manda `_legenda` ("Situação de hoje,
+  20/10/2026"), usada na tela e no Excel no lugar de "Ano: 2026".
+
+### Comparação "anterior" a partir do período da pergunta (20/10/2026)
+
+- `comparar_com` relativo ("mes_anterior", "ano_anterior",
+  "mesmo_mes_ano_anterior", "ontem", "semana_anterior") era resolvido a partir
+  de HOJE mesmo com período na pergunta: agosto/2024 x "mês anterior" virava
+  setembro/2026 e 2025 x "ano anterior" comparava 2025 com ele mesmo.
+- Agora, com período definido (filtros ou "personalizado"), o motor troca por
+  `comparar_com_personalizado` contado a partir dele
+  (`orquestrador._comparacao_a_partir_do_periodo`): ago/2024 → jul/2024;
+  jan/2025 → dez/2024; abr–jun → jan–mar; 2025 → 2024; dia → dia anterior;
+  semana → 7 dias antes; mês inteiro (por dia) → mês anterior inteiro.
+  "Mês anterior" de meses que cruzariam o ano pede o período exato. Sem
+  período na pergunta, nada muda.
+
+### Tabela com todas as linhas (20/10/2026)
+
+- `chatbot_service` cortava a tabela da tela em 60 linhas (o mesmo corte do
+  que vai pra IA). Agora a tabela leva todas as linhas: o Excel baixa a lista
+  inteira e a tela mostra até 100 (`ui/components/tabela.LINHAS_NA_TELA`),
+  com "Mostrando 100 de N linhas". A conversa exportada em texto também para
+  em 100.
+- O aviso de lista cortada que vai pra IA diz que a lista inteira está na
+  tabela, que é interno (não repetir "aqui vão 60") e que o texto cita no
+  máximo 10, como a regra de LISTAS.
+- Lista que fica sem nenhuma coluna de valor depois de tirar a contagem (ex:
+  "quais clientes estão em risco") mostra o campo da ordem da lista
+  (`lista_de_itens.ordem`, dias sem comprar) — sem coluna de valor a tela não
+  mostrava a tabela.
+
+### Última compra por empresa e título CNPJ/CPF (20/10/2026)
+
+- Agrupado por empresa, o indicador clientes traz a data e a filial da última
+  compra (`ATRIBUTOS_DIMENSAO["empresa"]`). Os atributos de um item com
+  várias linhas (lojas da empresa, cliente em vários meses) vêm da linha mais
+  recente por `catalogo.COLUNA_DO_MAIS_RECENTE` (DATA_ULTIMA_COMPRA); antes
+  era a primeira linha encontrada.
+- A coluna do documento do cliente se chama "CNPJ/CPF" (muitos são CPF).

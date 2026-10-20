@@ -55,12 +55,14 @@ def _limitar_resultados(resultado: dict) -> dict:
         resultado["resultados"] = resultados[:LIMITE_RESULTADOS_RESPOSTA]
         # O aviso diz a quantidade total, pra IA não responder "60 de N".
         resultado["aviso"] = (
-            f"A lista completa tem {len(resultados)} itens; aqui vão só "
-            f"{LIMITE_RESULTADOS_RESPOSTA}{criterio}, pra citar exemplos. "
-            f"Quando disser QUANTOS são, use {len(resultados)}. Não escreva "
-            "\"mostrando 60 de…\": se for útil, diga que a lista completa "
-            "está na tabela ou que dá pra filtrar (uma filial, um RCA, um "
-            "período menor). Se vier \"total_de_todas_as_linhas\", ele "
+            f"A lista completa tem {len(resultados)} itens e está inteira na "
+            f"tabela (e no Excel); aqui vão só os {LIMITE_RESULTADOS_RESPOSTA} "
+            f"primeiros{criterio}, pra consulta. No texto, cite no máximo os 10 "
+            f"primeiros (regra de LISTAS). Quando disser QUANTOS são, use "
+            f"{len(resultados)}. Este aviso é interno: não o repita (nada de "
+            "\"aqui vão 60\" ou \"mostrando 60 de…\"); diga que a lista "
+            "completa está na tabela ou que dá pra filtrar (uma filial, um "
+            "RCA, um período menor). Se vier \"total_de_todas_as_linhas\", ele "
             f"é de TODOS os {len(resultados)} itens, não só dos mostrados: "
             "nunca o chame de total \"desse grupo\" ou \"dos N maiores\"."
         )
@@ -262,14 +264,16 @@ def processar_pergunta(
     resultado_limitado = dict(_limitar_resultados(resultado))
     linhas_tabela = resultado_limitado.pop("tabela", None)
 
+    # A tabela leva TODAS as linhas (o Excel baixa a lista inteira); a IA
+    # recebe só as primeiras.
     dados_tabela = None
-    lista_resultados = linhas_tabela or resultado_limitado.get("resultados")
+    lista_resultados = linhas_tabela or resultado.get("resultados")
 
     if (
         isinstance(lista_resultados, list)
         and len(lista_resultados) >= LIMITE_MINIMO_PARA_TABELA
     ):
-        dados_tabela = lista_resultados[:LIMITE_RESULTADOS_RESPOSTA]
+        dados_tabela = lista_resultados
 
     tempos["calcular"] = time.perf_counter() - inicio
     avisar_etapa("Escrevendo a resposta…")

@@ -30,7 +30,7 @@ Regras:
   {"campo": "nps"}}). Traga TODOS os itens: SEM "limite" em
   "ordenar_por" e sem filtrar pela condição — a resposta compara quem
   atende com quem não atende, e um corte deixaria um dos lados de fora.
-  (O "limite": 10 por padrão vale só pra listas/rankings.)
+  (O "limite": 10 por padrão vale só pra rankings.)
 
 REGRAS PARA ESCREVER O CAMPO "mensagem"
 (usado em "pedir_esclarecimento" e "fora_do_escopo"):
@@ -47,8 +47,9 @@ REGRAS PARA ESCREVER O CAMPO "mensagem"
   das empresas), numa frase curta. NÃO liste os assuntos disponíveis nem
   diga "tente novamente" — a pergunta do usuário está dentro do escopo.
 - Lista ou ranking SEM quantidade (ex: "liste os clientes que mais tiveram
-  desconto", "quais RCAs deram menos desconto") NÃO está incompleta: use
-  "ordenar_por" com "limite": 10 e execute a ferramenta.
+  desconto", "quais clientes estão em risco") NÃO está incompleta: execute
+  a ferramenta (ranking com "limite": 10; lista de quem atende uma
+  condição, sem limite).
 - Pergunta com provável ERRO DE DIGITAÇÃO, que faz sentido trocando uma
   palavra pelo assunto da conversa (ex: "os 5 clientes que menos
   obtiveram clientes" logo depois de falar de desconto): NÃO escolha

@@ -19,7 +19,8 @@ Mateus Supermercados, Mix/Eletro/Hiper incluídas, começam com
 "00000000000000") não se junta com ninguém: vira uma empresa sozinho.
 
 Fonte: `VIEW_VENDAS_RESUMO_FATURAMENTO`, mesmos filtros de venda válida
-e mesma conta de desconto do faturamento mensal (igual à rotina 8302).
+e mesma conta de desconto do faturamento mensal (tabela − vendido, como
+a rotina 8280).
 """
 import re
 import unicodedata
@@ -67,7 +68,7 @@ def _consultar_desconto(cursor, desde: date) -> pd.DataFrame:
         SELECT V.CODFILIAL, EXTRACT(YEAR FROM V.DTSAIDA) ANO,
                EXTRACT(MONTH FROM V.DTSAIDA) MES, V.CODUSUR COD_RCA,
                V.CODSUPERVISOR COD_SUPERVISOR, V.CODCLI,
-               ROUND(SUM(V.VLDESCONTO * V.QT), 4) VALORDESC,
+               ROUND(SUM(V.VLTABELA) - SUM(V.VLVENDA), 2) VALORDESC,
                ROUND(SUM(V.VLTABELA), 2) VENDA_TABELA,
                ROUND(SUM(V.VLVENDA), 2) VENDA_BRUTA
         FROM VIEW_VENDAS_RESUMO_FATURAMENTO V

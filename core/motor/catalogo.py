@@ -91,7 +91,7 @@ ATRIBUTOS_DIMENSAO = {
     },
     "cliente": {
         "cliente_nome": ("CLIENTE", "Cliente"),
-        "cnpj": ("CNPJ", "CNPJ"),
+        "cnpj": ("CNPJ", "CNPJ/CPF"),
         "cidade": ("CIDADE", "Cidade"),
         # Só no indicador clientes (os outros arquivos não têm essas colunas).
         "situacao": ("SITUACAO", "Situação"),
@@ -118,8 +118,16 @@ ATRIBUTOS_DIMENSAO = {
     "empresa": {
         "empresa_nome": ("NOME_EMPRESA", "Empresa"),
         "cnpj_empresa": ("CNPJ_EMPRESA", "CNPJ (início)"),
+        # Só no indicador clientes: a compra mais recente entre as lojas.
+        "ultima_compra": ("ULTIMA_COMPRA", "Última compra"),
+        "filial_ultima_compra": ("FILIAL_ULTIMA_COMPRA", "Filial da última compra"),
     },
 }
+
+# Item com várias linhas (empresa com várias lojas, cliente em vários
+# meses): os atributos vêm da linha mais recente por esta coluna, quando o
+# arquivo a tem.
+COLUNA_DO_MAIS_RECENTE = "DATA_ULTIMA_COMPRA"
 
 PERIODOS_VALIDOS = [
     "hoje", "ontem", "semana_atual", "semana_anterior", "mes_atual",
@@ -383,19 +391,23 @@ INDICADORES = {
             "percentual_detratores": {"tipo": "percentual", "rotulo": "% Detratores", "palavras": ["detrator"]},
         },
     },
-    # Desconto concedido (VLDESCONTO, mesmo critério da rotina 8302 —
-    # ver core/repositories/faturamento_repository.py e motor_metricas.calcular_desconto).
-    # O % é calculado sobre as SOMAS (desconto total ÷ tabela total),
+    # Desconto = venda de tabela − venda bruta (rotina 8280 — ver
+    # core/repositories/faturamento_repository.py e motor_metricas.calcular_desconto).
+    # O % é calculado sobre as SOMAS (desconto total ÷ venda bruta total),
     # nunca a média dos % de cada filial/RCA.
     "desconto": {
-        # "Quem MENOS deu desconto": abaixo de R$ 1,00 é arredondamento
-        # (meio centavo por item vendido em kg/metro), não desconto — esses
-        # itens saem da lista e vêm à parte. Só muda a lista; os totais
-        # seguem iguais aos do WinThor (8302).
+        # "Quem MENOS deu desconto": desconto negativo (vendeu acima da
+        # tabela mais do que descontou) e abaixo de R$ 1,00 (arredondamento
+        # de meio centavo por item em kg/metro) saem da lista e vêm à parte.
+        # Só muda a lista; os totais seguem iguais aos do WinThor (8280).
         "menor_ignora": {
             "ordem_por": ("valor_desconto", "percentual_desconto"),
-            "campo": "valor_desconto", "abaixo_de": 1.0,
-            "motivo": "não deram desconto (abaixo de R$ 1,00 é só arredondamento)",
+            "campo": "valor_desconto", "abaixo_de": 0.0,
+            "motivo": "desconto negativo: venderam acima da tabela mais do que deram de desconto",
+            "tambem": [{
+                "campo": "valor_desconto", "abaixo_de": 1.0,
+                "motivo": "não deram desconto (abaixo de R$ 1,00 é só arredondamento)",
+            }],
         },
         # Cruzado com outro indicador, a tabela mostra o desconto em R$ e em %.
         "colunas_no_cruzamento": ["valor_desconto", "percentual_desconto"],
@@ -455,7 +467,7 @@ INDICADORES = {
             {
                 "nome": "percentual_desconto",
                 "formula": "calcular_desconto",
-                "campos": ("valor_desconto", "faturamento_tabela"),
+                "campos": ("valor_desconto", "venda_bruta"),
             },
         ],
         "campo_principal": "percentual_desconto",
@@ -471,20 +483,22 @@ INDICADORES = {
             "venda_bruta": {"tipo": "moeda", "rotulo": "Venda Bruta", "palavras": ["venda bruta"]},
         },
     },
-    # Desconto por DIA (hoje, ontem, semana, datas): mesma conta da 8302
-    # (VLDESCONTO × QT), vinda do arquivo diário — mesma fonte do mensal
-    # (VIEW_VENDAS_RESUMO_FATURAMENTO), então bate com o "desconto" mensal:
-    # Timon ago/2026 = R$ 310.567,19 nos dois. Sem supervisor/cliente:
-    # o arquivo diário não tem essas colunas.
+    # Desconto por DIA (hoje, ontem, semana, datas): mesma conta e mesma
+    # fonte do "desconto" mensal, vinda do arquivo diário. Sem supervisor:
+    # o arquivo diário não tem essa coluna.
     "desconto_diario": {
-        # "Quem MENOS deu desconto": abaixo de R$ 1,00 é arredondamento
-        # (meio centavo por item vendido em kg/metro), não desconto — esses
-        # itens saem da lista e vêm à parte. Só muda a lista; os totais
-        # seguem iguais aos do WinThor (8302).
+        # "Quem MENOS deu desconto": desconto negativo (vendeu acima da
+        # tabela mais do que descontou) e abaixo de R$ 1,00 (arredondamento
+        # de meio centavo por item em kg/metro) saem da lista e vêm à parte.
+        # Só muda a lista; os totais seguem iguais aos do WinThor (8280).
         "menor_ignora": {
             "ordem_por": ("valor_desconto", "percentual_desconto"),
-            "campo": "valor_desconto", "abaixo_de": 1.0,
-            "motivo": "não deram desconto (abaixo de R$ 1,00 é só arredondamento)",
+            "campo": "valor_desconto", "abaixo_de": 0.0,
+            "motivo": "desconto negativo: venderam acima da tabela mais do que deram de desconto",
+            "tambem": [{
+                "campo": "valor_desconto", "abaixo_de": 1.0,
+                "motivo": "não deram desconto (abaixo de R$ 1,00 é só arredondamento)",
+            }],
         },
         # Cruzado com outro indicador, a tabela mostra o desconto em R$ e em %.
         "colunas_no_cruzamento": ["valor_desconto", "percentual_desconto"],
@@ -525,7 +539,7 @@ INDICADORES = {
             {
                 "nome": "percentual_desconto",
                 "formula": "calcular_desconto",
-                "campos": ("valor_desconto", "faturamento_tabela"),
+                "campos": ("valor_desconto", "venda_bruta"),
             },
         ],
         "campo_principal": "percentual_desconto",
@@ -582,9 +596,10 @@ INDICADORES["clientes"] = {
         "clientes_inativos": ("CLIENTE_INATIVO", "nunique", _FOTO_E_CONTA),
         "clientes_parados_ha_mais_de_1_ano": ("CLIENTE_PARADO_HA_MAIS_DE_1_ANO", "nunique", _FOTO_E_CONTA),
         # Dos ativos, os que só compraram em outra filial / com outro RCA
-        # nos últimos 90 dias (a resposta avisa).
-        "ativos_so_em_outra_filial": ("CLIENTE_SO_OUTRA_FILIAL", "nunique", _FOTO_E_CONTA),
-        "ativos_so_com_outro_rca": ("CLIENTE_SO_OUTRO_RCA", "nunique", _FOTO_E_CONTA),
+        # nos últimos 90 dias (a resposta avisa). Só numa consulta por
+        # filial / por RCA ("so_com").
+        "ativos_so_em_outra_filial": ("CLIENTE_SO_OUTRA_FILIAL", "nunique", {**_FOTO_E_CONTA, "so_com": "filial"}),
+        "ativos_so_com_outro_rca": ("CLIENTE_SO_OUTRO_RCA", "nunique", {**_FOTO_E_CONTA, "so_com": "rca"}),
         "clientes_novos": ("CLIENTE_NOVO", "nunique", _CONTA_CLIENTE),
         "clientes_recuperados": ("CLIENTE_RECUPERADO", "nunique", _CONTA_CLIENTE),
         # Dias desde a última compra, em qualquer filial. Agrupado (empresa,
@@ -628,10 +643,10 @@ INDICADORES["clientes"] = {
         "parados há mais de 1 ano (clientes_parados_ha_mais_de_1_ano) — ex: "
         "'Timon tem N clientes inativos (parados de 90 dias a 1 ano), os "
         "com mais chance de voltar. Além deles, M estão parados há mais "
-        "de 1 ano.' Numa consulta de uma filial (ou RCA), se "
-        "ativos_so_em_outra_filial (ou ativos_so_com_outro_rca) for maior que "
-        "zero, diga quantos dos ativos só compraram em outra filial (com outro "
-        "RCA) nos últimos 90 dias. Os dados começam em 2020."
+        "de 1 ano.' Se vier ativos_so_em_outra_filial (ou "
+        "ativos_so_com_outro_rca) maior que zero, diga quantos dos ativos só "
+        "compraram em outra filial (com outro RCA) nos últimos 90 dias. Os "
+        "dados começam em 2020."
     ),
     "exibicao": {
         "clientes_ativos": {"tipo": "texto", "rotulo": "Clientes Ativos", "sempre": True},

@@ -47,7 +47,7 @@ def test_ranking_de_vendas_traz_nota_cliente_e_rca(monkeypatch, vendas):
     })
 
     venda = resposta["resultados"][0]
-    assert venda["valor_desconto"] == 50.0 and venda["percentual_desconto"] == 5.0
+    assert venda["valor_desconto"] == 50.0 and venda["percentual_desconto"] == 5.2632
     assert (venda["venda_nota"], venda["venda_cliente"], venda["venda_rca"]) == ("500", "CLIENTE A", "ANA")
 
 

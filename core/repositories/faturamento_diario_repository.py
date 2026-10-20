@@ -8,8 +8,8 @@ segundo plano por `core/services/atualizador_service.py` (ver
 Fontes (Oracle, schema FNORTE, só leitura):
 - Venda (bruta, de tabela, desconto, nº de notas):
   `VIEW_VENDAS_RESUMO_FATURAMENTO`, com os filtros de venda válida — a
-  mesma fonte do faturamento mensal. Desconto = `VLDESCONTO × QT` (nesta
-  view é por unidade).
+  mesma fonte do faturamento mensal. Desconto = venda de tabela − venda
+  bruta (mesma conta do mensal).
 - Nome do RCA: cadastro (`PCUSUARI`).
 - Devolução: `VIEW_DEVOL_RESUMO_FATURAMENTO`.
 
@@ -78,7 +78,7 @@ def _consultar_vendas(cursor, desde: date) -> pd.DataFrame:
                    COUNT(DISTINCT NUMTRANSVENDA) QT_NOTAS,
                    ROUND(SUM(VLVENDA), 2) VENDA_BRUTA,
                    ROUND(SUM(VLTABELA), 2) VENDA_TABELA,
-                   ROUND(SUM(VLDESCONTO * QT), 4) VALORDESC
+                   ROUND(SUM(VLTABELA) - SUM(VLVENDA), 2) VALORDESC
             FROM VIEW_VENDAS_RESUMO_FATURAMENTO
             WHERE DTSAIDA >= :desde
             {_FILTRO_VENDA_VALIDA}
@@ -143,7 +143,7 @@ def _consultar_vendas_cobranca(cursor, desde: date) -> pd.DataFrame:
             SELECT CODFILIAL, TRUNC(DTSAIDA) DATA, CODUSUR, CODCOB,
                    COUNT(DISTINCT NUMTRANSVENDA) QT_NOTAS,
                    ROUND(SUM(VLVENDA), 2) VENDA_BRUTA,
-                   ROUND(SUM(VLDESCONTO * QT), 4) VALORDESC
+                   ROUND(SUM(VLTABELA) - SUM(VLVENDA), 2) VALORDESC
             FROM VIEW_VENDAS_RESUMO_FATURAMENTO
             WHERE DTSAIDA >= :desde
             {_FILTRO_VENDA_VALIDA}

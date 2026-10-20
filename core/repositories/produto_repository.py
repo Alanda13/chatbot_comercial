@@ -65,7 +65,7 @@ def _consultar_desconto(cursor, desde: date) -> pd.DataFrame:
         f"""
         SELECT CODFILIAL, EXTRACT(YEAR FROM DTSAIDA) ANO,
                EXTRACT(MONTH FROM DTSAIDA) MES, CODPROD,
-               ROUND(SUM(VLDESCONTO * QT), 4) VALORDESC,
+               ROUND(SUM(VLTABELA) - SUM(VLVENDA), 2) VALORDESC,
                ROUND(SUM(VLTABELA), 2) VENDA_TABELA,
                ROUND(SUM(VLVENDA), 2) VENDA_BRUTA
         FROM VIEW_VENDAS_RESUMO_FATURAMENTO
