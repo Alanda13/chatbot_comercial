@@ -1421,3 +1421,25 @@ parte, pra resposta avisar. Cada código de cliente (loja) conta 1.
   recente por `catalogo.COLUNA_DO_MAIS_RECENTE` (DATA_ULTIMA_COMPRA); antes
   era a primeira linha encontrada.
 - A coluna do documento do cliente se chama "CNPJ/CPF" (muitos são CPF).
+
+## Ticket médio (21/10/2026)
+
+- Ticket médio = faturamento (venda − devolução) ÷ nº de notas (definição da supervisora). Derivado `ticket_medio` (`motor_metricas.calcular_ticket_medio`) no `faturamento` e no `faturamento_diario`; como é calculado depois de somar, vários meses = total ÷ total (não média dos tickets).
+- Por cliente/empresa: `desconto_cliente.csv` ganhou `QT_NOTAS` (COUNT DISTINCT NUMTRANSVENDA, gerado de novo do Oracle; soma por filial bate com o faturamento mensal). Por produto/família/grupo não existe (uma nota tem vários produtos): o campo vem vazio.
+- `gerar_descricao_indicadores` passou a listar também os campos calculados (derivados) — antes a IA só conhecia `percentual_desconto`, `toneladas` etc. pelas regras escritas.
+
+## Frequência de compra (21/10/2026)
+
+- Proposta da usuária, aguardando a supervisora: em média, a cada quantos dias o cliente compra = (última − primeira compra) ÷ (nº de dias com compra − 1), nas compras dos 12 meses até a data da foto, em qualquer filial (mesmo dia = 1 compra; 1 compra só = vazio). `situacao_cliente_repository._frequencia_de_compra` → coluna `FREQUENCIA_DE_COMPRA` da foto.
+- Campo `frequencia_de_compra` do indicador `clientes`: foto (com um ano, a de dezembro = aquele ano; sem período, hoje = últimos 12 meses) e `"mean"` com `unico_por` CODCLI — agrupado por filial/empresa, a média dos clientes, cada um uma vez. O motor passou a deixar a média vazia (não 0) num grupo sem linha.
+- Tabela por empresa: "Última compra" (atributo de cliente e de empresa) passou a vir depois do nome/CNPJ da empresa — antes, por aparecer primeiro nos atributos do cliente, virava a 1ª coluna. O "como_ler" diz que, no ano atual, a frequência é dos 12 meses até hoje (não só do ano).
+
+## Tabela do cruzamento segue a resposta; "Empresa" virou "Cliente" (21/10/2026)
+
+- Cruzamento sem "colunas" da IA (e sem comparação): o campo principal de um indicador SEM `colunas_no_cruzamento` (ex: clientes_ativos) passou a ser só o padrão. O motor manda `_pela_resposta` ({"opcionais", "extras"}) e as linhas trazem os outros campos; `ui/formatacao._colunas_citadas_na_resposta` mostra as que a resposta cita (palavras ou rótulo do `exibicao`) — "faturamento e frequência" mostra Faturamento | Compra a cada (dias). Nenhuma citada: fica o padrão. As `colunas_no_cruzamento` (desconto R$ e %) continuam fixas.
+- O título de `empresa_nome` virou "Cliente" (a empresa pode ser uma pessoa, CPF — ex: Consumidor Final); numa tabela que também tem o nome da loja (`cliente_nome`/`venda_cliente`), continua "Empresa".
+
+## Valor, nota, pedido e RCA da última compra (21/10/2026)
+
+- `situacao_cliente_repository.detalhes_da_ultima_compra`: junta à foto as notas do dia da última compra de cada cliente (`venda_repository.carregar_notas_dos_clientes`, leitura enxuta do `desconto_venda.csv`, desde 2025): valor = soma da venda bruta do dia (o que comprou), notas/pedidos/RCAs juntos em texto ("601 e 602"). Antes de 2025, vazios. Vetorizado: só quem tem várias notas no dia passa pela junção de textos (12 s → 0,9 s).
+- Atributos `valor_ultima_compra`, `nota_ultima_compra`, `pedido_ultima_compra`, `rca_ultima_compra` em cliente e empresa (empresa: os da loja que comprou por último). `catalogo.ATRIBUTOS_SO_SE_CITADOS`: esses só entram na tabela quando a resposta usa a palavra ("valor", "nota", "pedido", "rca"/"vendedor") — a lista de clientes não fica larga.

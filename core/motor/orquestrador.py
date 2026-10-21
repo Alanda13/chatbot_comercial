@@ -1012,11 +1012,11 @@ def _aplicar_agrupamento(
         agrupado = agrupado.join(tabela, how="outer")
 
     # Grupo que não aparece num dos lados do join: soma/contagem 0;
-    # maior/menor fica vazio.
+    # maior/menor/média fica vazio.
     if agrupar_por:
         agrupado = agrupado.fillna({
             nome: 0 for nome, especificacao in campos.items()
-            if _desempacotar_campo(especificacao)[1] not in ("max", "min")
+            if _desempacotar_campo(especificacao)[1] not in ("max", "min", "mean")
         })
 
     agrupado = agrupado.reset_index()
@@ -1520,13 +1520,16 @@ def _linhas_da_tabela(
     colunas: list[str],
     rotulos: dict | None = None,
     comparar: list[str] | None = None,
+    pela_resposta: dict | None = None,
 ) -> list[dict]:
     """
     Linhas da tabela da tela: a identificação (filial, mês...), as colunas
     pedidas e a comparação delas (`comparar`; padrão: todas). A IA continua
     recebendo o resultado completo. "_colunas_pedidas" avisa a tela de que
     a escolha foi feita aqui (ui/formatacao.preparar_tabela); "_rotulos"
-    troca títulos (ex: os nomes das duas filiais).
+    troca títulos (ex: os nomes das duas filiais). "_pela_resposta": as
+    colunas que a tela troca pelas que a resposta cita ("opcionais") e as
+    que ela pode acrescentar ("extras").
     """
     comparacoes = {
         nome
@@ -1535,9 +1538,11 @@ def _linhas_da_tabela(
     }
     fixas = {*catalogo.DIMENSOES_VALIDAS, "rca_nome", *_CAMPOS_DE_ATRIBUTO}
 
+    extras = set((pela_resposta or {}).get("extras", []))
+
     def manter(chave: str) -> bool:
         return (
-            chave in fixas or chave in colunas or chave in comparacoes
+            chave in fixas or chave in colunas or chave in comparacoes or chave in extras
             or chave.endswith(("_mes_anterior", "_ano_anterior"))
         )
 
@@ -1546,8 +1551,16 @@ def _linhas_da_tabela(
             **{chave: valor for chave, valor in linha.items() if manter(chave)},
             "_colunas_pedidas": colunas,
             **({"_rotulos": rotulos} if rotulos else {}),
+            **({"_pela_resposta": pela_resposta} if pela_resposta else {}),
         }
         for linha in resultado
+    ]
+
+
+def _campos_da_ordem_e_dos_filtros(consulta: dict) -> list[str]:
+    return [
+        (consulta.get("ordenar_por") or {}).get("campo"),
+        *(filtro.get("campo") for filtro in consulta.get("filtros_calculados") or []),
     ]
 
 
@@ -1557,10 +1570,7 @@ def _colunas_usadas_na_pergunta(consulta: dict, indicador_def: dict) -> list[str
     da ordem, os dos filtros calculados e, num cruzamento, o principal de
     cada indicador — ou as "colunas_no_cruzamento" dele (desconto: R$ e %).
     """
-    campos = [
-        (consulta.get("ordenar_por") or {}).get("campo"),
-        *(filtro.get("campo") for filtro in consulta.get("filtros_calculados") or []),
-    ]
+    campos = _campos_da_ordem_e_dos_filtros(consulta)
 
     if consulta.get("cruzar_com"):
         for nome in [consulta["indicador"], *consulta["cruzar_com"]]:
@@ -2181,10 +2191,26 @@ def _tabela_da_tela(
     # Colunas escolhidas pelo sistema: a comparação só pro 1º campo.
     comparar = None
     rotulos = None
+    pela_resposta = None
 
     if not colunas:
         colunas = _colunas_usadas_na_pergunta(consulta, indicador_def)
         comparar = colunas[:1] if colunas else None
+
+        # Cruzamento: o principal de um indicador sem "colunas_no_cruzamento"
+        # é só o padrão — a tela o troca pelos números que a resposta cita
+        # (ex: "frequência" em vez de "clientes ativos").
+        if colunas and consulta.get("cruzar_com") and not comparar_com and not lados:
+            pela_resposta = {
+                "opcionais": [
+                    catalogo.INDICADORES[nome].get("campo_principal")
+                    for nome in indicadores
+                    if not catalogo.INDICADORES[nome].get("colunas_no_cruzamento")
+                    and catalogo.INDICADORES[nome].get("campo_principal")
+                    not in _campos_da_ordem_e_dos_filtros(consulta)
+                ],
+                "extras": [c for c in _campos_da_consulta(indicadores) if c not in colunas],
+            }
 
         if colunas and comparar_com:
             colunas, rotulos = _colunas_da_comparacao_de_periodos(
@@ -2226,7 +2252,12 @@ def _tabela_da_tela(
             rotulos[f"diferenca_{coluna}"] = f"Diferença ({lado_a} − {lado_b})"
             rotulos[f"percentual_{coluna}"] = f"Diferença % ({lado_a} vs {lado_b})"
 
-    resposta["tabela"] = _linhas_da_tabela(resposta["resultados"], colunas, rotulos, comparar)
+    if pela_resposta:
+        pela_resposta["opcionais"] = [c for c in pela_resposta["opcionais"] if c in colunas]
+
+    resposta["tabela"] = _linhas_da_tabela(
+        resposta["resultados"], colunas, rotulos, comparar, pela_resposta
+    )
 
     # Tabela só de campos "foto" (ex: lista de clientes em risco): a legenda
     # é o dia da situação, não o ano.

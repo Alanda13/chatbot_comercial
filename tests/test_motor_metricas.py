@@ -97,6 +97,16 @@ def test_calcular_participacao_sem_total_retorna_none():
     assert mm.calcular_participacao(25000, 0) is None
 
 
+def test_calcular_ticket_medio():
+    # Timon set/2026: 9.376.058,23 de faturamento em 5.898 notas
+    assert mm.calcular_ticket_medio(9376058.23, 5898) == 1589.7
+
+
+def test_calcular_ticket_medio_sem_notas_retorna_none():
+    assert mm.calcular_ticket_medio(1000.0, 0) is None
+    assert mm.calcular_ticket_medio(None, 4) is None
+
+
 def test_formulas_registradas_batem_com_as_funcoes():
     assert mm.FORMULAS["calcular_atingimento_meta"] is mm.calcular_atingimento_meta
     assert mm.FORMULAS["calcular_desconto"] is mm.calcular_desconto
@@ -108,6 +118,7 @@ def test_formulas_registradas_batem_com_as_funcoes():
         is mm.calcular_necessidade_diaria
     )
     assert mm.FORMULAS["calcular_participacao"] is mm.calcular_participacao
+    assert mm.FORMULAS["calcular_ticket_medio"] is mm.calcular_ticket_medio
 
 
 def test_calcular_atingimento_meta_com_valor_vazio_devolve_none():

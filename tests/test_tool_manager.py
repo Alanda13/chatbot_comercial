@@ -1,5 +1,6 @@
 import pytest
 
+from core.motor.catalogo import gerar_descricao_indicadores
 from core.services.ferramentas import tool_manager
 from core.exceptions import FerramentaError
 
@@ -94,3 +95,10 @@ def test_executar_ferramenta_chama_funcao_registrada(monkeypatch):
 
     assert resultado == {"ok": True}
     assert chamadas["args"] == {"filiais": ["Timon"]}
+
+
+def test_descricao_dos_indicadores_lista_os_campos_calculados():
+    descricao = gerar_descricao_indicadores()
+
+    assert "ticket_medio" in descricao
+    assert "percentual_desconto" in descricao

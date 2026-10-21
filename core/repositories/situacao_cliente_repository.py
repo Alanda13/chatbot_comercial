@@ -10,7 +10,14 @@ Contada em dias, pelas compras do cliente em QUALQUER filial:
 - novo: a 1ª compra (desde 2020) foi naquele mês;
 - recuperado: no mês, voltou a comprar depois de 90 dias ou mais parado
   (DIAS_PARADO_ANTES_DE_VOLTAR guarda quanto tempo ficou parado, de
-  qualquer tamanho).
+  qualquer tamanho);
+- frequência de compra: em média, a cada quantos dias o cliente comprou nos
+  12 meses até a data da foto (compras no mesmo dia = 1; com 1 compra só,
+  fica vazia).
+
+Da última compra: data e filial; valor (venda bruta), nota(s), pedido(s) e
+RCA vêm do arquivo de notas (`venda_repository`), que começa em 2025 — antes
+disso, vazios. Várias notas no mesmo dia são uma compra só: o valor soma.
 
 "Cliente de Timon" / "do RCA 8952" = comprou em Timon (com o RCA) nos 12
 meses antes da SUA última compra — o cadastro (PCCLIENT) não tem a filial
@@ -35,7 +42,7 @@ from core.repositories.arquivos_repository import (
     inicio_da_janela_parcial,
     ler_csv,
 )
-from core.repositories import cliente_repository
+from core.repositories import cliente_repository, venda_repository
 from core.repositories.faturamento_repository import RAIZ_PROJETO, _FILTRO_VENDA_VALIDA
 from core.repositories.filiais_repository import CODIGO_UNIFICADO, LOJAS, padronizar_filiais
 from core.logger import obter_logger
@@ -51,6 +58,7 @@ DIAS_INATIVO = 90
 DIAS_EM_RISCO = 60
 DIAS_PARADO_HA_MAIS_DE_1_ANO = 365
 DIAS_CLIENTE_DA_FILIAL = 365
+DIAS_JANELA_FREQUENCIA = 365
 
 COLUNAS_COMPRAS = ["CODCLI", "CODFILIAL", "COD_RCA", "COD_SUPERVISOR", "DATA"]
 
@@ -139,6 +147,17 @@ def _meses_recuperados(compras: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def _frequencia_de_compra(ate: pd.DataFrame, referencia: pd.Timestamp) -> pd.Series:
+    """Por cliente: (última − primeira compra) ÷ (nº de dias com compra − 1),
+    nas compras dos últimos 12 meses — a média dos intervalos."""
+    janela = ate.loc[
+        ate["DATA"] > referencia - pd.Timedelta(days=DIAS_JANELA_FREQUENCIA), ["CODCLI", "DATA"]
+    ].drop_duplicates()
+    compras = janela.groupby("CODCLI")["DATA"].agg(["min", "max", "count"])
+    intervalo = (compras["max"] - compras["min"]).dt.days / (compras["count"] - 1)
+    return intervalo.where(compras["count"] > 1).round(1)
+
+
 def _foto_do_mes(
     compras: pd.DataFrame, referencia: pd.Timestamp, primeiro_mes: pd.Series,
     recuperados: pd.DataFrame,
@@ -182,6 +201,7 @@ def _foto_do_mes(
         .set_index("CODCLI")["DIAS_PARADO_ANTES_DE_VOLTAR"]
     ).fillna(0).astype("int64")
     foto["RECUPERADO"] = foto["DIAS_PARADO_ANTES_DE_VOLTAR"] >= DIAS_INATIVO
+    foto["FREQUENCIA_DE_COMPRA"] = foto["CODCLI"].map(_frequencia_de_compra(ate, referencia))
     # Ativo só por compra em outra filial / com outro RCA: a resposta avisa.
     foto["SO_OUTRA_FILIAL"] = ativo & (
         (referencia - foto["ULTIMA_NA_FILIAL"]).dt.days >= DIAS_INATIVO
@@ -198,7 +218,7 @@ _MARCAS = [
 ]
 COLUNAS_SITUACAO = [
     "ANO", "MES", "CODCLI", "CODFILIAL", "COD_RCA", "COD_SUPERVISOR", *_MARCAS,
-    "DIAS_SEM_COMPRAR", "DIAS_PARADO_ANTES_DE_VOLTAR", "DATA_ULTIMA_COMPRA", "FILIAL_ULTIMA_COMPRA", "RCA_ULTIMA_COMPRA",
+    "DIAS_SEM_COMPRAR", "DIAS_PARADO_ANTES_DE_VOLTAR", "FREQUENCIA_DE_COMPRA", "DATA_ULTIMA_COMPRA", "FILIAL_ULTIMA_COMPRA", "RCA_ULTIMA_COMPRA",
 ]
 
 
@@ -235,6 +255,35 @@ def montar_situacao(
     return situacao
 
 
+def _juntar_textos(valores: pd.Series) -> str:
+    """"123", "123 e 456", "123, 456 e 789" — sem repetir."""
+    textos = list(dict.fromkeys(str(valor) for valor in valores.dropna()))
+    return " e ".join([", ".join(textos[:-1]), textos[-1]]) if len(textos) > 1 else "".join(textos)
+
+
+def _moeda(valor: float) -> str:
+    return f"R$ {valor:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+
+def detalhes_da_ultima_compra(situacao: pd.DataFrame, vendas: pd.DataFrame) -> pd.DataFrame:
+    """Valor, nota(s), pedido(s) e RCA(s) das notas do dia da última compra
+    de cada cliente (ver o começo do arquivo), em texto."""
+    chaves = ["CODCLI", "DATA_ULTIMA_COMPRA"]
+    textos = {"NUMNOTA": "NOTA_ULTIMA_COMPRA", "NUMPED": "PEDIDO_ULTIMA_COMPRA", "NOME_RCA": "NOME_RCA_ULTIMA_COMPRA"}
+    do_dia = vendas[["CODCLI", "DATA", *textos, "VENDA_BRUTA"]].merge(
+        situacao[chaves].drop_duplicates(), left_on=["CODCLI", "DATA"], right_on=chaves
+    )
+    # Quase todo mundo tem 1 nota no dia: só os outros passam por
+    # _juntar_textos (um por um seria lento).
+    varias = do_dia.groupby(chaves)["NUMNOTA"].transform("size") > 1
+    detalhes = pd.concat([
+        do_dia[~varias].set_index(chaves)[list(textos)].astype({"NUMNOTA": str, "NUMPED": str}),
+        do_dia[varias].groupby(chaves)[list(textos)].agg(_juntar_textos),
+    ]).rename(columns=textos)
+    detalhes["VALOR_ULTIMA_COMPRA"] = do_dia.groupby(chaves)["VENDA_BRUTA"].sum().map(_moeda)
+    return situacao.join(detalhes, on=chaves)
+
+
 def _para_consulta(situacao: pd.DataFrame) -> pd.DataFrame:
     """
     A foto pronta pro motor:
@@ -246,7 +295,10 @@ def _para_consulta(situacao: pd.DataFrame) -> pd.DataFrame:
     Mais recente primeiro: numa lista de clientes, o que vem junto com
     cada um (dias sem comprar, última compra) é da foto mais nova.
     """
-    dados = situacao.sort_values(["ANO", "MES"], ascending=False, kind="stable")
+    dados = detalhes_da_ultima_compra(
+        situacao.sort_values(["ANO", "MES"], ascending=False, kind="stable"),
+        venda_repository.carregar_notas_dos_clientes(),
+    )
 
     for marca in _MARCAS:
         dados[f"CLIENTE_{marca}"] = dados["CODCLI"].where(dados[marca] == 1).astype("Int32")
@@ -274,7 +326,12 @@ def _para_consulta(situacao: pd.DataFrame) -> pd.DataFrame:
     clientes = clientes.astype({coluna: "category" for coluna in clientes.columns if coluna != "CODCLI"})
     dados = dados.merge(clientes, on="CODCLI", how="left")
     dados = padronizar_filiais(dados, dados["CODFILIAL"])
-    return dados.astype({"FILIAL": "category", "ESTADO": "category"})
+    return dados.astype({
+        coluna: "category" for coluna in (
+            "FILIAL", "ESTADO", "VALOR_ULTIMA_COMPRA", "NOTA_ULTIMA_COMPRA",
+            "PEDIDO_ULTIMA_COMPRA", "NOME_RCA_ULTIMA_COMPRA",
+        )
+    })
 
 
 # As compras (e quem voltou a comprar) ficam em memória até o arquivo mudar;

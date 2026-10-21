@@ -250,8 +250,38 @@ def test_executar_consulta_faturamento_sem_agrupamento(monkeypatch):
             "peso_liquido": 200.0,
             "quantidade_notas": 5.0,
             "toneladas": 0.2,
+            "ticket_medio": 20.0,
         }
     ]
+
+
+def test_ticket_medio_de_varios_meses_divide_os_totais(monkeypatch):
+    # 2025: (100 + 300) ÷ (5 + 1) = 66,67 — não a média dos tickets de cada
+    # mês ((20 + 300) ÷ 2 = 160).
+    dados = pd.concat([_dados_faturamento(), pd.DataFrame([{
+        "FILIAL": "TIMON", "COD_RCA": 8403, "MES": 8, "ANO": 2025,
+        "VENDA_LIQ": 300.0, "VENDA_BRUTA": 300.0, "VALORDESC": 0.0,
+        "PESOLIQ": 0.0, "QT_NOTAS": 1,
+    }])], ignore_index=True)
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"], "carregar", lambda: dados)
+
+    resultado = orq.executar_consulta(
+        {"indicador": "faturamento", "filtros": {"ano": [2025]}}
+    )
+
+    assert resultado["resultados"][0]["ticket_medio"] == 66.67   # 400 ÷ 6
+
+
+def test_ticket_medio_sem_numero_de_notas_fica_vazio(monkeypatch):
+    # Por produto não há nº de notas (uma nota tem vários produtos).
+    sem_notas = _dados_faturamento().drop(columns=["QT_NOTAS"])
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"], "carregar", lambda: sem_notas)
+
+    resultado = orq.executar_consulta(
+        {"indicador": "faturamento", "filtros": {"ano": [2025]}}
+    )
+
+    assert resultado["resultados"][0]["ticket_medio"] is None
 
 
 def test_executar_consulta_faturamento_sem_dado_retorna_nao_encontrado(

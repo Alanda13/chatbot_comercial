@@ -4,7 +4,7 @@ Carregamento dos dados de desconto por cliente.
 Dois CSVs, gerados juntos do Oracle e atualizados em segundo plano por
 `core/services/atualizador_service.py` (mesma regra de `faturamento_data.py`):
 
-- `desconto_cliente.csv`: desconto e faturamento de tabela por
+- `desconto_cliente.csv`: desconto, faturamento e nº de notas por
   filial/ano/mês/RCA/supervisor/cliente, desde 2020 (~1,2 milhão de
   linhas). Só códigos e números — o nome do cliente não se repete em
   cada linha.
@@ -54,6 +54,7 @@ ARQUIVO_CLIENTES = RAIZ_PROJETO / "data" / "clientes.csv"
 COLUNAS_DESCONTO = [
     "CODFILIAL", "ANO", "MES", "COD_RCA", "COD_SUPERVISOR", "CODCLI",
     "VALORDESC", "VENDA_TABELA", "VENDA_BRUTA", "VALOR_DEV", "VENDA_LIQ",
+    "QT_NOTAS",
 ]
 COLUNAS_CLIENTES = [
     "CODCLI", "CLIENTE", "FANTASIA", "CNPJ", "CIDADE", "UF",
@@ -68,6 +69,7 @@ def _consultar_desconto(cursor, desde: date) -> pd.DataFrame:
         SELECT V.CODFILIAL, EXTRACT(YEAR FROM V.DTSAIDA) ANO,
                EXTRACT(MONTH FROM V.DTSAIDA) MES, V.CODUSUR COD_RCA,
                V.CODSUPERVISOR COD_SUPERVISOR, V.CODCLI,
+               COUNT(DISTINCT V.NUMTRANSVENDA) QT_NOTAS,
                ROUND(SUM(V.VLTABELA) - SUM(V.VLVENDA), 2) VALORDESC,
                ROUND(SUM(V.VLTABELA), 2) VENDA_TABELA,
                ROUND(SUM(V.VLVENDA), 2) VENDA_BRUTA
@@ -159,6 +161,7 @@ def _buscar(desde: date) -> tuple[pd.DataFrame, pd.DataFrame]:
         conexao.close()
 
     desconto["CODCLI"] = desconto["CODCLI"].astype(int)
+    desconto["QT_NOTAS"] = desconto["QT_NOTAS"].astype(int)
 
     return desconto[COLUNAS_DESCONTO], cadastro
 

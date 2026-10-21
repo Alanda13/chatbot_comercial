@@ -131,6 +131,8 @@ def _situacao_para_o_motor():
     ).iloc[dados["ATIVO"] + dados["EM_RISCO"] + 3 * dados["PARADO_HA_MAIS_DE_1_ANO"]].to_numpy()
     # Empresa: o Zé e o Velho são lojas da mesma.
     dados["EMPRESA"] = dados["CODCLI"].map({ZE: "E1", VELHO: "E1"}).fillna(dados["CODCLI"].astype(str))
+    dados["NOME_EMPRESA"] = "EMPRESA " + dados["EMPRESA"]
+    dados["CNPJ_EMPRESA"] = dados["EMPRESA"]
     dados["ULTIMA_COMPRA"] = dados["DATA_ULTIMA_COMPRA"].dt.strftime("%d/%m/%Y")
     return dados
 
@@ -260,6 +262,7 @@ def test_carrega_so_a_foto_dos_meses_pedidos(monkeypatch):
         {"CODCLI": range(1, 8), "CLIENTE": "X", "CNPJ": "1", "CIDADE": "TIMON",
          "EMPRESA": "1", "NOME_EMPRESA": "X", "CNPJ_EMPRESA": "1"}
     ))
+    monkeypatch.setattr(situacao.venda_repository, "carregar_notas_dos_clientes", _vendas)
     monkeypatch.setitem(situacao._cache, "versao", None)
 
     dados = situacao.carregar_situacao_clientes({"ano": [2026], "mes": [9]})
@@ -346,6 +349,20 @@ def test_empresa_esta_sem_comprar_desde_a_compra_mais_recente_das_lojas(motor):
     assert "quantos_por_situacao" not in resposta
 
 
+def test_tabela_por_empresa_comeca_pelo_nome_e_a_ultima_compra_vem_depois(motor):
+    from ui.formatacao import preparar_tabela
+
+    resposta = _consultar(
+        **_OUTUBRO, agrupar_por=["empresa"],
+        ordenar_por={"campo": "dias_sem_comprar", "ordem": "asc"},
+    )
+    tabela = preparar_tabela(resposta["tabela"], "dias sem comprar", "consultar_dados_comerciais")
+
+    colunas = list(tabela.columns)
+    assert colunas[0] == "Cliente"   # a empresa pode ser uma pessoa (CPF)
+    assert colunas.index("Última compra") > colunas.index("CNPJ (início)")
+
+
 def test_lista_de_clientes_sem_coluna_de_contagem_e_com_o_dia_da_situacao(motor):
     """Numa lista por cliente, "em risco" é 1 em toda linha: sai da tabela
     (a situação já diz). A legenda é o dia da situação, não o ano."""
@@ -370,3 +387,101 @@ def test_lista_de_clientes_sem_colunas_pedidas_mostra_os_dias_sem_comprar(motor)
     )
 
     assert resposta["tabela"][0]["_colunas_pedidas"] == ["dias_sem_comprar"]
+
+
+def test_frequencia_e_a_media_dos_intervalos_nos_12_meses():
+    foto = _foto(2026, 10)
+
+    # Zé: 27/06 e 28/09 (em Caxias também conta) = a cada 93 dias.
+    assert foto.loc[ZE, "FREQUENCIA_DE_COMPRA"] == 93.0
+    assert foto.loc[DANI, "FREQUENCIA_DE_COMPRA"] == 215.0
+    # Carlos: a compra de 01/2025 já saiu dos 12 meses; Ana: 1 compra só.
+    assert pd.isna(foto.loc[CARLOS, "FREQUENCIA_DE_COMPRA"])
+    assert pd.isna(foto.loc[ANA, "FREQUENCIA_DE_COMPRA"])
+
+
+def test_frequencia_conta_compras_no_mesmo_dia_uma_vez():
+    compras = pd.DataFrame({
+        "CODCLI": [1, 1, 1, 1],
+        "DATA": pd.to_datetime(["2026-09-01", "2026-09-01", "2026-09-11", "2026-09-21"]),
+    })
+
+    frequencia = situacao._frequencia_de_compra(compras, pd.Timestamp("2026-09-30"))
+
+    assert frequencia[1] == 10.0   # 3 dias com compra, não 4
+
+
+def test_frequencia_da_filial_e_a_media_dos_clientes(motor):
+    resposta = _consultar(**_OUTUBRO)
+
+    # Só quem tem 2 compras ou mais nos 12 meses: Zé (93) e Dani (215).
+    assert resposta["resultados"][0]["frequencia_de_compra"] == 154.0
+
+
+def _linha_do_cruzamento(**campos):
+    return {
+        "empresa": "E1", "empresa_nome": "CONSUMIDOR FINAL", "faturamento": 100.0,
+        "clientes_ativos": 3, "frequencia_de_compra": 1.2, **campos,
+        "_colunas_pedidas": ["faturamento", "clientes_ativos"],
+        "_pela_resposta": {"opcionais": ["clientes_ativos"], "extras": ["frequencia_de_compra"]},
+    }
+
+
+def test_cruzamento_mostra_as_colunas_que_a_resposta_cita():
+    from ui.formatacao import preparar_tabela
+
+    texto = "CONSUMIDOR FINAL: faturamento de R$ 100,00, com frequência de compra de 1,2 dia"
+    tabela = preparar_tabela([_linha_do_cruzamento()], texto, "consultar_dados_comerciais")
+
+    assert list(tabela.columns) == ["Cliente", "Faturamento", "Compra a cada (dias)"]
+
+
+def test_cruzamento_sem_coluna_citada_fica_com_o_padrao():
+    from ui.formatacao import preparar_tabela
+
+    tabela = preparar_tabela([_linha_do_cruzamento()], "Os maiores", "consultar_dados_comerciais")
+
+    assert list(tabela.columns) == ["Cliente", "Faturamento", "Clientes Ativos"]
+
+
+def _vendas():
+    vendas = pd.DataFrame([
+        (ZE, "2026-09-28", 501, 9001, "JOAO", 1200.5),
+        (DANI, "2026-10-02", 601, 9101, "MARIA", 100.0),   # 2 notas no mesmo dia
+        (DANI, "2026-10-02", 602, 9102, "PEDRO", 50.0),
+        (DANI, "2026-03-01", 600, 9100, "MARIA", 999.0),   # compra anterior: fica de fora
+    ], columns=["CODCLI", "DATA", "NUMNOTA", "NUMPED", "NOME_RCA", "VENDA_BRUTA"])
+    vendas["DATA"] = pd.to_datetime(vendas["DATA"])
+    return vendas
+
+
+def test_detalhes_da_ultima_compra_vem_das_notas_do_dia():
+    situacao_hoje = situacao.montar_situacao(_compras(), [(2026, 10)], hoje=date(2026, 10, 5))
+    detalhes = situacao.detalhes_da_ultima_compra(situacao_hoje, _vendas()).drop_duplicates("CODCLI").set_index("CODCLI")
+
+    assert detalhes.loc[ZE, "VALOR_ULTIMA_COMPRA"] == "R$ 1.200,50"
+    assert detalhes.loc[ZE, "NOTA_ULTIMA_COMPRA"] == "501"
+    assert detalhes.loc[ZE, "NOME_RCA_ULTIMA_COMPRA"] == "JOAO"
+    # Duas notas no mesmo dia: uma compra só, o valor soma.
+    assert detalhes.loc[DANI, "VALOR_ULTIMA_COMPRA"] == "R$ 150,00"
+    assert detalhes.loc[DANI, "NOTA_ULTIMA_COMPRA"] == "601 e 602"
+    assert detalhes.loc[DANI, "PEDIDO_ULTIMA_COMPRA"] == "9101 e 9102"
+    assert detalhes.loc[DANI, "NOME_RCA_ULTIMA_COMPRA"] == "MARIA e PEDRO"
+    # Última compra antes de 2025 (o arquivo de notas começa ali): vazio.
+    assert pd.isna(detalhes.loc[VELHO, "VALOR_ULTIMA_COMPRA"])
+
+
+def test_detalhes_da_ultima_compra_so_entram_na_tabela_se_a_resposta_fala_neles():
+    from ui.formatacao import preparar_tabela
+
+    linha = {
+        "cliente": ZE, "cliente_nome": "ZE", "ultima_compra": "28/09/2026",
+        "valor_ultima_compra": "R$ 1.200,50", "nota_ultima_compra": "501",
+        "dias_sem_comprar": 7, "_colunas_pedidas": ["dias_sem_comprar"],
+    }
+
+    sem = preparar_tabela([linha], "O Zé está há 7 dias sem comprar", "consultar_dados_comerciais")
+    com = preparar_tabela([linha], "Última compra em 28/09, nota 501, no valor de R$ 1.200,50", "consultar_dados_comerciais")
+
+    assert "Valor da última compra" not in sem.columns and "Nota da última compra" not in sem.columns
+    assert {"Valor da última compra", "Nota da última compra"} <= set(com.columns)

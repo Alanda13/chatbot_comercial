@@ -85,6 +85,22 @@ DIMENSOES_VALIDAS = [
 # "cliente" (o código) traz também nome, CNPJ e cidade da loja. Só entram
 # as colunas que existem na base do indicador (o arquivo de cliente, por
 # exemplo, não tem o nome do supervisor).
+# Só no indicador clientes, das notas do dia da última compra (desde 2025).
+_DETALHES_DA_ULTIMA_COMPRA = {
+    "valor_ultima_compra": ("VALOR_ULTIMA_COMPRA", "Valor da última compra"),
+    "nota_ultima_compra": ("NOTA_ULTIMA_COMPRA", "Nota da última compra"),
+    "pedido_ultima_compra": ("PEDIDO_ULTIMA_COMPRA", "Pedido da última compra"),
+    "rca_ultima_compra": ("NOME_RCA_ULTIMA_COMPRA", "RCA da última compra"),
+}
+# Atributos que só entram na tabela quando a resposta fala neles (a lista
+# de clientes ficaria larga demais): campo -> palavras.
+ATRIBUTOS_SO_SE_CITADOS = {
+    "valor_ultima_compra": ["valor"],
+    "nota_ultima_compra": ["nota"],
+    "pedido_ultima_compra": ["pedido"],
+    "rca_ultima_compra": ["rca", "vendedor", "vendid"],
+}
+
 ATRIBUTOS_DIMENSAO = {
     "supervisor": {
         "supervisor_nome": ("NOME_SUPERVISOR", "Supervisor"),
@@ -97,6 +113,7 @@ ATRIBUTOS_DIMENSAO = {
         "situacao": ("SITUACAO", "Situação"),
         "ultima_compra": ("ULTIMA_COMPRA", "Última compra"),
         "filial_ultima_compra": ("FILIAL_ULTIMA_COMPRA", "Filial da última compra"),
+        **_DETALHES_DA_ULTIMA_COMPRA,
     },
     "produto": {
         "produto_nome": ("PRODUTO", "Produto"),
@@ -116,11 +133,13 @@ ATRIBUTOS_DIMENSAO = {
         "venda_filial": ("FILIAL", "Filial da nota"),
     },
     "empresa": {
-        "empresa_nome": ("NOME_EMPRESA", "Empresa"),
+        # "Cliente": a empresa pode ser uma pessoa (CPF), ex: Consumidor Final.
+        "empresa_nome": ("NOME_EMPRESA", "Cliente"),
         "cnpj_empresa": ("CNPJ_EMPRESA", "CNPJ (início)"),
         # Só no indicador clientes: a compra mais recente entre as lojas.
         "ultima_compra": ("ULTIMA_COMPRA", "Última compra"),
         "filial_ultima_compra": ("FILIAL_ULTIMA_COMPRA", "Filial da última compra"),
+        **_DETALHES_DA_ULTIMA_COMPRA,
     },
 }
 
@@ -138,6 +157,15 @@ PERIODOS_VALIDOS = [
     # comparar_com="ano_anterior_ao_filtro" compara com 2024).
     "ano_anterior_ao_filtro",
 ]
+
+# Ticket médio = faturamento ÷ nº de notas. Por produto não existe: uma nota
+# tem vários produtos (o arquivo por produto não tem nº de notas).
+_TICKET_MEDIO = {
+    "nome": "ticket_medio",
+    "formula": "calcular_ticket_medio",
+    "campos": ("faturamento", "quantidade_notas"),
+}
+_EXIBICAO_TICKET_MEDIO = {"tipo": "moeda", "rotulo": "Ticket Médio", "palavras": ["ticket"]}
 
 INDICADORES = {
     "faturamento": {
@@ -204,6 +232,7 @@ INDICADORES = {
                 "formula": "calcular_toneladas",
                 "campos": ("peso_liquido",),
             },
+            _TICKET_MEDIO,
         ],
         "campo_principal": "faturamento",
         "unidade": "R$",
@@ -214,6 +243,7 @@ INDICADORES = {
             "peso_liquido": {"tipo": "texto", "rotulo": "Peso Líquido", "palavras": ["peso"]},
             "quantidade_notas": {"tipo": "texto", "rotulo": "Qtd. Notas", "palavras": ["nota"]},
             "toneladas": {"tipo": "texto", "rotulo": "Toneladas", "palavras": ["tonelada"]},
+            "ticket_medio": _EXIBICAO_TICKET_MEDIO,
         },
     },
     "faturamento_diario": {
@@ -239,6 +269,7 @@ INDICADORES = {
         },
         "rca_nome_mapa": construir_mapa_rca_nome,
         "rca_requer_meta_cadastrada": True,
+        "derivados": [_TICKET_MEDIO],
         "campo_principal": "faturamento",
         "unidade": "R$",
         "exibicao": {
@@ -246,6 +277,7 @@ INDICADORES = {
             "venda_bruta": {"tipo": "moeda", "rotulo": "Venda Bruta", "palavras": ["venda bruta"]},
             "valor_desconto": {"tipo": "moeda", "rotulo": "Desconto", "palavras": ["descont"]},
             "quantidade_notas": {"tipo": "texto", "rotulo": "Qtd. Notas", "palavras": ["nota"]},
+            "ticket_medio": _EXIBICAO_TICKET_MEDIO,
         },
     },
     "meta": {
@@ -608,6 +640,11 @@ INDICADORES["clientes"] = {
         # O maior tempo que o cliente ficou parado antes de voltar a comprar
         # no período (0 = não voltou): "ficou 5 meses parado e voltou".
         "dias_parado_antes_de_voltar": ("DIAS_PARADO_ANTES_DE_VOLTAR", "max"),
+        # A cada quantos dias o cliente compra (12 meses até a foto). Agrupado
+        # (filial, empresa): a média dos clientes, cada um uma vez.
+        "frequencia_de_compra": (
+            "FREQUENCIA_DE_COMPRA", "mean", {**_FOTO_MENSAL, "unico_por": ("CODCLI",)},
+        ),
     },
     # Lista de clientes: quantos de TODA a lista em cada situação e, sem
     # ordem pedida, os que pararam há menos tempo primeiro (ver
@@ -645,8 +682,15 @@ INDICADORES["clientes"] = {
         "com mais chance de voltar. Além deles, M estão parados há mais "
         "de 1 ano.' Se vier ativos_so_em_outra_filial (ou "
         "ativos_so_com_outro_rca) maior que zero, diga quantos dos ativos só "
-        "compraram em outra filial (com outro RCA) nos últimos 90 dias. Os "
-        "dados começam em 2020."
+        "compraram em outra filial (com outro RCA) nos últimos 90 dias. "
+        "Frequência de compra = em média, a cada quantos dias o cliente "
+        "comprou nos 12 meses até a data da situação (com um ano já fechado, "
+        "é aquele ano; no ano atual ou sem período, os últimos 12 meses até "
+        "hoje — diga isso e ofereça outro período, ex: 2025); agrupada (filial, empresa), é a média dos "
+        "clientes. A última compra traz data e filial e, desde 2025, o "
+        "valor (o que o cliente comprou, venda bruta), a(s) nota(s), o(s) "
+        "pedido(s) e o RCA — várias notas no mesmo dia são uma compra só. "
+        "Os dados começam em 2020."
     ),
     "exibicao": {
         "clientes_ativos": {"tipo": "texto", "rotulo": "Clientes Ativos", "sempre": True},
@@ -658,6 +702,7 @@ INDICADORES["clientes"] = {
         "ativos_so_em_outra_filial": {"tipo": "texto", "rotulo": "Ativos só por outra filial", "palavras": ["outra filia"]},
         "ativos_so_com_outro_rca": {"tipo": "texto", "rotulo": "Ativos só por outro RCA", "palavras": ["outro rca", "outro vendedor"]},
         "dias_sem_comprar": {"tipo": "texto", "rotulo": "Dias sem comprar", "palavras": ["dias sem", "sem comprar"]},
+        "frequencia_de_compra": {"tipo": "texto", "rotulo": "Compra a cada (dias)", "palavras": ["frequ"]},
         "dias_parado_antes_de_voltar": {"tipo": "texto", "rotulo": "Dias parado antes de voltar", "palavras": ["voltou", "voltaram", "volta a comprar", "voltar a comprar"]},
     },
 }
@@ -726,7 +771,10 @@ def gerar_descricao_indicadores() -> str:
         if definicao.get("carregar") is None:
             continue
 
-        campos = ", ".join(definicao["campos"])
+        campos = ", ".join([
+            *definicao["campos"],
+            *(derivado["nome"] for derivado in definicao.get("derivados", [])),
+        ])
         dimensoes = ", ".join(definicao["dimensoes"])
 
         linhas.append(

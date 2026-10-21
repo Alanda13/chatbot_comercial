@@ -80,6 +80,13 @@ TIPO_POR_COLUNA = {
     for config in CONFIG_TABELA_POR_FERRAMENTA.values()
     for especificacao in config.get("colunas", [])
 }
+# Rótulo e palavras de cada coluna (a 1ª definição, quando dois indicadores
+# têm o mesmo campo) — pra saber se a resposta cita a coluna.
+ESPECIFICACAO_POR_COLUNA = {}
+
+for _especificacao in CONFIG_TABELA_POR_FERRAMENTA["consultar_dados_comerciais"]["colunas"]:
+    ESPECIFICACAO_POR_COLUNA.setdefault(_especificacao["coluna"], _especificacao)
+
 # "percentual_mes_anterior"/"percentual_ano_anterior" não pertencem a
 # uma ferramenta específica — podem aparecer no resultado de qualquer
 # ferramenta agrupada por mês/ano, então têm o tipo registrado à parte.
@@ -90,12 +97,15 @@ TIPO_POR_COLUNA["percentual_ano_anterior"] = "percentual_com_sinal"
 _PERIODOS_DA_VARIACAO = {"mes_anterior": "mês anterior", "ano_anterior": "ano anterior"}
 
 # Nome/CNPJ/cidade que acompanham uma dimensão (ex: cliente) — vêm do
-# catálogo, não de uma lista escrita aqui.
-ATRIBUTOS_DA_TABELA = {
-    campo: rotulo
-    for atributos in catalogo.ATRIBUTOS_DIMENSAO.values()
-    for campo, (_, rotulo) in atributos.items()
-}
+# catálogo, não de uma lista escrita aqui. Atributo de mais de uma dimensão
+# (última compra) fica na posição da última: numa tabela por empresa, vem
+# depois do nome dela.
+ATRIBUTOS_DA_TABELA = {}
+
+for _atributos in catalogo.ATRIBUTOS_DIMENSAO.values():
+    for _campo, (_, _rotulo) in _atributos.items():
+        ATRIBUTOS_DA_TABELA.pop(_campo, None)
+        ATRIBUTOS_DA_TABELA[_campo] = _rotulo
 
 RENOMEAR_COLUNAS = {
     **ATRIBUTOS_DA_TABELA,
@@ -301,6 +311,34 @@ def _pivotar(tabela, dimensoes, metricas, metrica_sem_prefixo=None):
     return resultado.drop(columns=vazias)
 
 
+def _citada(coluna, texto_lower):
+    especificacao = ESPECIFICACAO_POR_COLUNA.get(coluna, {})
+    return any(palavra in texto_lower for palavra in especificacao.get("palavras", [])) or (
+        especificacao.get("rotulo", "").lower() in texto_lower
+        if especificacao.get("rotulo") else False
+    )
+
+
+def _colunas_citadas_na_resposta(pedidas, pela_resposta, texto_lower, disponiveis):
+    """
+    Num cruzamento (ex: faturamento + clientes), a coluna padrão de cada
+    indicador dá lugar às que a resposta cita: "faturamento e frequência"
+    mostra a frequência, não os clientes ativos. Sem nenhuma citada, fica o
+    padrão.
+    """
+    opcionais = pela_resposta.get("opcionais", [])
+    citadas = [
+        coluna for coluna in [*opcionais, *pela_resposta.get("extras", [])]
+        if coluna in disponiveis and _citada(coluna, texto_lower)
+    ]
+
+    if not citadas:
+        return pedidas
+
+    fixas = [coluna for coluna in pedidas if coluna not in opcionais]
+    return list(dict.fromkeys([*fixas, *citadas]))
+
+
 def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
     """
     Monta a tabela pronta pra exibição, com uma regra só pra qualquer
@@ -327,6 +365,12 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
 
     if "_legenda" in df.columns:
         df = df.drop(columns="_legenda")
+
+    pela_resposta = None
+
+    if "_pela_resposta" in df.columns:
+        pela_resposta = df["_pela_resposta"].iloc[0]
+        df = df.drop(columns="_pela_resposta")
 
     # Valores pra preencher os placeholders "{ano}"/"{ano_anterior}"
     # que um "rotulo" de CONFIG_TABELA_POR_FERRAMENTA pode usar —
@@ -366,6 +410,13 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
         colunas_base.remove("ano")
 
     texto_lower = texto_referencia.lower()
+    colunas_base = [
+        coluna for coluna in colunas_base
+        if any(palavra in texto_lower for palavra in catalogo.ATRIBUTOS_SO_SE_CITADOS.get(coluna, [""]))
+    ]
+
+    if pedidas is not None and pela_resposta:
+        pedidas = _colunas_citadas_na_resposta(pedidas, pela_resposta, texto_lower, df.columns)
 
     if pedidas is not None:
         colunas_metricas = []
@@ -449,6 +500,12 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
         for coluna, rotulo in RENOMEAR_COLUNAS.items()
     }
     mapa_renomear.update(rotulos)
+
+    # Cliente (loja) e empresa na mesma tabela: os dois não podem se chamar
+    # "Cliente".
+    if "cliente_nome" in df.columns or "venda_cliente" in df.columns:
+        mapa_renomear["empresa_nome"] = "Empresa"
+
     df = df.fillna("sem dados").rename(columns=mapa_renomear)
 
     # Uma métrica só + as variações ao lado: o valor fica com o nome puro

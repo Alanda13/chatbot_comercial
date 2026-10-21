@@ -124,6 +124,15 @@ def calcular_toneladas(peso_liquido: Optional[float]) -> Optional[float]:
     return round(peso_liquido / 1000, 2)
 
 
+def calcular_ticket_medio(
+    faturamento: Optional[float], quantidade_notas: Optional[float]
+) -> Optional[float]:
+    """Ticket médio = Faturamento (venda − devolução) / Nº de notas"""
+    if not quantidade_notas or faturamento is None:
+        return None
+    return round(faturamento / quantidade_notas, 2)
+
+
 def calcular_participacao(
     valor_item: Optional[float], valor_total: Optional[float]
 ) -> Optional[float]:
@@ -142,5 +151,6 @@ FORMULAS = {
     "calcular_necessidade_diaria": calcular_necessidade_diaria,
     "calcular_participacao": calcular_participacao,
     "calcular_toneladas": calcular_toneladas,
+    "calcular_ticket_medio": calcular_ticket_medio,
     "calcular_nps": calcular_nps,
 }
