@@ -118,12 +118,12 @@ def carregar_desconto_venda() -> pd.DataFrame:
 
 
 def carregar_notas_dos_clientes() -> pd.DataFrame:
-    """Cliente, dia, nota, pedido, RCA e valor de cada nota — sem juntar o
+    """Filial, cliente, dia, nota, pedido, RCA e valor de cada nota — sem juntar o
     cadastro (~1 s, contra ~8 s de `carregar_desconto_venda`)."""
     _garantir()
     notas = ler_csv(
         ARQUIVO_DESCONTO_VENDA,
-        usecols=["CODCLI", "DATA", "NUMNOTA", "NUMPED", "COD_RCA", "VENDA_BRUTA"],
+        usecols=["CODFILIAL", "CODCLI", "DATA", "NUMNOTA", "NUMPED", "COD_RCA", "VENDA_BRUTA"],
     )
     notas["DATA"] = pd.to_datetime(notas["DATA"], format="ISO8601")
     notas["NOME_RCA"] = notas["COD_RCA"].map(construir_mapa_rca_nome())

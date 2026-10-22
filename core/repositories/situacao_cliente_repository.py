@@ -11,9 +11,11 @@ Contada em dias, pelas compras do cliente em QUALQUER filial:
 - recuperado: no mês, voltou a comprar depois de 90 dias ou mais parado
   (DIAS_PARADO_ANTES_DE_VOLTAR guarda quanto tempo ficou parado, de
   qualquer tamanho);
-- frequência de compra: em média, a cada quantos dias o cliente comprou nos
-  12 meses até a data da foto (compras no mesmo dia = 1; com 1 compra só,
-  fica vazia).
+- frequência de compra: em média, a cada quantos dias o cliente comprou no
+  período pedido (um ano: de janeiro até o fim dele ou hoje; um mês passado:
+  só ele; sem período ou no mês atual: os 12 meses até hoje) — compras no
+  mesmo dia = 1; com 1 compra só, fica vazia — em todas as filiais e, à
+  parte, só naquela filial (como os dias sem comprar).
 
 Da última compra: data e filial; valor (venda bruta), nota(s), pedido(s) e
 RCA vêm do arquivo de notas (`venda_repository`), que começa em 2025 — antes
@@ -147,15 +149,62 @@ def _meses_recuperados(compras: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def _frequencia_de_compra(ate: pd.DataFrame, referencia: pd.Timestamp) -> pd.Series:
-    """Por cliente: (última − primeira compra) ÷ (nº de dias com compra − 1),
-    nas compras dos últimos 12 meses — a média dos intervalos."""
-    janela = ate.loc[
-        ate["DATA"] > referencia - pd.Timedelta(days=DIAS_JANELA_FREQUENCIA), ["CODCLI", "DATA"]
-    ].drop_duplicates()
-    compras = janela.groupby("CODCLI")["DATA"].agg(["min", "max", "count"])
+def _frequencia_de_compra(janela: pd.DataFrame, por: list[str] = ["CODCLI"]) -> pd.Series:
+    """Por cliente (ou cliente e filial): (última − primeira compra) ÷ (nº
+    de dias com compra − 1) — a média dos intervalos."""
+    compras = janela[[*por, "DATA"]].drop_duplicates().groupby(por)["DATA"].agg(["min", "max", "count"])
     intervalo = (compras["max"] - compras["min"]).dt.days / (compras["count"] - 1)
     return intervalo.where(compras["count"] > 1).round(1)
+
+
+def _com_frequencia(
+    foto: pd.DataFrame, ate: pd.DataFrame, referencia: pd.Timestamp, desde: pd.Timestamp | None = None
+) -> pd.DataFrame:
+    """A frequência geral e na filial com as compras de `desde` até a
+    referência (sem `desde`: os 12 meses até ela)."""
+    if desde is None:
+        desde = referencia - pd.Timedelta(days=DIAS_JANELA_FREQUENCIA - 1)
+
+    janela = ate[(ate["DATA"] >= desde) & (ate["DATA"] <= referencia)]
+    na_filial = _frequencia_de_compra(janela, ["CODCLI", "CODFILIAL"])
+    foto["FREQUENCIA_DE_COMPRA"] = foto["CODCLI"].map(_frequencia_de_compra(janela))
+    foto["FREQUENCIA_NA_FILIAL"] = na_filial.reindex(
+        pd.MultiIndex.from_frame(foto[["CODCLI", "CODFILIAL"]])
+    ).to_numpy()
+    return foto
+
+
+def _inicio_da_janela(ano: int, mes: int, filtros: dict | None, hoje: date) -> pd.Timestamp | None:
+    """Início das compras da frequência na foto (ano, mês): o do período
+    pedido — o ano, ou o 1º mês pedido (até este) — ou None (os 12 meses até
+    a foto) sem período ou só no mês atual."""
+    filtros = filtros or {}
+    meses = sorted(int(m) for m in filtros.get("mes") or [])
+
+    if not meses:
+        return pd.Timestamp(ano, 1, 1) if filtros.get("ano") else None
+
+    if meses == [mes] and (ano, mes) == (hoje.year, hoje.month):
+        return None
+
+    return pd.Timestamp(ano, min([m for m in meses if m <= mes] or [mes]), 1)
+
+
+def periodo_da_frequencia(filtros: dict | None, hoje: date | None = None) -> str | None:
+    """As datas das compras que a frequência usou na foto mais recente do
+    período ("23/10/2025 a 22/10/2026") — pra resposta não fazer conta de data."""
+    hoje = hoje or date.today()
+    pedidos = meses_validos(_meses_dos_filtros(filtros, hoje), hoje)
+
+    if not pedidos:
+        return None
+
+    ano, mes = pedidos[-1]
+    referencia = _referencia(ano, mes, hoje)
+    desde = _inicio_da_janela(ano, mes, filtros, hoje) or (
+        referencia - pd.Timedelta(days=DIAS_JANELA_FREQUENCIA - 1)
+    )
+    return f"{desde:%d/%m/%Y} a {referencia:%d/%m/%Y}"
 
 
 def _foto_do_mes(
@@ -201,7 +250,8 @@ def _foto_do_mes(
         .set_index("CODCLI")["DIAS_PARADO_ANTES_DE_VOLTAR"]
     ).fillna(0).astype("int64")
     foto["RECUPERADO"] = foto["DIAS_PARADO_ANTES_DE_VOLTAR"] >= DIAS_INATIVO
-    foto["FREQUENCIA_DE_COMPRA"] = foto["CODCLI"].map(_frequencia_de_compra(ate, referencia))
+    foto = _com_frequencia(foto, ate, referencia)
+    foto["DIAS_SEM_COMPRAR_NA_FILIAL"] = (referencia - foto["ULTIMA_NA_FILIAL"]).dt.days
     # Ativo só por compra em outra filial / com outro RCA: a resposta avisa.
     foto["SO_OUTRA_FILIAL"] = ativo & (
         (referencia - foto["ULTIMA_NA_FILIAL"]).dt.days >= DIAS_INATIVO
@@ -218,7 +268,9 @@ _MARCAS = [
 ]
 COLUNAS_SITUACAO = [
     "ANO", "MES", "CODCLI", "CODFILIAL", "COD_RCA", "COD_SUPERVISOR", *_MARCAS,
-    "DIAS_SEM_COMPRAR", "DIAS_PARADO_ANTES_DE_VOLTAR", "FREQUENCIA_DE_COMPRA", "DATA_ULTIMA_COMPRA", "FILIAL_ULTIMA_COMPRA", "RCA_ULTIMA_COMPRA",
+    "DIAS_SEM_COMPRAR", "DIAS_PARADO_ANTES_DE_VOLTAR", "FREQUENCIA_DE_COMPRA", "FREQUENCIA_NA_FILIAL",
+    "DIAS_SEM_COMPRAR_NA_FILIAL",
+    "DATA_ULTIMA_COMPRA", "FILIAL_ULTIMA_COMPRA", "RCA_ULTIMA_COMPRA",
 ]
 
 
@@ -255,9 +307,18 @@ def montar_situacao(
     return situacao
 
 
+# Uma rede (ex: 45 lojas) pode ter muitas notas no mesmo dia.
+_MAXIMO_DE_TEXTOS = 3
+
+
 def _juntar_textos(valores: pd.Series) -> str:
-    """"123", "123 e 456", "123, 456 e 789" — sem repetir."""
+    """"123", "123 e 456", "123, 456 e 789", "123, 456, 789 e mais 2" — sem
+    repetir."""
     textos = list(dict.fromkeys(str(valor) for valor in valores.dropna()))
+
+    if len(textos) > _MAXIMO_DE_TEXTOS:
+        return f"{', '.join(textos[:_MAXIMO_DE_TEXTOS])} e mais {len(textos) - _MAXIMO_DE_TEXTOS}"
+
     return " e ".join([", ".join(textos[:-1]), textos[-1]]) if len(textos) > 1 else "".join(textos)
 
 
@@ -265,23 +326,57 @@ def _moeda(valor: float) -> str:
     return f"R$ {valor:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
 
 
-def detalhes_da_ultima_compra(situacao: pd.DataFrame, vendas: pd.DataFrame) -> pd.DataFrame:
-    """Valor, nota(s), pedido(s) e RCA(s) das notas do dia da última compra
-    de cada cliente (ver o começo do arquivo), em texto."""
-    chaves = ["CODCLI", "DATA_ULTIMA_COMPRA"]
-    textos = {"NUMNOTA": "NOTA_ULTIMA_COMPRA", "NUMPED": "PEDIDO_ULTIMA_COMPRA", "NOME_RCA": "NOME_RCA_ULTIMA_COMPRA"}
-    do_dia = vendas[["CODCLI", "DATA", *textos, "VENDA_BRUTA"]].merge(
-        situacao[chaves].drop_duplicates(), left_on=["CODCLI", "DATA"], right_on=chaves
-    )
+def _resumo_das_notas(do_dia: pd.DataFrame, chaves: list[str], sufixo: str = "") -> pd.DataFrame:
+    """Por chave: valor somado e nota(s), pedido(s), RCA(s) (e filial(is),
+    se vierem) juntos em texto."""
+    textos = {
+        coluna: nome + sufixo for coluna, nome in (
+            ("NUMNOTA", "NOTA_ULTIMA_COMPRA"), ("NUMPED", "PEDIDO_ULTIMA_COMPRA"),
+            ("NOME_RCA", "NOME_RCA_ULTIMA_COMPRA"), ("NOME_FILIAL", "FILIAL_ULTIMA_COMPRA"),
+        )
+        if coluna in do_dia.columns
+    }
     # Quase todo mundo tem 1 nota no dia: só os outros passam por
     # _juntar_textos (um por um seria lento).
     varias = do_dia.groupby(chaves)["NUMNOTA"].transform("size") > 1
-    detalhes = pd.concat([
+    resumo = pd.concat([
         do_dia[~varias].set_index(chaves)[list(textos)].astype({"NUMNOTA": str, "NUMPED": str}),
         do_dia[varias].groupby(chaves)[list(textos)].agg(_juntar_textos),
     ]).rename(columns=textos)
-    detalhes["VALOR_ULTIMA_COMPRA"] = do_dia.groupby(chaves)["VENDA_BRUTA"].sum().map(_moeda)
-    return situacao.join(detalhes, on=chaves)
+    resumo["VALOR_ULTIMA_COMPRA" + sufixo] = do_dia.groupby(chaves)["VENDA_BRUTA"].sum().map(_moeda)
+    return resumo
+
+
+def detalhes_da_ultima_compra(situacao: pd.DataFrame, vendas: pd.DataFrame) -> pd.DataFrame:
+    """
+    Valor, nota(s), pedido(s) e RCA(s) das notas do dia da última compra
+    de cada cliente (ver o começo do arquivo), em texto. Com EMPRESA: também
+    os da empresa (sufixo _EMPRESA) — o último dia em que alguma loja dela
+    comprou, com TODAS as lojas que compraram nesse dia (valor somado).
+    """
+    chaves = ["CODCLI", "DATA_ULTIMA_COMPRA"]
+    colunas = ["CODCLI", "DATA", "NUMNOTA", "NUMPED", "NOME_RCA", "VENDA_BRUTA"]
+    do_dia = vendas[colunas].merge(
+        situacao[chaves].drop_duplicates(), left_on=["CODCLI", "DATA"], right_on=chaves
+    )
+    situacao = situacao.join(_resumo_das_notas(do_dia, chaves), on=chaves)
+
+    if "EMPRESA" not in situacao.columns:
+        return situacao
+
+    por_empresa = ["ANO", "MES", "EMPRESA"]
+    ultimo_dia = situacao.groupby(por_empresa, observed=True)["DATA_ULTIMA_COMPRA"].max().reset_index()
+    empresa_do_cliente = situacao.drop_duplicates("CODCLI").set_index("CODCLI")["EMPRESA"]
+    notas = vendas[[*colunas, "CODFILIAL"]].assign(
+        EMPRESA=lambda notas: notas["CODCLI"].map(empresa_do_cliente),
+        NOME_FILIAL=lambda notas: notas["CODFILIAL"].replace(CODIGO_UNIFICADO).map(
+            lambda codigo: LOJAS.get(codigo, (f"código {codigo}",))[0]
+        ),
+    )
+    do_dia = notas.merge(
+        ultimo_dia, left_on=["EMPRESA", "DATA"], right_on=["EMPRESA", "DATA_ULTIMA_COMPRA"]
+    )
+    return situacao.join(_resumo_das_notas(do_dia, por_empresa, "_EMPRESA"), on=por_empresa)
 
 
 def _para_consulta(situacao: pd.DataFrame) -> pd.DataFrame:
@@ -295,10 +390,7 @@ def _para_consulta(situacao: pd.DataFrame) -> pd.DataFrame:
     Mais recente primeiro: numa lista de clientes, o que vem junto com
     cada um (dias sem comprar, última compra) é da foto mais nova.
     """
-    dados = detalhes_da_ultima_compra(
-        situacao.sort_values(["ANO", "MES"], ascending=False, kind="stable"),
-        venda_repository.carregar_notas_dos_clientes(),
-    )
+    dados = situacao.sort_values(["ANO", "MES"], ascending=False, kind="stable")
 
     for marca in _MARCAS:
         dados[f"CLIENTE_{marca}"] = dados["CODCLI"].where(dados[marca] == 1).astype("Int32")
@@ -325,12 +417,15 @@ def _para_consulta(situacao: pd.DataFrame) -> pd.DataFrame:
     ]
     clientes = clientes.astype({coluna: "category" for coluna in clientes.columns if coluna != "CODCLI"})
     dados = dados.merge(clientes, on="CODCLI", how="left")
+    dados = detalhes_da_ultima_compra(dados, venda_repository.carregar_notas_dos_clientes())
     dados = padronizar_filiais(dados, dados["CODFILIAL"])
+    detalhes = [
+        f"{nome}{sufixo}"
+        for nome in ("VALOR_ULTIMA_COMPRA", "NOTA_ULTIMA_COMPRA", "PEDIDO_ULTIMA_COMPRA", "NOME_RCA_ULTIMA_COMPRA")
+        for sufixo in ("", "_EMPRESA")
+    ]
     return dados.astype({
-        coluna: "category" for coluna in (
-            "FILIAL", "ESTADO", "VALOR_ULTIMA_COMPRA", "NOTA_ULTIMA_COMPRA",
-            "PEDIDO_ULTIMA_COMPRA", "NOME_RCA_ULTIMA_COMPRA",
-        )
+        coluna: "category" for coluna in ("FILIAL", "ESTADO", "FILIAL_ULTIMA_COMPRA_EMPRESA", *detalhes)
     })
 
 
@@ -338,7 +433,7 @@ def _para_consulta(situacao: pd.DataFrame) -> pd.DataFrame:
 # cada foto pedida também (~1 s pra montar), até o arquivo mudar ou o dia
 # virar — no máximo as 24 mais recentes pedidas.
 _MAXIMO_DE_FOTOS = 24
-_cache: dict = {"versao": None, "compras": None, "fotos": OrderedDict()}
+_cache: dict = {"versao": None, "compras": None, "fotos": OrderedDict(), "com_periodo": {}}
 
 
 def _meses_dos_filtros(filtros: dict | None, hoje: date) -> list[tuple[int, int]]:
@@ -364,7 +459,7 @@ def carregar_situacao_clientes(filtros: dict | None = None) -> pd.DataFrame:
         compras = _ler_compras()
         # Os códigos somados numa loja só (ex: 30 → 24) contam como a mesma filial.
         compras["CODFILIAL"] = compras["CODFILIAL"].replace(CODIGO_UNIFICADO)
-        _cache.update(versao=versao, compras=compras, fotos=OrderedDict())
+        _cache.update(versao=versao, compras=compras, fotos=OrderedDict(), com_periodo={})
 
     fotos = _cache["fotos"]
     pedidos = meses_validos(_meses_dos_filtros(filtros, hoje), hoje)
@@ -389,8 +484,29 @@ def carregar_situacao_clientes(filtros: dict | None = None) -> pd.DataFrame:
         )
 
     # Mais recente primeiro: numa lista de clientes, o que vem junto com
-    # cada um (dias sem comprar, última compra) é da foto mais nova.
-    return pd.concat([fotos[mes] for mes in reversed(pedidos)], ignore_index=True)
+    # cada um (dias sem comprar, última compra) é da foto mais nova. A foto
+    # guardada traz a frequência de 12 meses; com período, a dele.
+    partes = []
+
+    for ano, mes in reversed(pedidos):
+        foto = fotos[(ano, mes)]
+        desde = _inicio_da_janela(ano, mes, filtros, hoje)
+
+        if desde is not None:
+            chave = (ano, mes, desde)
+
+            # Guarda só as duas colunas (a foto inteira tem ~80 MB).
+            if chave not in _cache["com_periodo"]:
+                _cache["com_periodo"][chave] = _com_frequencia(
+                    foto[["CODCLI", "CODFILIAL"]].copy(), _cache["compras"],
+                    _referencia(ano, mes, hoje), desde,
+                )[["FREQUENCIA_DE_COMPRA", "FREQUENCIA_NA_FILIAL"]]
+
+            foto = foto.assign(**_cache["com_periodo"][chave])
+
+        partes.append(foto)
+
+    return pd.concat(partes, ignore_index=True)
 
 
 # O motor passa os filtros do período pra cá (ver orquestrador.buscar_dados_brutos).

@@ -40,7 +40,12 @@ def escapar_para_markdown(texto):
 # nos dados.
 CONFIG_TABELA_POR_FERRAMENTA = {
     "consultar_dados_comerciais": {
-        "colunas": catalogo.gerar_colunas_tabela(),
+        # "participacao": o % de cada item no total (orquestrador._participacao),
+        # de qualquer indicador.
+        "colunas": [
+            *catalogo.gerar_colunas_tabela(),
+            {"coluna": "participacao", "tipo": "percentual", "rotulo": "Participação (%)", "palavras": ["particip"]},
+        ],
     },
 }
 

@@ -246,6 +246,15 @@ FERRAMENTAS_DISPONIVEIS = {
             "O desconto é venda de tabela − venda bruta (rotina 8280 do "
             "WinThor): negativo = vendeu acima da tabela mais do que deu "
             "de desconto. "
+            "PARTICIPAÇÃO (% de um item no total): 'participacao': "
+            "{\"dentro_de\": [dimensões cujo filtro fica no total]} — "
+            "'participação do cliente X no faturamento de Timon' = filtros "
+            "{cliente/empresa X, filial Timon} + participacao {\"dentro_de\": "
+            "[\"filial\"]}; 'na empresa' (ou sem filial) = {\"dentro_de\": []}; "
+            "'clientes com maior participação em Timon' = agrupar_por "
+            "[\"empresa\"], ordenar_por faturamento + participacao "
+            "{\"dentro_de\": [\"filial\"]}. Padrão: o campo principal; outro "
+            "valor somado em \"campo\" (ex: \"valor_desconto\"). "
             "Ticket médio (campo ticket_medio) = faturamento ÷ nº de "
             "notas; 'ticket médio por cliente/RCA/filial' = agrupar_por "
             "essa dimensão. "
@@ -319,6 +328,7 @@ FERRAMENTAS_DISPONIVEIS = {
             "colunas",
             "filtros_calculados",
             "ordenar_por",
+            "participacao",
         ],
         "funcao": executar_consultar_dados_comerciais,
     },

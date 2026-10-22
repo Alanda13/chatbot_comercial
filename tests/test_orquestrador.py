@@ -1816,3 +1816,73 @@ def test_mes_anterior_que_cruza_o_ano_pede_o_periodo_exato():
 def test_sem_periodo_na_pergunta_a_comparacao_continua_a_partir_de_hoje():
     consulta = {"indicador": "faturamento", "filtros": {"filial": ["TIMON"]}, "comparar_com": "mes_anterior"}
     assert orq._comparacao_a_partir_do_periodo(consulta, catalogo.INDICADORES["faturamento"]) == consulta
+
+
+# --- participação ------------------------------------------------------------
+
+
+def _faturamento_por_cliente():
+    # Timon: 100 + 300 = 400; Caxias: 600. Empresa: 1.000.
+    return pd.DataFrame([
+        {"FILIAL": filial, "ESTADO": "MA", "ANO": 2025, "MES": 7, "COD_RCA": 1, "CODCLI": codigo,
+         "CLIENTE": f"CLIENTE {codigo}", "VENDA_BRUTA": valor, "VENDA_LIQ": valor}
+        for filial, codigo, valor in [("TIMON", 1, 100.0), ("TIMON", 2, 300.0), ("CAXIAS", 3, 600.0)]
+    ])
+
+
+@pytest.fixture
+def _participacao_dados(monkeypatch):
+    dados = _faturamento_por_cliente()
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"], "carregar", lambda: dados)
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"]["fontes_por_dimensao"], "cliente", lambda: dados)
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"], "rca_requer_meta_cadastrada", False)
+
+
+def test_participacao_na_filial_divide_pelo_total_dela(_participacao_dados):
+    resposta = orq.executar_consulta({
+        "indicador": "faturamento", "filtros": {"filial": ["TIMON"], "ano": [2025]},
+        "agrupar_por": ["cliente"], "participacao": {"dentro_de": ["filial"]},
+    })
+    por_cliente = {linha["cliente"]: linha["participacao"] for linha in resposta["resultados"]}
+
+    assert por_cliente == {1: 25.0, 2: 75.0}   # 100 e 300 de 400
+    assert resposta["participacao_sobre"]["total"] == 400.0
+    assert resposta["participacao_sobre"]["total_de"] == "de TIMON"
+    assert "participacao" in resposta["tabela"][0]["_colunas_pedidas"]
+
+    from ui.formatacao import preparar_tabela
+    tabela = preparar_tabela(resposta["tabela"], "participação", "consultar_dados_comerciais")
+    assert list(tabela["Participação (%)"]) == ["25,00%", "75,00%"]
+
+
+def test_participacao_na_empresa_divide_pelo_total_de_todas_as_filiais(_participacao_dados):
+    resposta = orq.executar_consulta({
+        "indicador": "faturamento", "filtros": {"filial": ["TIMON"], "ano": [2025]},
+        "agrupar_por": ["cliente"], "participacao": {"dentro_de": []},
+    })
+    por_cliente = {linha["cliente"]: linha["participacao"] for linha in resposta["resultados"]}
+
+    assert por_cliente == {1: 10.0, 2: 30.0}   # de 1.000
+    assert resposta["participacao_sobre"]["total_de"] == "da empresa toda"
+
+
+def test_participacao_da_filial_na_empresa(_participacao_dados):
+    resposta = orq.executar_consulta({
+        "indicador": "faturamento", "filtros": {"filial": ["TIMON"], "ano": [2025]},
+        "participacao": {"dentro_de": []},
+    })
+
+    assert resposta["resultados"][0]["participacao"] == 40.0
+
+
+def test_participacao_do_desconto_usa_o_valor_em_reais():
+    assert orq._campo_da_participacao({"indicador": "desconto", "participacao": {}}) == "valor_desconto"
+    assert orq._campo_da_participacao({"indicador": "faturamento", "participacao": {}}) == "faturamento"
+
+
+def test_participacao_so_de_valor_que_se_soma():
+    with pytest.raises(ConsultaInvalida, match="só de valores que se somam"):
+        orq.executar_consulta({
+            "indicador": "desconto", "filtros": {"ano": [2025]},
+            "participacao": {"dentro_de": [], "campo": "percentual_desconto"},
+        })

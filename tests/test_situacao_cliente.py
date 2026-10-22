@@ -406,7 +406,7 @@ def test_frequencia_conta_compras_no_mesmo_dia_uma_vez():
         "DATA": pd.to_datetime(["2026-09-01", "2026-09-01", "2026-09-11", "2026-09-21"]),
     })
 
-    frequencia = situacao._frequencia_de_compra(compras, pd.Timestamp("2026-09-30"))
+    frequencia = situacao._frequencia_de_compra(compras)
 
     assert frequencia[1] == 10.0   # 3 dias com compra, não 4
 
@@ -433,7 +433,7 @@ def test_cruzamento_mostra_as_colunas_que_a_resposta_cita():
     texto = "CONSUMIDOR FINAL: faturamento de R$ 100,00, com frequência de compra de 1,2 dia"
     tabela = preparar_tabela([_linha_do_cruzamento()], texto, "consultar_dados_comerciais")
 
-    assert list(tabela.columns) == ["Cliente", "Faturamento", "Compra a cada (dias)"]
+    assert list(tabela.columns) == ["Cliente", "Faturamento", "Compra a cada (dias), todas as filiais"]
 
 
 def test_cruzamento_sem_coluna_citada_fica_com_o_padrao():
@@ -452,6 +452,7 @@ def _vendas():
         (DANI, "2026-03-01", 600, 9100, "MARIA", 999.0),   # compra anterior: fica de fora
     ], columns=["CODCLI", "DATA", "NUMNOTA", "NUMPED", "NOME_RCA", "VENDA_BRUTA"])
     vendas["DATA"] = pd.to_datetime(vendas["DATA"])
+    vendas["CODFILIAL"] = TIMON
     return vendas
 
 
@@ -485,3 +486,125 @@ def test_detalhes_da_ultima_compra_so_entram_na_tabela_se_a_resposta_fala_neles(
 
     assert "Valor da última compra" not in sem.columns and "Nota da última compra" not in sem.columns
     assert {"Valor da última compra", "Nota da última compra"} <= set(com.columns)
+
+
+def test_frequencia_na_filial_conta_so_as_compras_dela():
+    # Timon: dias 01/07, 31/07 e 30/08 (a cada 30 dias); Caxias, no meio:
+    # no geral, 7 dias de compra entre 01/07 e 30/08 = a cada 10 dias.
+    compras = pd.DataFrame(
+        [(8, TIMON, 10, dia) for dia in ("2026-07-01", "2026-07-31", "2026-08-30")]
+        + [(8, CAXIAS, 11, dia) for dia in ("2026-07-10", "2026-07-20", "2026-08-09", "2026-08-19")],
+        columns=["CODCLI", "CODFILIAL", "COD_RCA", "DATA"],
+    ).assign(COD_SUPERVISOR=1, DATA=lambda d: pd.to_datetime(d["DATA"]))
+
+    foto = situacao.montar_situacao(compras, [(2026, 9)], hoje=date(2026, 10, 5)).set_index("CODFILIAL")
+
+    assert foto.loc[TIMON, "FREQUENCIA_NA_FILIAL"] == 30.0
+    assert foto.loc[CAXIAS, "FREQUENCIA_NA_FILIAL"] == 13.3   # 10/07 → 19/08: 40 dias ÷ 3
+    assert (foto["FREQUENCIA_DE_COMPRA"] == 10.0).all()
+
+
+def test_frequencia_na_filial_so_vem_na_consulta_por_filial(motor):
+    por_filial = _consultar(**_OUTUBRO)["resultados"][0]
+    geral = orq.executar_consulta({"indicador": "clientes", "filtros": {"cliente": [DANI]}, **_OUTUBRO})["resultados"][0]
+
+    # Em Timon só a Dani tem 2 compras ali (o Zé comprou 1 vez em Timon).
+    assert por_filial["frequencia_na_filial"] == 215.0
+    assert por_filial["frequencia_de_compra"] == 154.0
+    assert "frequencia_na_filial" not in geral
+
+
+@pytest.mark.parametrize("filtros, ano_mes, inicio", [
+    ({"ano": [2025]}, (2025, 12), "2025-01-01"),             # um ano: o ano todo
+    ({"ano": [2026]}, (2026, 10), "2026-01-01"),             # ano atual: de janeiro até hoje
+    ({"ano": [2025], "mes": [9]}, (2025, 9), "2025-09-01"),  # um mês passado: só ele
+    ({"ano": [2025], "mes": [1, 2, 3]}, (2025, 3), "2025-01-01"),
+    ({"ano": [2026], "mes": [10]}, (2026, 10), None),        # mês atual / sem período: 12 meses
+])
+def test_inicio_da_frequencia_e_o_do_periodo_pedido(filtros, ano_mes, inicio):
+    resultado = situacao._inicio_da_janela(*ano_mes, filtros, date(2026, 10, 5))
+
+    assert resultado == (pd.Timestamp(inicio) if inicio else None)
+
+
+def test_frequencia_do_ano_atual_nao_conta_o_ano_anterior(monkeypatch):
+    # Novembro/2025 entra nos 12 meses até hoje, mas não em "2026".
+    compras = pd.DataFrame(
+        [(8, TIMON, 10, dia) for dia in ("2025-11-01", "2026-03-01", "2026-03-11", "2026-03-21")],
+        columns=["CODCLI", "CODFILIAL", "COD_RCA", "DATA"],
+    ).assign(COD_SUPERVISOR=1, DATA=lambda d: pd.to_datetime(d["DATA"]))
+    monkeypatch.setattr(situacao, "_garantir", lambda: None)
+    monkeypatch.setattr(situacao, "_ler_compras", lambda: compras)
+    monkeypatch.setattr(situacao, "_para_consulta", lambda dados: dados)
+    monkeypatch.setattr(situacao, "date", type("Hoje", (date,), {"today": staticmethod(lambda: date(2026, 10, 5))}))
+    monkeypatch.setitem(situacao._cache, "versao", None)
+
+    doze_meses = situacao.carregar_situacao_clientes({"ano": [2026], "mes": [10]})
+    no_ano = situacao.carregar_situacao_clientes({"ano": [2026]})
+
+    assert doze_meses["FREQUENCIA_DE_COMPRA"].iloc[0] == 46.7   # 01/11 → 21/03: 140 dias ÷ 3
+    assert no_ano.loc[no_ano["MES"] == 10, "FREQUENCIA_DE_COMPRA"].iloc[0] == 10.0
+
+
+def test_dias_sem_comprar_na_filial_olham_so_ela():
+    ze = _foto(2026, 10).loc[ZE]
+
+    # O Zé comprou em Caxias há 7 dias; em Timon, há 100.
+    assert ze["DIAS_SEM_COMPRAR"] == 7
+    assert ze["DIAS_SEM_COMPRAR_NA_FILIAL"] == 100
+
+
+@pytest.mark.parametrize("filtros, periodo", [
+    ({"ano": [2026], "mes": [10]}, "06/10/2025 a 05/10/2026"),   # sem período: 12 meses
+    ({"ano": [2026]}, "01/01/2026 a 05/10/2026"),
+    ({"ano": [2025], "mes": [6]}, "01/06/2025 a 30/06/2025"),
+])
+def test_periodo_da_frequencia_vem_com_as_datas(filtros, periodo):
+    assert situacao.periodo_da_frequencia(filtros, date(2026, 10, 5)) == periodo
+
+
+def test_resposta_traz_o_periodo_da_frequencia(motor, monkeypatch):
+    monkeypatch.setitem(
+        catalogo.INDICADORES["clientes"]["periodo_dos_campos"], "descrever",
+        lambda filtros: situacao.periodo_da_frequencia(filtros, date(2026, 10, 5)),
+    )
+
+    assert _consultar(**_OUTUBRO)["periodo_da_frequencia"] == "06/10/2025 a 05/10/2026"
+
+
+def test_sem_periodo_o_aviso_traz_as_datas_da_frequencia(motor, monkeypatch):
+    monkeypatch.setitem(
+        catalogo.INDICADORES["clientes"]["periodo_dos_campos"], "descrever",
+        lambda filtros: situacao.periodo_da_frequencia(filtros, date(2026, 10, 5)),
+    )
+    monkeypatch.setattr(orq, "date", type("Hoje", (date,), {"today": staticmethod(lambda: date(2026, 10, 5))}))
+
+    resposta = orq.executar_consulta({"indicador": "clientes", "filtros": {"filial": ["TIMON"]}})
+
+    assert "a frequência de compra usa 06/10/2025 a 05/10/2026" in resposta["periodo_assumido"]
+
+
+def test_ultima_compra_da_empresa_junta_as_lojas_que_compraram_no_ultimo_dia():
+    # Zé e Ana são lojas da mesma empresa e compraram no mesmo dia (04/10).
+    compras = _compras()
+    compras.loc[compras["CODCLI"] == ZE, "DATA"] = pd.Timestamp("2026-10-04")
+    situacao_hoje = situacao.montar_situacao(compras, [(2026, 10)], hoje=date(2026, 10, 5))
+    situacao_hoje["EMPRESA"] = situacao_hoje["CODCLI"].map({ZE: "E1", ANA: "E1"}).fillna("OUTRA")
+    vendas = pd.DataFrame([
+        (ZE, "2026-10-04", 501, 9001, "JOAO", 100.0, CAXIAS),
+        (ANA, "2026-10-04", 701, 9201, "MARIA", 50.5, TIMON),
+    ], columns=["CODCLI", "DATA", "NUMNOTA", "NUMPED", "NOME_RCA", "VENDA_BRUTA", "CODFILIAL"])
+    vendas["DATA"] = pd.to_datetime(vendas["DATA"])
+
+    detalhes = situacao.detalhes_da_ultima_compra(situacao_hoje, vendas).set_index("CODCLI")
+    empresa = detalhes.loc[ANA]
+
+    assert empresa["VALOR_ULTIMA_COMPRA_EMPRESA"] == "R$ 150,50"
+    assert empresa["NOTA_ULTIMA_COMPRA_EMPRESA"] == "501 e 701"
+    assert empresa["NOME_RCA_ULTIMA_COMPRA_EMPRESA"] == "JOAO e MARIA"
+    # A loja continua com só a nota dela.
+    assert empresa["VALOR_ULTIMA_COMPRA"] == "R$ 50,50"
+
+
+def test_muitas_notas_no_dia_mostram_as_3_primeiras():
+    assert situacao._juntar_textos(pd.Series([1, 2, 3, 4, 5])) == "1, 2, 3 e mais 2"

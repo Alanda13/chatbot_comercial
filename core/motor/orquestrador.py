@@ -188,6 +188,53 @@ def _sem_ordem_por_contagem(consulta: dict) -> dict:
     return consulta
 
 
+def _campo_da_participacao(consulta: dict) -> str | None:
+    """O campo pedido; sem campo, o principal se ele se soma — senão o 1º
+    valor somado (desconto: o valor em R$, não o %)."""
+    indicador_def = catalogo.INDICADORES[consulta["indicador"]]
+    pedido = (consulta.get("participacao") or {}).get("campo")
+
+    if pedido:
+        return pedido
+
+    somados = [
+        nome for nome, especificacao in indicador_def["campos"].items()
+        if _desempacotar_campo(especificacao)[1] == "sum"
+    ]
+    principal = indicador_def.get("campo_principal")
+    return principal if principal in somados else next(iter(somados), principal)
+
+
+def _validar_participacao(consulta: dict) -> None:
+    """Participação = um campo SOMADO de cada item ÷ o total do recorte:
+    % de desconto, NPS ou nº de clientes não se dividem assim."""
+    pedido = consulta["participacao"]
+
+    if not isinstance(pedido, dict):
+        raise ConsultaInvalida("'participacao' deve ser um dicionário: {\"dentro_de\": [...]}.")
+
+    if consulta.get("comparar_com") or consulta.get("comparar_filtros"):
+        raise ConsultaInvalida(
+            "A participação não combina com comparação na mesma consulta: "
+            "consulte cada período (ou item) separado."
+        )
+
+    indicador_def = catalogo.INDICADORES[consulta["indicador"]]
+    campo = _campo_da_participacao(consulta)
+    especificacao = indicador_def["campos"].get(campo)
+
+    if especificacao is None or _desempacotar_campo(especificacao)[1] != "sum":
+        rotulo = indicador_def.get("exibicao", {}).get(campo, {}).get("rotulo", campo)
+        raise ConsultaInvalida(
+            f"Não dá pra calcular participação de '{rotulo}': só de valores que "
+            "se somam (ex: faturamento, venda bruta, valor de desconto)."
+        )
+
+    for dimensao in pedido.get("dentro_de") or []:
+        if dimensao not in indicador_def["dimensoes"]:
+            raise ConsultaInvalida(f"A dimensão '{dimensao}' não existe em '{consulta['indicador']}'.")
+
+
 def validar_consulta(consulta: dict) -> None:
     """Rejeita indicador, dimensão, período, coluna ou ordenação fora do
     catálogo, com uma mensagem clara (ConsultaInvalida)."""
@@ -199,6 +246,9 @@ def validar_consulta(consulta: dict) -> None:
     for nome in indicadores:
         if not catalogo.indicador_existe(nome):
             raise ConsultaInvalida(f"O indicador '{nome}' não existe no catálogo.")
+
+    if consulta.get("participacao") is not None:
+        _validar_participacao(consulta)
 
     if cruzar_com:
         _validar_cruzamento(indicadores, agrupar_por)
@@ -1974,6 +2024,13 @@ def _avisos_para_a_ia(
     indicadores = [consulta["indicador"], *(consulta.get("cruzar_com") or [])]
     ordenar_por = consulta.get("ordenar_por")
 
+    # Campo com período próprio (ex: a frequência de compra): as datas que
+    # ele usou, prontas.
+    proprio = indicador_def.get("periodo_dos_campos")
+
+    if proprio and any(campo in linha for linha in resposta["resultados"][:1] for campo in proprio["campos"]):
+        resposta[proprio["aviso"]] = proprio["descrever"](_filtros_efetivos(indicador_def, consulta))
+
     if contexto["mesmos_meses"]:
         resposta["mesmo_periodo_nos_anos"] = (
             "O ano atual ainda não terminou: a comparação usa os mesmos meses "
@@ -2032,9 +2089,15 @@ def _avisos_para_a_ia(
             f"a situação {foto[1]} (os outros campos são de {periodo})"
             if foto else periodo
         )
+        # Campo com período próprio (ex: a frequência): as datas dele.
+        proprio = indicador_def.get("periodo_dos_campos")
+
+        if proprio and proprio["aviso"] in resposta:
+            usado += f"; {proprio['nome']} usa {resposta[proprio['aviso']]}"
+
         resposta["periodo_assumido"] = (
-            f"A pergunta não disse o período: vale {usado}. Diga isso na "
-            "resposta e que dá pra consultar outro período."
+            f"A pergunta não disse o período: vale {usado}. Diga só o período "
+            "do número que a resposta usa e que dá pra consultar outro período."
         )
 
     if contexto["mes_em_andamento"] is not None:
@@ -2050,10 +2113,10 @@ def _avisos_para_a_ia(
     if "itens_antes_do_filtro" in extras:
         # Texto pronto, sem os nomes internos dos campos.
         resposta["quantidade_antes_do_filtro"] = (
-            f"{len(resultado_antes_do_limite)} de {extras['itens_antes_do_filtro']} "
-            "atenderam ao critério. Diga os dois números com o nome do que foi "
-            "listado (ex: \"10 das 18 filiais\", \"89 de 191 clientes\"), sem "
-            "as palavras \"itens\" ou \"filtros sobre a métrica\"."
+            f"{len(resultado_antes_do_limite)} passaram no filtro, de "
+            f"{extras['itens_antes_do_filtro']} consultados no total. Diga os dois "
+            "números, cada um com o nome do que conta (ex: \"10 das 18 filiais\", "
+            "\"52 clientes novos, de 5.075 clientes do RCA\")."
         )
 
     if extras.get("mais_perto_do_filtro"):
@@ -2220,6 +2283,10 @@ def _tabela_da_tela(
             )
             comparar = []
 
+    # Participação: o campo dela e o % logo depois.
+    if resposta.get("participacao_sobre"):
+        colunas = list(dict.fromkeys([*(colunas or [resposta["participacao_sobre"]["campo"]]), "participacao"]))
+
     if not colunas:
         return
 
@@ -2274,6 +2341,53 @@ def _tabela_da_tela(
             linha["_legenda"] = f"Situação {foto[1]}"
 
 
+_DIMENSOES_DO_PERIODO = ("ano", "mes", "dia")
+
+
+def _participacao(resposta: dict, consulta: dict) -> None:
+    """
+    Cada item ÷ o total do recorte, em % ("participacao"): o recorte é a
+    mesma consulta só com o período e os filtros das dimensões de
+    "dentro_de" (ex: ["filial"] = o total de Timon; [] = a empresa toda).
+    """
+    campo = _campo_da_participacao(consulta)
+    dentro_de = consulta["participacao"].get("dentro_de") or []
+    filtros = consulta.get("filtros") or {}
+    total = executar_consulta({
+        "indicador": consulta["indicador"],
+        "periodo": consulta.get("periodo"),
+        "periodo_personalizado": consulta.get("periodo_personalizado"),
+        "filtros": {
+            dimensao: valores for dimensao, valores in filtros.items()
+            if dimensao in _DIMENSOES_DO_PERIODO or dimensao in dentro_de
+        },
+    })
+    valor_total = (total["resultados"] or [{}])[0].get(campo)
+
+    if not valor_total:
+        return
+
+    for linha in resposta["resultados"]:
+        if linha.get(campo) is not None:
+            linha["participacao"] = round(linha[campo] / valor_total * 100, 2)
+
+    total_de = " e ".join(
+        ", ".join(map(str, filtros[dimensao])) for dimensao in dentro_de if dimensao in filtros
+    )
+    total_de = f"de {total_de}" if total_de else "da empresa toda"
+    rotulo = _rotulo_do_campo(campo, [consulta["indicador"]]).lower()
+    resposta["participacao_sobre"] = {
+        "campo": campo,
+        "total": valor_total,
+        "total_de": total_de,
+        "como_ler": (
+            f"'participacao' de cada item = {campo} dele ÷ o total {total_de} "
+            f"(mesmo período), em %. Ex: \"1,30% do {rotulo} {total_de} "
+            "(R$ 1.451.888,37 de R$ 112.114.507,37)\"."
+        ),
+    }
+
+
 def executar_consulta(consulta: dict) -> dict:
     """
     Ponto único de entrada do motor. `consulta`:
@@ -2295,6 +2409,7 @@ def executar_consulta(consulta: dict) -> dict:
     """
     consulta = _preparar_consulta(consulta)
     indicador_def = catalogo.INDICADORES[consulta["indicador"]]
+    pedida = consulta
 
     consulta, contexto = _ajustar_periodo(consulta, indicador_def)
     resultado, extras, lados = _consultar(consulta, indicador_def)
@@ -2365,6 +2480,9 @@ def executar_consulta(consulta: dict) -> dict:
                 f"'percentual_{{campo}}' = essa diferença em % sobre {lado_b}."
             ),
         }
+
+    if pedida.get("participacao") is not None:
+        _participacao(resposta, pedida)
 
     _tabela_da_tela(resposta, consulta, indicador_def, lados)
 

@@ -22,7 +22,8 @@ def executar_consultar_dados_comerciais(argumentos: dict) -> dict:
     - comparar_com (outro período, pra calcular crescimento);
     - filtros_calculados (filtro sobre a métrica já calculada, ex:
       "só quem bateu a meta");
-    - ordenar_por (pra "os N maiores/menores" de forma exata).
+    - ordenar_por (pra "os N maiores/menores" de forma exata);
+    - participacao (% de cada item no total do recorte).
     """
     consulta = {
         "indicador": argumentos.get("indicador"),
@@ -39,6 +40,7 @@ def executar_consultar_dados_comerciais(argumentos: dict) -> dict:
         ),
         "filtros_calculados": argumentos.get("filtros_calculados"),
         "ordenar_por": argumentos.get("ordenar_por"),
+        "participacao": argumentos.get("participacao"),
     }
 
     return orquestrador.executar_consulta(consulta)

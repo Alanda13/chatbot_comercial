@@ -139,9 +139,10 @@ MES_EM_ANDAMENTO = """MÊS EM ANDAMENTO ("mes_em_andamento"):
   (de "mes_em_andamento.resultados"), deixando claro que ele não acabou."""
 
 PERIODO_ASSUMIDO = """PERÍODO NÃO INFORMADO ("periodo_assumido"):
-- É OBRIGATÓRIO dizer logo no começo que o usuário não informou o período
-  (ex: "Em 2026 (você não informou o período), …") e, no fim, que dá pra
-  consultar outro período."""
+- Comece pelo período usado (ex: "Em outubro de 2026, …"; com datas
+  prontas, "No período de 23/10/2025 a 22/10/2026, …") e termine com "Se
+  preferir, você pode consultar outro período." Não escreva "você não
+  informou o período" nem repita o período."""
 
 CODIGO_FILIAL = """CÓDIGO DE FILIAL:
 - Só cite o código de uma filial se ele vier nos dados ("codigo_filial") ou
