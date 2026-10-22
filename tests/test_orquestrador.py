@@ -1875,6 +1875,24 @@ def test_participacao_da_filial_na_empresa(_participacao_dados):
     assert resposta["resultados"][0]["participacao"] == 40.0
 
 
+def test_participacao_mes_a_mes_divide_pelo_total_de_cada_mes(monkeypatch):
+    # Julho: Timon 400 de 1.000 (40%); agosto: Timon 100 de 200 (50%).
+    dados = pd.concat([_faturamento_por_cliente(), pd.DataFrame([
+        {"FILIAL": filial, "ESTADO": "MA", "ANO": 2025, "MES": 8, "COD_RCA": 1, "CODCLI": codigo,
+         "CLIENTE": "X", "VENDA_BRUTA": 100.0, "VENDA_LIQ": 100.0}
+        for filial, codigo in [("TIMON", 1), ("CAXIAS", 3)]
+    ])], ignore_index=True)
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"], "carregar", lambda: dados)
+
+    resposta = orq.executar_consulta({
+        "indicador": "faturamento", "filtros": {"filial": ["TIMON"], "ano": [2025]},
+        "agrupar_por": ["mes"], "participacao": {"dentro_de": []},
+    })
+    por_mes = {linha["mes"]: (linha["participacao"], linha["total_da_participacao"]) for linha in resposta["resultados"]}
+
+    assert por_mes == {7: (40.0, 1000.0), 8: (50.0, 200.0)}
+
+
 def test_participacao_do_desconto_usa_o_valor_em_reais():
     assert orq._campo_da_participacao({"indicador": "desconto", "participacao": {}}) == "valor_desconto"
     assert orq._campo_da_participacao({"indicador": "faturamento", "participacao": {}}) == "faturamento"
@@ -1886,3 +1904,77 @@ def test_participacao_so_de_valor_que_se_soma():
             "indicador": "desconto", "filtros": {"ano": [2025]},
             "participacao": {"dentro_de": [], "campo": "percentual_desconto"},
         })
+
+
+# --- mix de produtos (cliente com produto) -----------------------------------
+
+
+def _mix():
+    # Cliente 1: produtos 10 (2x) e 20; cliente 2: produto 10.
+    return pd.DataFrame([
+        {"FILIAL": "TIMON", "ESTADO": "MA", "ANO": 2025, "MES": mes, "CODCLI": cliente, "EMPRESA": str(cliente),
+         "CODPROD": produto, "PRODUTO": f"P{produto}", "GRUPO": "G", "FAMILIA": "F",
+         "VENDA_BRUTA": valor, "VENDA_LIQ": valor}
+        for mes, cliente, produto, valor in [(7, 1, 10, 100.0), (8, 1, 10, 50.0), (7, 1, 20, 30.0), (7, 2, 10, 5.0)]
+    ])
+
+
+@pytest.fixture
+def _arquivo_do_mix(monkeypatch):
+    def carregar(filtros=None):
+        return _mix()
+
+    carregar.recebe_filtros = True
+    carregar.tambem_tem = ("cliente", "empresa", "produto", "familia", "grupo")
+    sem_produto = _mix().drop(columns=["CODPROD", "PRODUTO", "GRUPO", "FAMILIA"])
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"], "fontes_combinadas", (carregar,))
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"]["fontes_por_dimensao"], "cliente", lambda: sem_produto)
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento"]["fontes_por_dimensao"], "produto", _mix)
+    monkeypatch.setitem(
+        catalogo.INDICADORES["faturamento"]["resolver_dimensao"], "cliente", lambda valor, filiais=None: [int(valor)]
+    )
+
+
+def test_cliente_com_produto_usa_o_arquivo_do_mix(_arquivo_do_mix):
+    resposta = orq.executar_consulta({
+        "indicador": "faturamento", "filtros": {"cliente": [1], "ano": [2025]}, "agrupar_por": ["produto"],
+    })
+    por_produto = {linha["produto"]: linha["venda_bruta"] for linha in resposta["resultados"]}
+
+    assert por_produto == {10: 150.0, 20: 30.0}
+    # Agrupado por produto, "produtos diferentes" é 1 em toda linha: fora da tabela.
+    assert "produtos_diferentes" not in (resposta["tabela"][0]["_colunas_pedidas"] if resposta.get("tabela") else [])
+
+
+def test_produtos_diferentes_pedido_usa_um_arquivo_com_produto(_arquivo_do_mix):
+    resposta = orq.executar_consulta({
+        "indicador": "faturamento", "filtros": {"cliente": [1], "ano": [2025]},
+        "colunas": ["produtos_diferentes"],
+    })
+
+    assert resposta["resultados"][0]["produtos_diferentes"] == 2
+
+
+def test_dimensao_que_o_arquivo_nao_tem_da_mensagem_clara(_arquivo_do_mix):
+    with pytest.raises(ConsultaInvalida, match="não têm rca"):
+        orq.executar_consulta({
+            "indicador": "faturamento", "filtros": {"cliente": [1], "ano": [2025]},
+            "agrupar_por": ["produto", "rca"],
+        })
+
+
+def test_mix_antes_de_2025_avisa_quando_comeca():
+    from core.repositories.cliente_produto_repository import carregar_cliente_produto
+
+    with pytest.raises(ValueError, match="começam em 2025"):
+        carregar_cliente_produto({"ano": [2024]})
+
+
+def test_tabela_por_produto_nao_mostra_produtos_diferentes():
+    from ui.formatacao import preparar_tabela
+
+    linhas = [{"produto": 10, "produto_nome": "P10", "faturamento": 150.0, "produtos_diferentes": 1}]
+    tabela = preparar_tabela(linhas, "comprou 2 produtos diferentes, faturamento", "consultar_dados_comerciais")
+
+    assert "Produtos diferentes" not in tabela.columns
+    assert "Faturamento" in tabela.columns

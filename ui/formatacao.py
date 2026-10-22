@@ -85,6 +85,15 @@ TIPO_POR_COLUNA = {
     for config in CONFIG_TABELA_POR_FERRAMENTA.values()
     for especificacao in config.get("colunas", [])
 }
+# Contagem de uma dimensão ("conta" no catálogo, ex: produtos diferentes):
+# numa tabela por essa dimensão, é 1 em toda linha — não entra.
+CONTA_POR_CAMPO = {
+    nome: especificacao[2]["conta"]
+    for definicao in catalogo.INDICADORES.values()
+    for nome, especificacao in definicao["campos"].items()
+    if isinstance(especificacao, tuple) and len(especificacao) > 2 and especificacao[2].get("conta")
+}
+
 # Rótulo e palavras de cada coluna (a 1ª definição, quando dois indicadores
 # têm o mesmo campo) — pra saber se a resposta cita a coluna.
 ESPECIFICACAO_POR_COLUNA = {}
@@ -476,6 +485,8 @@ def preparar_tabela(dados_tabela, texto_referencia, nome_ferramenta=None):
             if nome in df.columns and nome not in colunas_metricas:
                 com_variacao.append(nome)
 
+    com_variacao = [coluna for coluna in com_variacao if CONTA_POR_CAMPO.get(coluna) not in colunas_base]
+    colunas_metricas = [coluna for coluna in colunas_metricas if coluna in com_variacao]
     variacoes = [coluna for coluna in com_variacao if coluna not in colunas_metricas]
     colunas_metricas = com_variacao
 

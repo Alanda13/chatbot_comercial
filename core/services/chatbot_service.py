@@ -51,6 +51,10 @@ def _limitar_resultados(resultado: dict) -> dict:
             # colunas recortadas: mesma ordem, pra mostrar os mesmos itens.
             if isinstance(tabela, list) and len(tabela) == len(ordem):
                 resultado["tabela"] = [tabela[i] for i in ordem]
+            elif tabela is None:
+                # Sem tabela pronta, a tela usa a própria lista: na mesma ordem
+                # do texto.
+                resultado["tabela"] = resultados
 
         resultado["resultados"] = resultados[:LIMITE_RESULTADOS_RESPOSTA]
         # O aviso diz a quantidade total, pra IA não responder "60 de N".

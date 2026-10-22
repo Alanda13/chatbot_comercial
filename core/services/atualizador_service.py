@@ -53,6 +53,7 @@ _processo = None  # o atualizador aberto por este chatbot (mantém o stdin abert
 def _bases():
     # Import aqui dentro: os módulos de dados importam core.repositories.arquivos_repository,
     # e o atualizador só precisa deles quando roda.
+    from core.repositories import cliente_produto_repository
     from core.repositories import cliente_repository as cliente_data
     from core.repositories import faturamento_repository as faturamento_data
     from core.repositories import faturamento_diario_repository as faturamento_diario_data
@@ -74,6 +75,8 @@ def _bases():
          [produto_data.ARQUIVO_DESCONTO_PRODUTO, produto_data.ARQUIVO_PRODUTOS]),
         ("desconto por venda", venda_repository.atualizar,
          [venda_repository.ARQUIVO_DESCONTO_VENDA]),
+        ("mix de produtos dos clientes", cliente_produto_repository.atualizar,
+         [cliente_produto_repository.ARQUIVO_CLIENTE_PRODUTO]),
         ("compras dos clientes", situacao_cliente_repository.atualizar,
          [situacao_cliente_repository.ARQUIVO_COMPRAS_CLIENTES]),
         ("cadastro de RCAs", rca_repository.atualizar, [rca_repository.ARQUIVO_RCAS]),

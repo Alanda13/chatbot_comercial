@@ -854,6 +854,7 @@ def buscar_dados_brutos(
     agrupar_por: list[str],
     filtros: dict,
     rcas_validos: set | None = None,
+    dimensoes_dos_campos: set | None = None,
 ) -> tuple[pd.DataFrame, set | None]:
     """
     Carrega o DataFrame do indicador (o arquivo certo pra dimensão pedida,
@@ -866,19 +867,24 @@ def buscar_dados_brutos(
     crescimento.
     """
     carregar = indicador_def.get("carregar")
+    # Dimensões que escolhem o arquivo: as da pergunta e as que um campo
+    # pedido precisa (ex: produtos diferentes → um arquivo com produto).
+    da_fonte = {*agrupar_por, *filtros, *(dimensoes_dos_campos or ())}
 
     fontes = {
         fonte
         for dimensao, fonte in indicador_def.get("fontes_por_dimensao", {}).items()
-        if dimensao in agrupar_por or dimensao in filtros
+        if dimensao in da_fonte
     }
 
     # Mais de um arquivo: vale o que também tem as dimensões dos outros
-    # (ex: o de venda tem cliente — "vendas com mais desconto do Mateus").
+    # (ex: o de venda tem cliente — "vendas com mais desconto do Mateus"),
+    # ou um arquivo que junta os dois ("fontes_combinadas", ex: cliente e
+    # produto).
     if len(fontes) > 1:
-        pedidas = {d for d in (*agrupar_por, *filtros) if d in indicador_def.get("fontes_por_dimensao", {})}
+        pedidas = {d for d in da_fonte if d in indicador_def.get("fontes_por_dimensao", {})}
         cobre_tudo = [
-            fonte for fonte in fontes
+            fonte for fonte in [*fontes, *indicador_def.get("fontes_combinadas", ())]
             if pedidas <= {
                 d for d, f in indicador_def["fontes_por_dimensao"].items() if f is fonte
             } | set(getattr(fonte, "tambem_tem", ()))
@@ -888,8 +894,8 @@ def buscar_dados_brutos(
     # Cliente e produto vêm de arquivos diferentes (nenhum tem os dois).
     if len(fontes) > 1:
         raise ConsultaInvalida(
-            "Ainda não dá pra combinar cliente com produto (ou forma de "
-            "pagamento) na mesma consulta — consulte um de cada vez."
+            "Ainda não dá pra combinar essas dimensões (ex: forma de pagamento "
+            "com cliente) na mesma consulta — consulte uma de cada vez."
         )
 
     if fontes:
@@ -904,6 +910,21 @@ def buscar_dados_brutos(
     # Fonte que monta só o período pedido (ex: a foto dos clientes de cada
     # mês, que de uma vez dariam milhões de linhas) recebe os filtros.
     brutos = carregar(filtros) if getattr(carregar, "recebe_filtros", False) else carregar()
+
+    # Ex: o arquivo do mix (cliente com produto) não tem RCA.
+    sem_coluna = [
+        dimensao for dimensao in dict.fromkeys([*agrupar_por, *filtros])
+        if dimensao in indicador_def["dimensoes"] and indicador_def["dimensoes"][dimensao] not in brutos.columns
+    ]
+
+    if sem_coluna:
+        pedidas = [d for d in dict.fromkeys([*agrupar_por, *filtros]) if d not in sem_coluna and d not in ("ano", "mes", "dia")]
+        raise ConsultaInvalida(
+            f"Não dá pra combinar {', '.join(sem_coluna)} com {', '.join(pedidas)} na mesma "
+            f"consulta (os dados de {', '.join(pedidas)} não têm {', '.join(sem_coluna)}) — "
+            "consulte um de cada vez."
+        )
+
     dados, filtros_resolvidos = _aplicar_filtros(brutos, indicador_def, filtros)
 
     if (
@@ -1183,6 +1204,22 @@ def _itens_filtrados(dados: pd.DataFrame, indicador_def: dict, filtros: dict) ->
 
 # --- consulta ----------------------------------------------------------------
 
+def _dimensoes_dos_campos(consulta: dict, indicador_def: dict) -> set:
+    """As dimensões cujo arquivo os campos pedidos (colunas, ordem, filtros
+    sobre a métrica, participação) precisam ("precisa_de")."""
+    pedidos = {
+        *(consulta.get("colunas") or []),
+        (consulta.get("ordenar_por") or {}).get("campo"),
+        (consulta.get("participacao") or {}).get("campo"),
+        *(filtro.get("campo") for filtro in consulta.get("filtros_calculados") or []),
+    }
+    return {
+        opcoes["precisa_de"]
+        for nome, especificacao in indicador_def["campos"].items()
+        if nome in pedidos and (opcoes := _desempacotar_campo(especificacao)[2]).get("precisa_de")
+    }
+
+
 def _consultar_periodo(
     indicador_def: dict,
     consulta: dict,
@@ -1200,7 +1237,9 @@ def _consultar_periodo(
       pra escolher os N maiores (ver _aplicar_ordenacao_por_grupo).
     """
     filtros = _filtros_efetivos(indicador_def, consulta)
-    dados, rcas_validos = buscar_dados_brutos(indicador_def, agrupar_por, filtros, rcas_validos)
+    dados, rcas_validos = buscar_dados_brutos(
+        indicador_def, agrupar_por, filtros, rcas_validos, _dimensoes_dos_campos(consulta, indicador_def)
+    )
 
     if dados.empty:
         return [], rcas_validos
@@ -2349,10 +2388,12 @@ def _participacao(resposta: dict, consulta: dict) -> None:
     Cada item ÷ o total do recorte, em % ("participacao"): o recorte é a
     mesma consulta só com o período e os filtros das dimensões de
     "dentro_de" (ex: ["filial"] = o total de Timon; [] = a empresa toda).
+    Agrupado por mês/ano/dia, cada linha ÷ o total do SEU mês/ano/dia.
     """
     campo = _campo_da_participacao(consulta)
     dentro_de = consulta["participacao"].get("dentro_de") or []
     filtros = consulta.get("filtros") or {}
+    tempo = [dimensao for dimensao in consulta.get("agrupar_por") or [] if dimensao in _DIMENSOES_DO_PERIODO]
     total = executar_consulta({
         "indicador": consulta["indicador"],
         "periodo": consulta.get("periodo"),
@@ -2361,15 +2402,23 @@ def _participacao(resposta: dict, consulta: dict) -> None:
             dimensao: valores for dimensao, valores in filtros.items()
             if dimensao in _DIMENSOES_DO_PERIODO or dimensao in dentro_de
         },
+        "agrupar_por": tempo,
     })
-    valor_total = (total["resultados"] or [{}])[0].get(campo)
+    totais = {tuple(linha.get(d) for d in tempo): linha.get(campo) for linha in total["resultados"]}
 
-    if not valor_total:
+    if not any(totais.values()):
         return
 
     for linha in resposta["resultados"]:
-        if linha.get(campo) is not None:
+        valor_total = totais.get(tuple(linha.get(d) for d in tempo))
+
+        if linha.get(campo) is not None and valor_total:
             linha["participacao"] = round(linha[campo] / valor_total * 100, 2)
+
+            if tempo:
+                linha["total_da_participacao"] = valor_total
+
+    valor_total = None if tempo else totais[()]
 
     total_de = " e ".join(
         ", ".join(map(str, filtros[dimensao])) for dimensao in dentro_de if dimensao in filtros
@@ -2382,7 +2431,8 @@ def _participacao(resposta: dict, consulta: dict) -> None:
         "total_de": total_de,
         "como_ler": (
             f"'participacao' de cada item = {campo} dele ÷ o total {total_de} "
-            f"(mesmo período), em %. Ex: \"1,30% do {rotulo} {total_de} "
+            "(mesmo período; agrupado por mês/ano, o total daquele mês/ano, em "
+            f"'total_da_participacao'), em %. Ex: \"1,30% do {rotulo} {total_de} "
             "(R$ 1.451.888,37 de R$ 112.114.507,37)\"."
         ),
     }

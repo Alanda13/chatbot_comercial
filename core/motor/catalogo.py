@@ -9,6 +9,9 @@ Cada indicador registra:
   usada só quando o agrupamento/filtro pede aquela dimensão (ex:
   "forma_pagamento", "cliente") — arquivos maiores que só são lidos
   quando a pergunta precisa deles.
+- fontes_combinadas (opcional): arquivos que juntam dimensões de fontes
+  diferentes (ex: cliente e produto), usados quando a pergunta pede as
+  duas; cada um diz o que tem em `tambem_tem`.
 - granularidade_periodo: "mensal" (filtra por mes/ano) ou "diaria"
   (filtra por intervalo de datas) — usado por
   orquestrador.resolver_periodo pra saber que vocabulário de período
@@ -51,6 +54,7 @@ from core.repositories.cliente_repository import (
     resolver_empresas,
 )
 from core.repositories.faturamento_repository import carregar_faturamento_mensal
+from core.repositories.cliente_produto_repository import carregar_cliente_produto
 from core.repositories.situacao_cliente_repository import (
     carregar_situacao_clientes,
     periodo_da_frequencia,
@@ -187,6 +191,8 @@ INDICADORES = {
             "familia": carregar_desconto_produto,
             "grupo": carregar_desconto_produto,
         },
+        # Cliente/empresa com produto/família/grupo (mix de produtos), desde 2025.
+        "fontes_combinadas": (carregar_cliente_produto,),
         "granularidade_periodo": "mensal",
         "campos": {
             "faturamento": ("VENDA_LIQ", "sum"),
@@ -194,6 +200,9 @@ INDICADORES = {
             "valor_desconto": ("VALORDESC", "sum"),
             "peso_liquido": ("PESOLIQ", "sum"),
             "quantidade_notas": ("QT_NOTAS", "sum"),
+            # Quantos produtos diferentes: pedido, usa um arquivo com produto
+            # ("precisa_de"); agrupado por produto, é 1 em toda linha ("conta").
+            "produtos_diferentes": ("CODPROD", "nunique", {"conta": "produto", "precisa_de": "produto"}),
         },
         "dimensoes": {
             "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
@@ -249,6 +258,7 @@ INDICADORES = {
             "valor_desconto": {"tipo": "moeda", "rotulo": "Desconto", "palavras": ["descont"]},
             "peso_liquido": {"tipo": "texto", "rotulo": "Peso Líquido", "palavras": ["peso"]},
             "quantidade_notas": {"tipo": "texto", "rotulo": "Qtd. Notas", "palavras": ["nota"]},
+            "produtos_diferentes": {"tipo": "texto", "rotulo": "Produtos diferentes", "palavras": ["produtos diferentes", "mix"]},
             "toneladas": {"tipo": "texto", "rotulo": "Toneladas", "palavras": ["tonelada"]},
             "ticket_medio": _EXIBICAO_TICKET_MEDIO,
         },
@@ -470,6 +480,7 @@ INDICADORES = {
             # Por venda (nota/pedido), desde 2025: core/repositories/venda_repository.py
             "venda": carregar_desconto_venda,
         },
+        "fontes_combinadas": (carregar_cliente_produto,),
         "granularidade_periodo": "mensal",
         "campos": {
             # Mesmo nome e mesma coluna do campo do faturamento: num

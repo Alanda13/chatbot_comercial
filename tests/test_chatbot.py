@@ -153,6 +153,17 @@ def test_limitar_resultados_trunca_lista_grande():
     assert "200" in resultado_limitado["aviso"]
 
 
+def test_lista_grande_sem_tabela_pronta_vai_pra_tela_na_ordem_do_texto():
+    # 200 produtos em ordem de código; o maior faturamento é o último.
+    resultados = [{"produto": codigo, "faturamento": float(codigo)} for codigo in range(200)]
+
+    limitado = _limitar_resultados({"indicador": "faturamento", "resultados": resultados})
+
+    assert limitado["resultados"][0]["produto"] == 199
+    assert [linha["produto"] for linha in limitado["tabela"][:2]] == [199, 198]
+    assert len(limitado["tabela"]) == 200
+
+
 @patch("core.services.chatbot_service.gerar_resposta_final", return_value="resposta final")
 @patch("core.services.chatbot_service.executar_ferramenta")
 @patch("core.services.chatbot_service.interpretar_pergunta")
