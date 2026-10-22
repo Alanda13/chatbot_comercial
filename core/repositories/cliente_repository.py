@@ -343,7 +343,7 @@ def resolver_empresas(nome_ou_codigo, filiais=None) -> list[str]:
 
     if len(empresas) > 1:
         raise ValueError(
-            f"Encontrei mais de uma empresa com '{texto}' no nome: "
+            f"Encontrei mais de um cliente com '{texto}' no nome: "
             f"{_descrever_opcoes(empresas)}. Mostre essa lista numerada ao "
             "usuário (com o CNPJ/CPF de cada um) e pergunte qual (ou "
             "quais) ele quer; ele pode responder pelo número, pelo nome ou "

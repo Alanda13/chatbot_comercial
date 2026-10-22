@@ -200,7 +200,7 @@ FERRAMENTAS_DISPONIVEIS = {
             "\"valor_desconto\"} (maior desconto primeiro); ranking/lista de clientes (ex: 'os 10 "
             "clientes com mais desconto') = agrupar_por [\"empresa\"] com "
             "ordenar_por — cada empresa aparece UMA vez. Se o resultado "
-            "disser que achou mais de uma empresa com o nome, NÃO escolha: "
+            "disser que achou mais de um cliente com o nome, NÃO escolha: "
             "mostre as opções (nome e início do CNPJ) e pergunte qual; "
             "depois consulte com o início do CNPJ escolhido (ex: "
             "{\"empresa\": [\"03.995.515\"]}), um ou vários. "
