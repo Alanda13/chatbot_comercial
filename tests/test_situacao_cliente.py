@@ -405,6 +405,7 @@ def test_frequencia_e_quantas_vezes_comprou_no_ano():
     ("2026-01-01", "2026-10-23", 9 + 23 / 31),
     ("2026-09-01", "2026-09-30", 1),
     ("2025-01-01", "2025-12-31", 12),
+    ("2026-10-12", "2026-10-18", 7 / 31),
 ])
 def test_meses_da_janela_contam_o_ultimo_pelos_dias(desde, ate, meses):
     assert situacao._meses_da_janela(pd.Timestamp(desde), pd.Timestamp(ate)) == pytest.approx(meses)
@@ -654,4 +655,40 @@ def test_consulta_da_empresa_usa_a_frequencia_da_empresa(monkeypatch):
     assert isinstance({linha["empresa"]: linha for linha in por_empresa}["E1"]["frequencia_de_compra"], int)
     # Por cliente, cada loja com a sua.
     assert {linha["cliente"]: linha for linha in por_cliente}[ZE]["frequencia_de_compra"] == 2
+
+
+@pytest.mark.parametrize("inicio, fim, novos, recuperados", [
+    ("2026-10-03", "2026-10-05", {ANA}, set()),     # Ana comprou a 1ª vez em 04/10
+    ("2026-10-01", "2026-10-03", set(), {DANI}),    # Dani voltou em 02/10
+])
+def test_foto_de_um_periodo_em_dias(inicio, fim, novos, recuperados):
+    foto = situacao.montar_situacao(
+        _compras(), [], hoje=date(2026, 10, 5), dias=(pd.Timestamp(inicio), pd.Timestamp(fim)),
+    )
+
+    assert set(foto.loc[foto["NOVO"] == 1, "CODCLI"]) == novos
+    assert set(foto.loc[foto["RECUPERADO"] == 1, "CODCLI"]) == recuperados
+    assert (foto["DATA_DA_FOTO"] == pd.Timestamp(fim)).all()
+
+
+def test_frequencia_de_poucos_dias_nao_tem_media_por_mes():
+    foto = situacao.montar_situacao(
+        _compras(), [], hoje=date(2026, 10, 5), dias=(pd.Timestamp("2026-10-01"), pd.Timestamp("2026-10-05")),
+    ).drop_duplicates("CODCLI").set_index("CODCLI")
+
+    assert foto.loc[DANI, "FREQUENCIA_DE_COMPRA"] == 1
+    assert pd.isna(foto.loc[DANI, "COMPRAS_POR_MES"])
+
+
+@pytest.mark.parametrize("periodo, personalizado, esperado", [
+    ("hoje", None, {"dia": {"data_inicial": "2026-10-05", "data_final": "2026-10-05"}}),
+    ("personalizado", {"data_inicial": "2026-10-01", "data_final": "2026-10-03"},
+     {"dia": {"data_inicial": "2026-10-01", "data_final": "2026-10-03"}}),
+    ("mes_atual", None, {"mes": [10], "ano": [2026]}),
+])
+def test_clientes_aceita_periodo_em_dias(monkeypatch, periodo, personalizado, esperado):
+    monkeypatch.setattr(orq, "date", type("Hoje", (date,), {"today": staticmethod(lambda: date(2026, 10, 5))}))
+    consulta = {"indicador": "clientes", "periodo": periodo, "periodo_personalizado": personalizado}
+
+    assert orq._filtros_efetivos(catalogo.INDICADORES["clientes"], consulta) == esperado
 

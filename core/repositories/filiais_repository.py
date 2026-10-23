@@ -4,7 +4,8 @@ filiais do projeto.
 
 Só essas lojas existem pro chatbot: todo carregador de dados passa o
 DataFrame por `padronizar_filiais`, que descarta as outras e troca o
-nome da filial pelo nome da planilha. Assim as quatro bases (faturamento,
+nome da filial pelo nome da planilha. A venda de uma filial sem loja
+própria (FILIAIS_REPASSADAS) vai pra loja do supervisor da venda. Assim as quatro bases (faturamento,
 meta, meta de tonelada e NPS), que escrevem o nome de formas diferentes,
 passam a usar o mesmo nome e o mesmo código — o que permite cruzar
 indicadores por filial sem comparar nomes.
@@ -41,6 +42,11 @@ LOJAS = {
 # entra em ARAGUAÍNA (24).
 CODIGO_UNIFICADO = {30: 24}
 
+# Filiais sem loja própria, que vendem pelos RCAs das lojas: a venda vai
+# pra loja do supervisor da venda — a loja onde estão os RCAs dele no
+# cadastro. Ex: o CD de São Luís (33).
+FILIAIS_REPASSADAS = {33}
+
 CODIGO_POR_NOME = {nome: codigo for codigo, (nome, _) in LOJAS.items()}
 
 _ESTADOS = {
@@ -50,14 +56,46 @@ _ESTADOS = {
 }
 
 
+def _loja_do_supervisor(cadastro: pd.DataFrame) -> pd.Series:
+    """Supervisor → a loja onde está a maioria dos RCAs dele."""
+    lojas = cadastro.assign(CODFILIAL=cadastro["CODFILIAL"].replace(CODIGO_UNIFICADO))
+    lojas = lojas[lojas["CODFILIAL"].isin(LOJAS)]
+    return lojas.groupby("COD_SUPERVISOR")["CODFILIAL"].agg(lambda filiais: filiais.mode()[0])
+
+
+def codigos_das_lojas(dados: pd.DataFrame, codigos: pd.Series) -> pd.Series:
+    """
+    O código da loja de cada linha: o 30 somado ao 24 e a venda das
+    FILIAIS_REPASSADAS na loja do supervisor (COD_SUPERVISOR da linha ou,
+    sem ele, o do COD_RCA no cadastro). Supervisor sem loja: fica o código
+    original.
+    """
+    codigos = codigos.replace(CODIGO_UNIFICADO)
+    repassar = codigos.isin(FILIAIS_REPASSADAS)
+
+    if not repassar.any():
+        return codigos
+
+    from core.repositories.rca_repository import carregar_cadastro
+
+    cadastro = carregar_cadastro()
+    supervisores = (
+        dados.loc[repassar, "COD_SUPERVISOR"] if "COD_SUPERVISOR" in dados.columns
+        else dados.loc[repassar, "COD_RCA"].map(cadastro.set_index("COD_RCA")["COD_SUPERVISOR"])
+    )
+    lojas = supervisores.map(_loja_do_supervisor(cadastro))
+    return codigos.mask(repassar, lojas.fillna(codigos[repassar])).astype(codigos.dtype)
+
+
 def padronizar_filiais(dados: pd.DataFrame, codigos: pd.Series) -> pd.DataFrame:
     """
     Recebe os dados de uma base e o código de filial de cada linha
     (`codigos`, alinhado ao índice de `dados`). Devolve só as linhas das
     lojas da planilha, com FILIAL (nome padrão), CODFILIAL (já com o 30
-    somado ao 24) e ESTADO preenchidos.
+    somado ao 24 e as FILIAIS_REPASSADAS na loja do supervisor) e ESTADO
+    preenchidos.
     """
-    codigos = codigos.replace(CODIGO_UNIFICADO)
+    codigos = codigos_das_lojas(dados, codigos)
     dados = dados[codigos.isin(LOJAS)].copy()
     codigos = codigos[dados.index]
 

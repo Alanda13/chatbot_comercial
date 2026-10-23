@@ -5,7 +5,8 @@ Dois CSVs, gerados do Oracle e atualizados em segundo plano por
 `core/services/atualizador_service.py`:
 
 - `desconto_produto.csv`: desconto e faturamento de tabela por
-  filial/ano/mês/produto, desde 2020, sem RCA. Mesma conta do desconto
+  filial/ano/mês/supervisor/produto, desde 2020, sem RCA — o supervisor
+  só pra achar a loja das FILIAIS_REPASSADAS. Mesma conta do desconto
   mensal.
 - `produtos.csv`: código, descrição, GRUPO e FAMÍLIA de cada produto.
 
@@ -53,7 +54,7 @@ COPIA_PLANILHA = RAIZ_PROJETO / "data" / "base_produtos.xlsx"
 
 SEM_GRUPO = "SEM GRUPO"
 
-COLUNAS_DESCONTO = ["CODFILIAL", "ANO", "MES", "CODPROD", "VALORDESC", "VENDA_TABELA", "VENDA_BRUTA",
+COLUNAS_DESCONTO = ["CODFILIAL", "ANO", "MES", "COD_SUPERVISOR", "CODPROD", "VALORDESC", "VENDA_TABELA", "VENDA_BRUTA",
     "VALOR_DEV", "VENDA_LIQ",
 ]
 COLUNAS_PRODUTOS = ["CODPROD", "PRODUTO", "GRUPO", "FAMILIA"]
@@ -64,7 +65,7 @@ def _consultar_desconto(cursor, desde: date) -> pd.DataFrame:
     cursor.execute(
         f"""
         SELECT CODFILIAL, EXTRACT(YEAR FROM DTSAIDA) ANO,
-               EXTRACT(MONTH FROM DTSAIDA) MES, CODPROD,
+               EXTRACT(MONTH FROM DTSAIDA) MES, CODSUPERVISOR COD_SUPERVISOR, CODPROD,
                ROUND(SUM(VLTABELA) - SUM(VLVENDA), 2) VALORDESC,
                ROUND(SUM(VLTABELA), 2) VENDA_TABELA,
                ROUND(SUM(VLVENDA), 2) VENDA_BRUTA
@@ -72,7 +73,7 @@ def _consultar_desconto(cursor, desde: date) -> pd.DataFrame:
         WHERE DTSAIDA >= :desde
         {_FILTRO_VENDA_VALIDA}
         GROUP BY CODFILIAL, EXTRACT(YEAR FROM DTSAIDA),
-                 EXTRACT(MONTH FROM DTSAIDA), CODPROD
+                 EXTRACT(MONTH FROM DTSAIDA), CODSUPERVISOR, CODPROD
         """,
         desde=desde,
     )
@@ -148,7 +149,8 @@ def _buscar(desde: date) -> tuple[pd.DataFrame, pd.DataFrame]:
     try:
         cursor = conexao.cursor()
         desconto = juntar_devolucao(
-            _consultar_desconto(cursor, desde), cursor, desde, {"CODPROD": "CODPROD"}
+            _consultar_desconto(cursor, desde), cursor, desde,
+            {"COD_SUPERVISOR": "CODSUPERVISOR", "CODPROD": "CODPROD"},
         )
         cadastro = _consultar_cadastro(cursor)
     finally:

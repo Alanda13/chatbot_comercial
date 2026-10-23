@@ -7,8 +7,9 @@ Contada em dias, pelas compras do cliente em QUALQUER filial:
 - em risco de perda: de 60 a 89 dias sem comprar (continua ativo);
 - inativo: de 90 dias a 1 ano sem comprar;
 - parado há mais de 1 ano: contado à parte;
-- novo: a 1ª compra (desde 2020) foi naquele mês;
-- recuperado: no mês, voltou a comprar depois de 90 dias ou mais parado
+- novo: a 1ª compra (desde 2020) foi no período (o mês, ou os dias
+  pedidos);
+- recuperado: no período, voltou a comprar depois de 90 dias ou mais parado
   (DIAS_PARADO_ANTES_DE_VOLTAR guarda quanto tempo ficou parado, de
   qualquer tamanho);
 - frequência de compra: quantas vezes o cliente comprou no período pedido
@@ -30,8 +31,10 @@ RCA) é marcado, pra resposta avisar.
 Um CSV, gerado do Oracle e atualizado em segundo plano por
 `core/services/atualizador_service.py`: `compras_clientes.csv` — os dias
 em que cada cliente comprou, por filial/RCA, desde 2020. A "foto" de um
-mês (a situação no último dia; no mês atual, hoje) é montada na memória
-só quando uma pergunta pede aquele mês.
+mês (a situação no último dia; no mês atual, hoje) — ou de um período em
+dias ("hoje", "semana passada": a situação no último dia dele, e novos,
+recuperados e frequência só desses dias) — é montada na memória só
+quando uma pergunta pede aquele período.
 """
 import calendar
 from collections import OrderedDict
@@ -47,7 +50,7 @@ from core.repositories.arquivos_repository import (
 )
 from core.repositories import cliente_repository, venda_repository
 from core.repositories.faturamento_repository import RAIZ_PROJETO, _FILTRO_VENDA_VALIDA
-from core.repositories.filiais_repository import CODIGO_UNIFICADO, LOJAS, padronizar_filiais
+from core.repositories.filiais_repository import LOJAS, codigos_das_lojas, padronizar_filiais
 from core.logger import obter_logger
 
 logger = obter_logger(__name__)
@@ -121,31 +124,20 @@ def _ler_compras() -> pd.DataFrame:
     return dados
 
 
-def _numero_do_mes(datas: pd.Series) -> pd.Series:
-    return datas.dt.year * 12 + datas.dt.month - 1
+def _primeira_compra(compras: pd.DataFrame) -> pd.Series:
+    """Dia da 1ª compra de cada cliente desde 2020."""
+    return compras.groupby("CODCLI")["DATA"].min()
 
 
-def _primeiro_mes(compras: pd.DataFrame) -> pd.Series:
-    """Mês da 1ª compra de cada cliente desde 2020 (ano*12 + mês-1)."""
-    return _numero_do_mes(compras.groupby("CODCLI")["DATA"].min())
-
-
-def _meses_recuperados(compras: pd.DataFrame) -> pd.DataFrame:
-    """(CODCLI, mês) em que o cliente voltou a comprar, com o maior tempo
-    que ele ficou parado antes de uma compra daquele mês
-    (DIAS_PARADO_ANTES_DE_VOLTAR, de qualquer tamanho: "voltou depois de 2
-    meses parado" também responde). Recuperado = 90 dias ou mais."""
+def _voltas(compras: pd.DataFrame) -> pd.DataFrame:
+    """Cada dia de compra (CODCLI, DATA) com quanto tempo o cliente ficou
+    parado antes dela (DIAS_PARADO_ANTES_DE_VOLTAR, de qualquer tamanho:
+    "voltou depois de 2 meses parado" também responde). Recuperado = 90
+    dias ou mais."""
     dias = compras[["CODCLI", "DATA"]].drop_duplicates().sort_values(["CODCLI", "DATA"])
     parado = (dias["DATA"] - dias.groupby("CODCLI")["DATA"].shift()).dt.days
-    voltas = pd.DataFrame({
-        "CODCLI": dias["CODCLI"],
-        "MES_NUMERO": _numero_do_mes(dias["DATA"]),
-        "DIAS_PARADO_ANTES_DE_VOLTAR": parado,
-    }).dropna()
-    return (
-        voltas.groupby(["CODCLI", "MES_NUMERO"], as_index=False)["DIAS_PARADO_ANTES_DE_VOLTAR"]
-        .max()
-        .astype({"DIAS_PARADO_ANTES_DE_VOLTAR": "int64"})
+    return dias.assign(DIAS_PARADO_ANTES_DE_VOLTAR=parado).dropna().astype(
+        {"DIAS_PARADO_ANTES_DE_VOLTAR": "int64"}
     )
 
 
@@ -155,10 +147,19 @@ def _frequencia_de_compra(janela: pd.DataFrame, por: list[str] = ["CODCLI"]) -> 
 
 
 def _meses_da_janela(desde: pd.Timestamp, referencia: pd.Timestamp) -> float:
-    """Meses de `desde` (dia 1) até a referência, o último proporcional aos
-    dias: 01/01 a 23/10 = 9 + 23/31 = 9,74; setembro inteiro = 1."""
-    inteiros = (referencia.year - desde.year) * 12 + referencia.month - desde.month
-    return inteiros + referencia.day / referencia.days_in_month
+    """Meses de `desde` até a referência, cada mês proporcional aos dias
+    dele: 01/01 a 23/10 = 9 + 23/31 = 9,74; setembro inteiro = 1; uma
+    semana de outubro = 7/31."""
+    meses = 0.0
+    inicio = desde
+
+    while inicio <= referencia:
+        fim_do_mes = inicio + pd.offsets.MonthEnd(0)
+        fim = min(fim_do_mes, referencia)
+        meses += ((fim - inicio).days + 1) / inicio.days_in_month
+        inicio = fim_do_mes + pd.Timedelta(days=1)
+
+    return meses
 
 
 def _com_frequencia(
@@ -171,7 +172,10 @@ def _com_frequencia(
         desde = pd.Timestamp(referencia.year, 1, 1)
 
     janela = ate[(ate["DATA"] >= desde) & (ate["DATA"] <= referencia)]
+    # Período menor que um mês (ex: uma semana): sem média por mês — 1 compra
+    # num dia daria "31 por mês".
     meses = _meses_da_janela(desde, referencia)
+    meses = meses if meses >= 1 else float("nan")
     unidades = {"CODCLI": ("FREQUENCIA_DE_COMPRA", "COMPRAS_POR_MES", "FREQUENCIA_NA_FILIAL", "COMPRAS_POR_MES_NA_FILIAL")}
     chaves = foto[["CODCLI", "CODFILIAL"]].copy()
 
@@ -209,10 +213,27 @@ def _inicio_da_janela(ano: int, mes: int, filtros: dict | None, hoje: date) -> p
     return pd.Timestamp(ano, min([m for m in meses if m <= mes] or [mes]), 1)
 
 
+def _dias_dos_filtros(filtros: dict | None, hoje: date) -> tuple[pd.Timestamp, pd.Timestamp] | None:
+    """Período em dias (filtro "dia"): início e fim, o fim até hoje."""
+    dia = (filtros or {}).get("dia")
+
+    if not dia:
+        return None
+
+    inicio = pd.Timestamp(str(dia["data_inicial"])[:10])
+    fim = pd.Timestamp(str(dia.get("data_final") or dia["data_inicial"])[:10])
+    return inicio, min(fim, pd.Timestamp(hoje))
+
+
 def periodo_da_frequencia(filtros: dict | None, hoje: date | None = None) -> str | None:
     """As datas das compras que a frequência usou na foto mais recente do
-    período ("23/10/2025 a 22/10/2026") — pra resposta não fazer conta de data."""
+    período ("01/01/2026 a 22/10/2026") — pra resposta não fazer conta de data."""
     hoje = hoje or date.today()
+    dias = _dias_dos_filtros(filtros, hoje)
+
+    if dias:
+        return f"{dias[0]:%d/%m/%Y} a {dias[1]:%d/%m/%Y}"
+
     pedidos = meses_validos(_meses_dos_filtros(filtros, hoje), hoje)
 
     if not pedidos:
@@ -224,12 +245,12 @@ def periodo_da_frequencia(filtros: dict | None, hoje: date | None = None) -> str
     return f"{desde:%d/%m/%Y} a {referencia:%d/%m/%Y}"
 
 
-def _foto_do_mes(
-    compras: pd.DataFrame, referencia: pd.Timestamp, primeiro_mes: pd.Series,
-    recuperados: pd.DataFrame,
+def _foto(
+    compras: pd.DataFrame, inicio: pd.Timestamp, referencia: pd.Timestamp,
+    primeira_compra: pd.Series, voltas: pd.DataFrame, desde_da_frequencia: pd.Timestamp | None = None,
 ) -> pd.DataFrame:
+    """A situação na referência; novos e recuperados de `inicio` até ela."""
     ate = compras[compras["DATA"] <= referencia].sort_values("DATA")
-    mes_numero = referencia.year * 12 + referencia.month - 1
 
     ultima = ate.drop_duplicates("CODCLI", keep="last")[
         ["CODCLI", "DATA", "CODFILIAL", "COD_RCA"]
@@ -255,19 +276,21 @@ def _foto_do_mes(
 
     foto["ANO"] = referencia.year
     foto["MES"] = referencia.month
+    foto["DATA_DA_FOTO"] = referencia
     foto["DIAS_SEM_COMPRAR"] = dias
     foto["ATIVO"] = ativo
     foto["EM_RISCO"] = ativo & (dias >= DIAS_EM_RISCO)
     foto["INATIVO"] = ~ativo & ~parado_ha_mais_de_1_ano
     foto["PARADO_HA_MAIS_DE_1_ANO"] = parado_ha_mais_de_1_ano
-    foto["NOVO"] = foto["CODCLI"].map(primeiro_mes) == mes_numero
-    # Sem compra no mês (ou 1ª compra): 0.
+    foto["NOVO"] = foto["CODCLI"].map(primeira_compra).between(inicio, referencia)
+    # O maior tempo parado antes de uma compra do período; sem compra nele
+    # (ou só a 1ª): 0.
+    no_periodo = voltas[voltas["DATA"].between(inicio, referencia)]
     foto["DIAS_PARADO_ANTES_DE_VOLTAR"] = foto["CODCLI"].map(
-        recuperados.loc[recuperados["MES_NUMERO"] == mes_numero]
-        .set_index("CODCLI")["DIAS_PARADO_ANTES_DE_VOLTAR"]
+        no_periodo.groupby("CODCLI")["DIAS_PARADO_ANTES_DE_VOLTAR"].max()
     ).fillna(0).astype("int64")
     foto["RECUPERADO"] = foto["DIAS_PARADO_ANTES_DE_VOLTAR"] >= DIAS_INATIVO
-    foto = _com_frequencia(foto, ate, referencia)
+    foto = _com_frequencia(foto, ate, referencia, desde_da_frequencia)
     foto["DIAS_SEM_COMPRAR_NA_FILIAL"] = (referencia - foto["ULTIMA_NA_FILIAL"]).dt.days
     # Ativo só por compra em outra filial / com outro RCA: a resposta avisa.
     foto["SO_OUTRA_FILIAL"] = ativo & (
@@ -288,7 +311,7 @@ COLUNAS_SITUACAO = [
     "DIAS_SEM_COMPRAR", "DIAS_PARADO_ANTES_DE_VOLTAR",
     "FREQUENCIA_DE_COMPRA", "COMPRAS_POR_MES", "FREQUENCIA_NA_FILIAL", "COMPRAS_POR_MES_NA_FILIAL",
     "DIAS_SEM_COMPRAR_NA_FILIAL",
-    "DATA_ULTIMA_COMPRA", "FILIAL_ULTIMA_COMPRA", "RCA_ULTIMA_COMPRA",
+    "DATA_ULTIMA_COMPRA", "FILIAL_ULTIMA_COMPRA", "RCA_ULTIMA_COMPRA", "DATA_DA_FOTO",
 ]
 
 
@@ -306,15 +329,20 @@ def meses_validos(meses: list[tuple[int, int]], hoje: date) -> list[tuple[int, i
 
 
 def montar_situacao(
-    compras: pd.DataFrame, meses: list[tuple[int, int]], hoje: date | None = None
+    compras: pd.DataFrame, meses: list[tuple[int, int]], hoje: date | None = None,
+    dias: tuple[pd.Timestamp, pd.Timestamp] | None = None,
 ) -> pd.DataFrame:
-    """A foto de cada mês pedido (ano, mês)."""
+    """A foto de cada mês pedido (ano, mês) — ou, com `dias` (início, fim),
+    a de um período em dias (a frequência também só dele)."""
     hoje = hoje or date.today()
-    primeiro_mes = _primeiro_mes(compras)
-    recuperados = _meses_recuperados(compras)
+    primeira_compra = _primeira_compra(compras)
+    voltas = _voltas(compras)
+    periodos = [dias] if dias else [
+        (pd.Timestamp(ano, mes, 1), _referencia(ano, mes, hoje)) for ano, mes in meses_validos(meses, hoje)
+    ]
     fotos = [
-        _foto_do_mes(compras, _referencia(ano, mes, hoje), primeiro_mes, recuperados)
-        for ano, mes in meses_validos(meses, hoje)
+        _foto(compras, inicio, referencia, primeira_compra, voltas, inicio if dias else None)
+        for inicio, referencia in periodos
     ]
 
     if not fotos:
@@ -387,7 +415,7 @@ def detalhes_da_ultima_compra(situacao: pd.DataFrame, vendas: pd.DataFrame) -> p
     empresa_do_cliente = situacao.drop_duplicates("CODCLI").set_index("CODCLI")["EMPRESA"]
     notas = vendas[[*colunas, "CODFILIAL"]].assign(
         EMPRESA=lambda notas: notas["CODCLI"].map(empresa_do_cliente),
-        NOME_FILIAL=lambda notas: notas["CODFILIAL"].replace(CODIGO_UNIFICADO).map(
+        NOME_FILIAL=lambda notas: codigos_das_lojas(vendas, notas["CODFILIAL"]).map(
             lambda codigo: LOJAS.get(codigo, (f"código {codigo}",))[0]
         ),
     )
@@ -475,9 +503,15 @@ def carregar_situacao_clientes(filtros: dict | None = None) -> pd.DataFrame:
 
     if _cache["versao"] != versao:
         compras = _ler_compras()
-        # Os códigos somados numa loja só (ex: 30 → 24) contam como a mesma filial.
-        compras["CODFILIAL"] = compras["CODFILIAL"].replace(CODIGO_UNIFICADO)
+        # Os códigos somados numa loja (ex: 30 → 24, CD 33 → loja do
+        # supervisor) contam como a mesma filial.
+        compras["CODFILIAL"] = codigos_das_lojas(compras, compras["CODFILIAL"])
         _cache.update(versao=versao, compras=compras, fotos=OrderedDict(), com_periodo={})
+
+    dias = _dias_dos_filtros(filtros, hoje)
+
+    if dias:
+        return _foto_dos_dias(*dias, hoje)
 
     fotos = _cache["fotos"]
     pedidos = meses_validos(_meses_dos_filtros(filtros, hoje), hoje)
@@ -530,6 +564,29 @@ def carregar_situacao_clientes(filtros: dict | None = None) -> pd.DataFrame:
         partes.append(foto)
 
     return pd.concat(partes, ignore_index=True)
+
+
+def _foto_dos_dias(inicio: pd.Timestamp, fim: pd.Timestamp, hoje: date) -> pd.DataFrame:
+    """A foto de um período em dias (guardada junto com as dos meses)."""
+    if fim.year < ANO_INICIO_SITUACAO:
+        raise ValueError(
+            f"A situação dos clientes começa em {ANO_INICIO_SITUACAO} (as compras "
+            "começam em 2020, e o 1º ano serve pra contar os dias sem comprar)."
+        )
+
+    fotos = _cache["fotos"]
+    chave = ("dias", inicio, fim)
+
+    if chave not in fotos:
+        foto = _para_consulta(montar_situacao(_cache["compras"], [], hoje, dias=(inicio, fim)))
+        fotos[chave] = _com_frequencia(foto, _cache["compras"], fim, inicio)
+
+    fotos.move_to_end(chave)
+
+    while len(fotos) > _MAXIMO_DE_FOTOS:
+        fotos.popitem(last=False)
+
+    return fotos[chave]
 
 
 # O motor passa os filtros do período pra cá (ver orquestrador.buscar_dados_brutos).

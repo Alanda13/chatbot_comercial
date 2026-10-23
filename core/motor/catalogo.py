@@ -646,6 +646,9 @@ _FOTO_E_CONTA = {**_FOTO_MENSAL, **_CONTA_CLIENTE}
 INDICADORES["clientes"] = {
     "carregar": carregar_situacao_clientes,
     "granularidade_periodo": "mensal",
+    # Também "hoje", "ontem", "semana passada" ou datas: a situação no
+    # último dia; novos, recuperados e frequência só desses dias.
+    "aceita_dias": True,
     # Sem período: a situação de hoje.
     "periodo_padrao": "mes_atual",
     "campos": {
@@ -709,7 +712,7 @@ INDICADORES["clientes"] = {
     "dimensoes": {
         "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
         "supervisor": "COD_SUPERVISOR", "mes": "MES", "ano": "ANO",
-        "cliente": "CODCLI", "empresa": "EMPRESA",
+        "cliente": "CODCLI", "empresa": "EMPRESA", "dia": "DATA_DA_FOTO",
     },
     "resolver_dimensao": {
         "filial": resolver_nome_filial,
@@ -857,7 +860,8 @@ def gerar_descricao_indicadores() -> str:
 
         linhas.append(
             f"  * {nome} ({definicao['unidade']}) — período "
-            f"{definicao['granularidade_periodo']}; campos: "
+            f"{definicao['granularidade_periodo']}"
+            f"{' (também dias: hoje, ontem, semana, datas)' if definicao.get('aceita_dias') else ''}; campos: "
             f"[{campos}]; dimensões para filtrar/agrupar: [{dimensoes}]"
         )
 

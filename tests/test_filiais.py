@@ -16,6 +16,25 @@ def test_padronizar_filiais_descarta_outras_e_soma_o_30_no_24():
     assert list(resultado["ESTADO"]) == ["MA", "TO", "TO"]
 
 
+def test_venda_do_cd_vai_pra_loja_do_supervisor(monkeypatch):
+    # Supervisor 6: RCAs na loja 7 (TIBIRI). Supervisor 36: nenhum RCA em loja.
+    cadastro = pd.DataFrame({
+        "COD_RCA": [100, 101, 102, 200, 300],
+        "COD_SUPERVISOR": [6, 6, 6, 6, 36],
+        "CODFILIAL": [7, 7, 33, 33, 33],
+    })
+    monkeypatch.setattr("core.repositories.rca_repository.carregar_cadastro", lambda: cadastro)
+
+    com_supervisor = pd.DataFrame({"COD_SUPERVISOR": [6, 36, 4], "X": [1, 2, 3]})
+    resultado = filiais.padronizar_filiais(com_supervisor, pd.Series([33, 33, 5]))
+    assert list(resultado["X"]) == [1, 3]
+    assert list(resultado["FILIAL"]) == ["TIBIRI", "GUAJAJARAS"]
+
+    # Sem supervisor na linha: o do RCA no cadastro.
+    com_rca = pd.DataFrame({"COD_RCA": [200, 300]})
+    assert list(filiais.codigos_das_lojas(com_rca, pd.Series([33, 33]))) == [7, 33]
+
+
 def test_listar_filiais_tem_18_lojas_sem_repetir_araguaina():
     lista = filiais.listar_filiais()
 

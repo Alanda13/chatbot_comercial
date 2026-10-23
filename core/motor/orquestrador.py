@@ -581,6 +581,19 @@ def resolver_periodo(periodo: str, personalizado: dict | None, granularidade: st
     )
 
 
+_PERIODOS_EM_DIAS = ("hoje", "ontem", "semana_atual", "semana_anterior")
+
+
+def _granularidade(indicador_def: dict, consulta: dict) -> str:
+    """A do indicador; num mensal que também aceita dias ("aceita_dias",
+    ex: clientes), "diaria" quando o período pedido é em dias."""
+    periodo = consulta.get("periodo")
+    em_dias = periodo in _PERIODOS_EM_DIAS or (
+        periodo == "personalizado" and (consulta.get("periodo_personalizado") or {}).get("data_inicial")
+    )
+    return "diaria" if indicador_def.get("aceita_dias") and em_dias else indicador_def["granularidade_periodo"]
+
+
 def _filtros_efetivos(indicador_def: dict, consulta: dict) -> dict:
     """
     Os filtros que valem de verdade: os "filtros" da consulta mais o que o
@@ -603,8 +616,7 @@ def _filtros_efetivos(indicador_def: dict, consulta: dict) -> dict:
 
     if periodo:
         filtros_do_periodo = resolver_periodo(
-            periodo, consulta.get("periodo_personalizado"),
-            indicador_def["granularidade_periodo"],
+            periodo, consulta.get("periodo_personalizado"), _granularidade(indicador_def, consulta),
         )
 
         # Um período nunca é ignorado em silêncio.
@@ -2296,10 +2308,18 @@ def _momento_da_foto(
         if _desempacotar_campo(especificacao)[2].get("foto_por")
     ]
 
-    if not fotos or not periodo or "ano" not in periodo:
+    if not fotos or not periodo:
         return None
 
     hoje = date.today()
+
+    if "dia" in periodo:
+        fim = min(_inicio_e_fim(periodo["dia"])[1], hoje)
+        return fotos, f"de hoje, {hoje:%d/%m/%Y}" if fim == hoje else f"em {fim:%d/%m/%Y}"
+
+    if "ano" not in periodo:
+        return None
+
     ano = max(int(valor) for valor in _como_lista(periodo["ano"]))
     mes = max((int(valor) for valor in _como_lista(periodo.get("mes", []))), default=12)
     ano, mes = min((ano, mes), (hoje.year, hoje.month))

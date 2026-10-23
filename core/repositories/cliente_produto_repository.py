@@ -4,8 +4,9 @@ Mix de produtos: o que cada cliente comprou, produto a produto.
 Um CSV, gerado do Oracle e atualizado em segundo plano por
 `core/services/atualizador_service.py`: `cliente_produto.csv` — venda
 bruta, desconto, faturamento de tabela e devolução por
-filial/ano/mês/cliente/produto, desde 2025 (desde 2020 seriam ~7 milhões
-de linhas), sem RCA. Mesma view, filtros e conta do faturamento mensal
+filial/ano/mês/supervisor/cliente/produto, desde 2025 (desde 2020 seriam
+~7 milhões de linhas), sem RCA — o supervisor só pra achar a loja das
+FILIAIS_REPASSADAS. Mesma view, filtros e conta do faturamento mensal
 (como a rotina 8306 analítica).
 
 É o arquivo das consultas que juntam cliente/empresa com
@@ -32,7 +33,7 @@ ARQUIVO_CLIENTE_PRODUTO = RAIZ_PROJETO / "data" / "cliente_produto.csv"
 ANO_INICIO_MIX = 2025
 
 COLUNAS = [
-    "CODFILIAL", "ANO", "MES", "CODCLI", "CODPROD",
+    "CODFILIAL", "ANO", "MES", "COD_SUPERVISOR", "CODCLI", "CODPROD",
     "VALORDESC", "VENDA_TABELA", "VENDA_BRUTA", "VALOR_DEV", "VENDA_LIQ",
 ]
 
@@ -48,7 +49,8 @@ def _buscar(desde: date) -> pd.DataFrame:
         cursor.execute(
             f"""
             SELECT V.CODFILIAL, EXTRACT(YEAR FROM V.DTSAIDA) ANO,
-                   EXTRACT(MONTH FROM V.DTSAIDA) MES, V.CODCLI, V.CODPROD,
+                   EXTRACT(MONTH FROM V.DTSAIDA) MES, V.CODSUPERVISOR COD_SUPERVISOR,
+                   V.CODCLI, V.CODPROD,
                    ROUND(SUM(V.VLTABELA) - SUM(V.VLVENDA), 2) VALORDESC,
                    ROUND(SUM(V.VLTABELA), 2) VENDA_TABELA,
                    ROUND(SUM(V.VLVENDA), 2) VENDA_BRUTA
@@ -56,12 +58,15 @@ def _buscar(desde: date) -> pd.DataFrame:
             WHERE V.DTSAIDA >= :desde
             {_FILTRO_VENDA_VALIDA}
             GROUP BY V.CODFILIAL, EXTRACT(YEAR FROM V.DTSAIDA),
-                     EXTRACT(MONTH FROM V.DTSAIDA), V.CODCLI, V.CODPROD
+                     EXTRACT(MONTH FROM V.DTSAIDA), V.CODSUPERVISOR, V.CODCLI, V.CODPROD
             """,
             desde=desde,
         )
         vendas = pd.DataFrame(cursor.fetchall(), columns=[d[0] for d in cursor.description])
-        dados = juntar_devolucao(vendas, cursor, desde, {"CODCLI": "CODCLI", "CODPROD": "CODPROD"})
+        dados = juntar_devolucao(
+            vendas, cursor, desde,
+            {"COD_SUPERVISOR": "CODSUPERVISOR", "CODCLI": "CODCLI", "CODPROD": "CODPROD"},
+        )
     finally:
         conexao.close()
 
