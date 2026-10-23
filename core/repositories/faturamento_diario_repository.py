@@ -123,10 +123,16 @@ def gerar_tabela(desde: date = DESDE_PADRAO) -> pd.DataFrame:
         conexao.close()
 
     chave = ["CODFILIAL", "DATA", "CODUSUR"]
-    dados = vendas.merge(devolucao, on=chave, how="left")
+    # Outer: devolução num dia em que o RCA não vendeu também conta.
+    dados = vendas.merge(devolucao, on=chave, how="outer")
 
     dados["CODFILIAL"] = dados["CODFILIAL"].astype(int)
-    dados["VALOR_DEV"] = dados["VALOR_DEV"].fillna(0.0)
+    dados["NOME_RCA"] = dados["NOME_RCA"].fillna(
+        dados["CODUSUR"].map(vendas.drop_duplicates("CODUSUR").set_index("CODUSUR")["NOME_RCA"])
+    )
+    for coluna in ("VENDA_BRUTA", "VENDA_TABELA", "VALORDESC", "VALOR_DEV"):
+        dados[coluna] = dados[coluna].fillna(0.0)
+    dados["QT_NOTAS"] = dados["QT_NOTAS"].fillna(0).astype(int)
     dados["VENDA_LIQ"] = (dados["VENDA_BRUTA"] - dados["VALOR_DEV"]).round(2)
 
     dados = dados.rename(columns={"CODUSUR": "COD_RCA"})

@@ -1052,6 +1052,7 @@ def _aplicar_agrupamento(
         if _desempacotar_campo(especificacao)[0] in dados.columns
     }
     inteiros = _campos_de_contagem(dados, campos)
+    medias = {nome for nome, especificacao in campos.items() if _desempacotar_campo(especificacao)[1] == "mean"}
 
     # Sem agrupamento: uma coluna constante, pra usar o mesmo caminho.
     if agrupar_por:
@@ -1119,7 +1120,10 @@ def _aplicar_agrupamento(
 
         for nome_campo in campos:
             valor = linha[nome_campo]
-            item[nome_campo] = None if pd.isna(valor) else _numero(valor, nome_campo in inteiros)
+            # Média de um item só (ex: a frequência de um cliente) é inteira:
+            # "235 vezes", não "235.0".
+            inteiro = nome_campo in inteiros or (nome_campo in medias and float(valor).is_integer())
+            item[nome_campo] = None if pd.isna(valor) else _numero(valor, inteiro)
 
         resultados.append(item)
 
@@ -1220,6 +1224,36 @@ def _dimensoes_dos_campos(consulta: dict, indicador_def: dict) -> set:
     }
 
 
+def _colunas_do_item(
+    dados: pd.DataFrame, indicador_def: dict, filtros: dict, agrupar_por: list[str]
+) -> pd.DataFrame:
+    """
+    Campo com a opção "coluna_com" ((dimensão, coluna)) usa a outra coluna
+    quando o item da consulta é a dimensão — agrupada por ela, ou filtrada
+    sem agrupar pelo que o campo conta ("unico_por"). Ex: a frequência de
+    uma empresa conta os dias em que QUALQUER loja dela comprou, não a
+    média das lojas; agrupada por cliente, cada loja tem a sua.
+    """
+    trocas = {}
+
+    for especificacao in indicador_def["campos"].values():
+        coluna, _, opcoes = _desempacotar_campo(especificacao)
+
+        if not opcoes.get("coluna_com") or opcoes["coluna_com"][1] not in dados.columns:
+            continue
+
+        dimensao, outra = opcoes["coluna_com"]
+        mais_fina = any(
+            indicador_def["dimensoes"].get(agrupada) in (opcoes.get("unico_por") or ())
+            for agrupada in agrupar_por
+        )
+
+        if dimensao in agrupar_por or (dimensao in filtros and not mais_fina):
+            trocas[coluna] = dados[outra]
+
+    return dados.assign(**trocas) if trocas else dados
+
+
 def _consultar_periodo(
     indicador_def: dict,
     consulta: dict,
@@ -1243,6 +1277,8 @@ def _consultar_periodo(
 
     if dados.empty:
         return [], rcas_validos
+
+    dados = _colunas_do_item(dados, indicador_def, filtros, agrupar_por)
 
     # Derivados (NPS, % de atingimento...) calculados em cada período,
     # antes de comparar — assim dá pra comparar os campos calculados.
@@ -2378,6 +2414,20 @@ def _tabela_da_tela(
     if foto and so_fotos and "de cada mês" not in foto[1]:
         for linha in resposta["tabela"]:
             linha["_legenda"] = f"Situação {foto[1]}"
+
+    # Período em dias (ex: "ontem", "semana passada"): a legenda é o dia ou
+    # as datas, não o ano.
+    dia = _filtros_efetivos(indicador_def, consulta).get("dia")
+
+    if dia and "dia" not in (consulta.get("agrupar_por") or []) and not lados:
+        inicio, fim = _inicio_e_fim(dia)
+        legenda = (
+            f"Dia: {inicio:%d/%m/%Y}" if inicio == fim
+            else f"Período: {inicio:%d/%m/%Y} a {fim:%d/%m/%Y}"
+        )
+
+        for linha in resposta["tabela"]:
+            linha.setdefault("_legenda", legenda)
 
 
 _DIMENSOES_DO_PERIODO = ("ano", "mes", "dia")

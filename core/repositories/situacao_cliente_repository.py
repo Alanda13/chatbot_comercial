@@ -11,11 +11,12 @@ Contada em dias, pelas compras do cliente em QUALQUER filial:
 - recuperado: no mês, voltou a comprar depois de 90 dias ou mais parado
   (DIAS_PARADO_ANTES_DE_VOLTAR guarda quanto tempo ficou parado, de
   qualquer tamanho);
-- frequência de compra: em média, a cada quantos dias o cliente comprou no
-  período pedido (um ano: de janeiro até o fim dele ou hoje; um mês passado:
-  só ele; sem período ou no mês atual: os 12 meses até hoje) — compras no
-  mesmo dia = 1; com 1 compra só, fica vazia — em todas as filiais e, à
-  parte, só naquela filial (como os dias sem comprar).
+- frequência de compra: quantas vezes o cliente comprou no período pedido
+  (um ano: de janeiro até o fim dele ou hoje; um mês passado: só ele; sem
+  período ou no mês atual: o ano atual até hoje) e a média por mês —
+  compras no mesmo dia = 1; sem compra no período, fica vazia — em todas as
+  filiais e, à parte, só naquela filial (como os dias sem comprar). Da
+  empresa (colunas _DA_EMPRESA): os dias em que QUALQUER loja dela comprou.
 
 Da última compra: data e filial; valor (venda bruta), nota(s), pedido(s) e
 RCA vêm do arquivo de notas (`venda_repository`), que começa em 2025 — antes
@@ -60,7 +61,6 @@ DIAS_INATIVO = 90
 DIAS_EM_RISCO = 60
 DIAS_PARADO_HA_MAIS_DE_1_ANO = 365
 DIAS_CLIENTE_DA_FILIAL = 365
-DIAS_JANELA_FREQUENCIA = 365
 
 COLUNAS_COMPRAS = ["CODCLI", "CODFILIAL", "COD_RCA", "COD_SUPERVISOR", "DATA"]
 
@@ -150,42 +150,61 @@ def _meses_recuperados(compras: pd.DataFrame) -> pd.DataFrame:
 
 
 def _frequencia_de_compra(janela: pd.DataFrame, por: list[str] = ["CODCLI"]) -> pd.Series:
-    """Por cliente (ou cliente e filial): (última − primeira compra) ÷ (nº
-    de dias com compra − 1) — a média dos intervalos."""
-    compras = janela[[*por, "DATA"]].drop_duplicates().groupby(por)["DATA"].agg(["min", "max", "count"])
-    intervalo = (compras["max"] - compras["min"]).dt.days / (compras["count"] - 1)
-    return intervalo.where(compras["count"] > 1).round(1)
+    """Por cliente (ou cliente e filial): nº de dias com compra."""
+    return janela[[*por, "DATA"]].drop_duplicates().groupby(por)["DATA"].size()
+
+
+def _meses_da_janela(desde: pd.Timestamp, referencia: pd.Timestamp) -> float:
+    """Meses de `desde` (dia 1) até a referência, o último proporcional aos
+    dias: 01/01 a 23/10 = 9 + 23/31 = 9,74; setembro inteiro = 1."""
+    inteiros = (referencia.year - desde.year) * 12 + referencia.month - desde.month
+    return inteiros + referencia.day / referencia.days_in_month
 
 
 def _com_frequencia(
     foto: pd.DataFrame, ate: pd.DataFrame, referencia: pd.Timestamp, desde: pd.Timestamp | None = None
 ) -> pd.DataFrame:
-    """A frequência geral e na filial com as compras de `desde` até a
-    referência (sem `desde`: os 12 meses até ela)."""
+    """Compras e compras por mês, geral e na filial, de `desde` até a
+    referência (sem `desde`: de janeiro até ela). Com EMPRESA na foto,
+    também as da empresa (cliente sem empresa: as dele)."""
     if desde is None:
-        desde = referencia - pd.Timedelta(days=DIAS_JANELA_FREQUENCIA - 1)
+        desde = pd.Timestamp(referencia.year, 1, 1)
 
     janela = ate[(ate["DATA"] >= desde) & (ate["DATA"] <= referencia)]
-    na_filial = _frequencia_de_compra(janela, ["CODCLI", "CODFILIAL"])
-    foto["FREQUENCIA_DE_COMPRA"] = foto["CODCLI"].map(_frequencia_de_compra(janela))
-    foto["FREQUENCIA_NA_FILIAL"] = na_filial.reindex(
-        pd.MultiIndex.from_frame(foto[["CODCLI", "CODFILIAL"]])
-    ).to_numpy()
+    meses = _meses_da_janela(desde, referencia)
+    unidades = {"CODCLI": ("FREQUENCIA_DE_COMPRA", "COMPRAS_POR_MES", "FREQUENCIA_NA_FILIAL", "COMPRAS_POR_MES_NA_FILIAL")}
+    chaves = foto[["CODCLI", "CODFILIAL"]].copy()
+
+    if "EMPRESA" in foto.columns:
+        chaves["EMPRESA"] = foto["EMPRESA"].astype(object).fillna(foto["CODCLI"].astype(str))
+        empresa_do_cliente = chaves.drop_duplicates("CODCLI").set_index("CODCLI")["EMPRESA"]
+        janela = janela.assign(EMPRESA=janela["CODCLI"].map(empresa_do_cliente))
+        unidades["EMPRESA"] = (
+            "FREQUENCIA_DA_EMPRESA", "COMPRAS_POR_MES_DA_EMPRESA",
+            "FREQUENCIA_DA_EMPRESA_NA_FILIAL", "COMPRAS_POR_MES_DA_EMPRESA_NA_FILIAL",
+        )
+
+    for unidade, (vezes, por_mes, vezes_na_filial, por_mes_na_filial) in unidades.items():
+        geral = chaves[unidade].map(_frequencia_de_compra(janela, [unidade]))
+        na_filial = _frequencia_de_compra(janela, [unidade, "CODFILIAL"]).reindex(
+            pd.MultiIndex.from_frame(chaves[[unidade, "CODFILIAL"]])
+        ).to_numpy()
+        foto[vezes] = geral
+        foto[por_mes] = (geral / meses).round(2)
+        foto[vezes_na_filial] = na_filial
+        foto[por_mes_na_filial] = (na_filial / meses).round(2)
+
     return foto
 
 
-def _inicio_da_janela(ano: int, mes: int, filtros: dict | None, hoje: date) -> pd.Timestamp | None:
+def _inicio_da_janela(ano: int, mes: int, filtros: dict | None, hoje: date) -> pd.Timestamp:
     """Início das compras da frequência na foto (ano, mês): o do período
-    pedido — o ano, ou o 1º mês pedido (até este) — ou None (os 12 meses até
-    a foto) sem período ou só no mês atual."""
-    filtros = filtros or {}
-    meses = sorted(int(m) for m in filtros.get("mes") or [])
+    pedido — o 1º mês pedido (até este) — ou janeiro (um ano, sem período
+    ou só no mês atual)."""
+    meses = sorted(int(m) for m in (filtros or {}).get("mes") or [])
 
-    if not meses:
-        return pd.Timestamp(ano, 1, 1) if filtros.get("ano") else None
-
-    if meses == [mes] and (ano, mes) == (hoje.year, hoje.month):
-        return None
+    if not meses or (meses == [mes] and (ano, mes) == (hoje.year, hoje.month)):
+        return pd.Timestamp(ano, 1, 1)
 
     return pd.Timestamp(ano, min([m for m in meses if m <= mes] or [mes]), 1)
 
@@ -201,9 +220,7 @@ def periodo_da_frequencia(filtros: dict | None, hoje: date | None = None) -> str
 
     ano, mes = pedidos[-1]
     referencia = _referencia(ano, mes, hoje)
-    desde = _inicio_da_janela(ano, mes, filtros, hoje) or (
-        referencia - pd.Timedelta(days=DIAS_JANELA_FREQUENCIA - 1)
-    )
+    desde = _inicio_da_janela(ano, mes, filtros, hoje)
     return f"{desde:%d/%m/%Y} a {referencia:%d/%m/%Y}"
 
 
@@ -268,7 +285,8 @@ _MARCAS = [
 ]
 COLUNAS_SITUACAO = [
     "ANO", "MES", "CODCLI", "CODFILIAL", "COD_RCA", "COD_SUPERVISOR", *_MARCAS,
-    "DIAS_SEM_COMPRAR", "DIAS_PARADO_ANTES_DE_VOLTAR", "FREQUENCIA_DE_COMPRA", "FREQUENCIA_NA_FILIAL",
+    "DIAS_SEM_COMPRAR", "DIAS_PARADO_ANTES_DE_VOLTAR",
+    "FREQUENCIA_DE_COMPRA", "COMPRAS_POR_MES", "FREQUENCIA_NA_FILIAL", "COMPRAS_POR_MES_NA_FILIAL",
     "DIAS_SEM_COMPRAR_NA_FILIAL",
     "DATA_ULTIMA_COMPRA", "FILIAL_ULTIMA_COMPRA", "RCA_ULTIMA_COMPRA",
 ]
@@ -468,8 +486,13 @@ def carregar_situacao_clientes(filtros: dict | None = None) -> pd.DataFrame:
     if faltando:
         montadas = _para_consulta(montar_situacao(_cache["compras"], faltando, hoje))
 
+        # A frequência da empresa precisa do cadastro (EMPRESA), que só
+        # entra em _para_consulta.
         for ano, mes in faltando:
-            fotos[(ano, mes)] = montadas[(montadas["ANO"] == ano) & (montadas["MES"] == mes)]
+            fotos[(ano, mes)] = _com_frequencia(
+                montadas[(montadas["ANO"] == ano) & (montadas["MES"] == mes)].copy(),
+                _cache["compras"], _referencia(ano, mes, hoje),
+            )
 
     for mes in pedidos:
         fotos.move_to_end(mes)
@@ -485,22 +508,22 @@ def carregar_situacao_clientes(filtros: dict | None = None) -> pd.DataFrame:
 
     # Mais recente primeiro: numa lista de clientes, o que vem junto com
     # cada um (dias sem comprar, última compra) é da foto mais nova. A foto
-    # guardada traz a frequência de 12 meses; com período, a dele.
+    # guardada traz a frequência desde janeiro; com outro início, a dele.
     partes = []
 
     for ano, mes in reversed(pedidos):
         foto = fotos[(ano, mes)]
         desde = _inicio_da_janela(ano, mes, filtros, hoje)
 
-        if desde is not None:
+        if desde != pd.Timestamp(ano, 1, 1):
             chave = (ano, mes, desde)
 
-            # Guarda só as duas colunas (a foto inteira tem ~80 MB).
+            # Guarda só as colunas da frequência (a foto inteira tem ~80 MB).
             if chave not in _cache["com_periodo"]:
+                chaves = foto.columns.intersection(["CODCLI", "CODFILIAL", "EMPRESA"])
                 _cache["com_periodo"][chave] = _com_frequencia(
-                    foto[["CODCLI", "CODFILIAL"]].copy(), _cache["compras"],
-                    _referencia(ano, mes, hoje), desde,
-                )[["FREQUENCIA_DE_COMPRA", "FREQUENCIA_NA_FILIAL"]]
+                    foto[chaves].copy(), _cache["compras"], _referencia(ano, mes, hoje), desde,
+                ).drop(columns=chaves)
 
             foto = foto.assign(**_cache["com_periodo"][chave])
 

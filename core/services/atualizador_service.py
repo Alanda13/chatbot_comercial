@@ -74,7 +74,7 @@ def _bases():
         ("desconto por produto", produto_data.atualizar,
          [produto_data.ARQUIVO_DESCONTO_PRODUTO, produto_data.ARQUIVO_PRODUTOS]),
         ("desconto por venda", venda_repository.atualizar,
-         [venda_repository.ARQUIVO_DESCONTO_VENDA]),
+         [venda_repository.ARQUIVO_DESCONTO_VENDA, venda_repository.ARQUIVO_DEVOLUCAO_CLIENTE]),
         ("mix de produtos dos clientes", cliente_produto_repository.atualizar,
          [cliente_produto_repository.ARQUIVO_CLIENTE_PRODUTO]),
         ("compras dos clientes", situacao_cliente_repository.atualizar,

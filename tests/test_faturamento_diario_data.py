@@ -222,3 +222,25 @@ def test_verificar_rca_nao_encontrado(monkeypatch):
 
     assert resultado["encontrado"] is False
     assert "4567" in resultado["mensagem"]
+
+
+def test_devolucao_em_dia_sem_venda_do_rca_tambem_conta(monkeypatch):
+    vendas = pd.DataFrame({
+        "CODFILIAL": [9], "DATA": ["2026-03-05"], "CODUSUR": [10], "NOME_RCA": ["JOAO"],
+        "QT_NOTAS": [2], "VENDA_BRUTA": [1000.0], "VENDA_TABELA": [1100.0], "VALORDESC": [100.0],
+    })
+    # O RCA 10 não vendeu no dia 06, mas entrou devolução dele.
+    devolucao = pd.DataFrame({
+        "CODFILIAL": [9, 9], "DATA": ["2026-03-05", "2026-03-06"], "CODUSUR": [10, 10], "VALOR_DEV": [50.0, 500.0],
+    })
+    monkeypatch.setattr(fdd, "get_connection", lambda: type("C", (), {"cursor": lambda self: None, "close": lambda self: None})())
+    monkeypatch.setattr(fdd, "_consultar_vendas", lambda cursor, desde: vendas)
+    monkeypatch.setattr(fdd, "_consultar_devolucao", lambda cursor, desde: devolucao)
+
+    dados = fdd.gerar_tabela().set_index("DATA")
+
+    assert dados.loc["2026-03-05", "VENDA_LIQ"] == 950.0
+    assert dados.loc["2026-03-06", "VENDA_LIQ"] == -500.0
+    assert dados.loc["2026-03-06", "NOME_RCA"] == "JOAO"
+    assert dados["VENDA_LIQ"].sum() == 450.0
+

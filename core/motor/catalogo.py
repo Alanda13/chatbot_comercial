@@ -59,7 +59,7 @@ from core.repositories.situacao_cliente_repository import (
     carregar_situacao_clientes,
     periodo_da_frequencia,
 )
-from core.repositories.venda_repository import carregar_desconto_venda, resolver_vendas
+from core.repositories.venda_repository import carregar_desconto_venda, carregar_vendas_com_devolucao, resolver_vendas
 from core.repositories.produto_repository import (
     carregar_desconto_produto,
     resolver_familias,
@@ -265,8 +265,13 @@ INDICADORES = {
     },
     "faturamento_diario": {
         "carregar": carregar_faturamento_diario,
+        # Por cliente: as notas com a devolução de cada cliente (desde 2025).
+        # Por venda: só as notas — a nota não traz devolução.
         "fontes_por_dimensao": {
             "forma_pagamento": carregar_faturamento_diario_forma_pagamento,
+            "venda": carregar_desconto_venda,
+            "cliente": carregar_vendas_com_devolucao,
+            "empresa": carregar_vendas_com_devolucao,
         },
         "granularidade_periodo": "diaria",
         "campos": {
@@ -278,11 +283,15 @@ INDICADORES = {
         "dimensoes": {
             "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
             "dia": "DATA", "forma_pagamento": "COBRANCA",
+            "venda": "NUMTRANSVENDA", "cliente": "CODCLI", "empresa": "EMPRESA",
         },
         "resolver_dimensao": {
             "filial": resolver_nome_filial,
             "estado": resolver_estado,
             "rca": resolver_codigos_rca,
+            "venda": resolver_vendas,
+            "cliente": resolver_codigos_cliente,
+            "empresa": resolver_empresas,
         },
         "rca_nome_mapa": construir_mapa_rca_nome,
         "rca_requer_meta_cadastrada": True,
@@ -662,15 +671,31 @@ INDICADORES["clientes"] = {
         # O maior tempo que o cliente ficou parado antes de voltar a comprar
         # no período (0 = não voltou): "ficou 5 meses parado e voltou".
         "dias_parado_antes_de_voltar": ("DIAS_PARADO_ANTES_DE_VOLTAR", "max"),
-        # A cada quantos dias o cliente compra (12 meses até a foto). Agrupado
-        # (filial, empresa): a média dos clientes, cada um uma vez.
+        # Quantas vezes o cliente comprou no período e a média por mês.
+        # Agrupado (filial): a média dos clientes que compraram, cada um uma
+        # vez. Da empresa: os dias em que qualquer loja dela comprou.
         "frequencia_de_compra": (
-            "FREQUENCIA_DE_COMPRA", "mean", {**_FOTO_MENSAL, "unico_por": ("CODCLI",)},
+            "FREQUENCIA_DE_COMPRA", "mean",
+            {**_FOTO_MENSAL, "unico_por": ("CODCLI",), "coluna_com": ("empresa", "FREQUENCIA_DA_EMPRESA")},
+        ),
+        "compras_por_mes": (
+            "COMPRAS_POR_MES", "mean",
+            {**_FOTO_MENSAL, "unico_por": ("CODCLI",), "coluna_com": ("empresa", "COMPRAS_POR_MES_DA_EMPRESA")},
         ),
         # A mesma conta só com as compras na filial — numa consulta por filial.
         "frequencia_na_filial": (
             "FREQUENCIA_NA_FILIAL", "mean",
-            {**_FOTO_MENSAL, "unico_por": ("CODCLI", "CODFILIAL"), "so_com": "filial"},
+            {
+                **_FOTO_MENSAL, "unico_por": ("CODCLI", "CODFILIAL"), "so_com": "filial",
+                "coluna_com": ("empresa", "FREQUENCIA_DA_EMPRESA_NA_FILIAL"),
+            },
+        ),
+        "compras_por_mes_na_filial": (
+            "COMPRAS_POR_MES_NA_FILIAL", "mean",
+            {
+                **_FOTO_MENSAL, "unico_por": ("CODCLI", "CODFILIAL"), "so_com": "filial",
+                "coluna_com": ("empresa", "COMPRAS_POR_MES_DA_EMPRESA_NA_FILIAL"),
+            },
         ),
     },
     # Lista de clientes: quantos de TODA a lista em cada situação e, sem
@@ -698,10 +723,10 @@ INDICADORES["clientes"] = {
     "rca_requer_meta_cadastrada": True,
     "campo_principal": "clientes_ativos",
     "unidade": "clientes",
-    # A frequência tem período próprio (sem período: 12 meses): as datas
+    # A frequência tem período próprio (sem período: o ano atual): as datas
     # vão prontas pra resposta (ver orquestrador._avisos_para_a_ia).
     "periodo_dos_campos": {
-        "campos": ("frequencia_de_compra", "frequencia_na_filial"),
+        "campos": ("frequencia_de_compra", "compras_por_mes", "frequencia_na_filial", "compras_por_mes_na_filial"),
         "nome": "a frequência de compra",
         "aviso": "periodo_da_frequencia",
         "descrever": periodo_da_frequencia,
@@ -718,23 +743,25 @@ INDICADORES["clientes"] = {
         "de 1 ano.' Se vier ativos_so_em_outra_filial (ou "
         "ativos_so_com_outro_rca) maior que zero, diga quantos dos ativos só "
         "compraram em outra filial (com outro RCA) nos últimos 90 dias. "
-        "Frequência de compra = em média, a cada quantos dias o cliente "
-        "comprou no período pedido (um ano: de janeiro até o fim dele, ou "
-        "até hoje no ano atual; um mês passado: só ele; sem período ou no "
-        "mês atual: os últimos 12 meses) — as datas vêm prontas em "
-        "periodo_da_frequencia. Agrupada (filial, empresa), é a média dos "
-        "clientes. Numa consulta por filial vêm também frequencia_na_filial "
-        "e dias_sem_comprar_na_filial (só as compras naquela filial). "
-        "Responda a frequência assim (este formato já diz o período, mesmo "
-        "sem período na pergunta): 'No período de <periodo_da_frequencia>, "
-        "a frequência de compras do cliente <nome> é de a cada N dias. Está "
-        "há M dias sem comprar. Se preferir, você pode consultar outro "
-        "período.' Por filial: 'a frequência de compras do cliente <nome> "
-        "em <filial> é de a cada N dias (em todas as filiais, a cada X dias). "
-        "Está há M dias sem comprar em <filial> (em todas as filiais, há Y "
-        "dias).' — os dias sem "
-        "comprar vêm SEMPRE junto, pra mostrar quem está atrasado em relação "
-        "ao costume. A última compra traz data e filial e, desde 2025, o "
+        "Frequência de compra = quantas vezes o cliente comprou no período "
+        "pedido (várias notas no mesmo dia = 1 vez; um ano: de janeiro até o "
+        "fim dele, ou até hoje no ano atual; um mês passado: só ele; sem "
+        "período ou no mês atual: o ano atual até hoje) — as datas vêm "
+        "prontas em periodo_da_frequencia — e compras_por_mes, a média por "
+        "mês. Mais vezes = compra com mais frequência. De uma empresa: os "
+        "dias em que qualquer loja dela comprou. Agrupada por filial, é a "
+        "média por cliente que comprou no período. Numa "
+        "consulta por filial vêm também frequencia_na_filial, "
+        "compras_por_mes_na_filial e dias_sem_comprar_na_filial (só as "
+        "compras naquela filial). Responda a frequência assim (este formato "
+        "já diz o período, mesmo sem período na pergunta): 'No período de "
+        "<periodo_da_frequencia>, o cliente <nome> comprou N vezes (média "
+        "de X por mês). Está há M dias sem comprar. Se preferir, você pode "
+        "consultar outro período.' Por filial: 'o cliente <nome> comprou N "
+        "vezes em <filial> (X por mês; em todas as filiais, N2 vezes, Y por "
+        "mês). Está há M dias sem comprar em <filial> (em todas as filiais, "
+        "há Z dias).' — os dias sem comprar vêm SEMPRE junto, pra mostrar "
+        "quem está atrasado em relação ao costume. A última compra traz data e filial e, desde 2025, o "
         "valor (o que o cliente comprou, venda bruta), a(s) nota(s), o(s) "
         "pedido(s) e o RCA — várias notas no mesmo dia são uma compra só. "
         "Os dados começam em 2020."
@@ -750,8 +777,10 @@ INDICADORES["clientes"] = {
         "ativos_so_com_outro_rca": {"tipo": "texto", "rotulo": "Ativos só por outro RCA", "palavras": ["outro rca", "outro vendedor"]},
         "dias_sem_comprar": {"tipo": "texto", "rotulo": "Dias sem comprar", "palavras": ["dias sem", "sem comprar"]},
         "dias_sem_comprar_na_filial": {"tipo": "texto", "rotulo": "Dias sem comprar, na filial", "palavras": ["dias sem", "sem comprar", "não compra"]},
-        "frequencia_na_filial": {"tipo": "texto", "rotulo": "Compra a cada (dias), na filial", "palavras": ["frequ", "a cada"]},
-        "frequencia_de_compra": {"tipo": "texto", "rotulo": "Compra a cada (dias), todas as filiais", "palavras": ["frequ", "a cada"]},
+        "frequencia_na_filial": {"tipo": "texto", "rotulo": "Compras no período, na filial", "palavras": ["frequ", "vezes"]},
+        "compras_por_mes_na_filial": {"tipo": "texto", "rotulo": "Compras por mês, na filial", "palavras": ["frequ", "por mês"]},
+        "frequencia_de_compra": {"tipo": "texto", "rotulo": "Compras no período, todas as filiais", "palavras": ["frequ", "vezes"]},
+        "compras_por_mes": {"tipo": "texto", "rotulo": "Compras por mês, todas as filiais", "palavras": ["frequ", "por mês"]},
         "dias_parado_antes_de_voltar": {"tipo": "texto", "rotulo": "Dias parado antes de voltar", "palavras": ["voltou", "voltaram", "volta a comprar", "voltar a comprar"]},
     },
 }

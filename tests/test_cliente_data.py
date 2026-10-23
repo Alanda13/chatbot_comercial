@@ -63,6 +63,12 @@ def test_nome_de_uma_empresa_so_junta_todas_as_lojas(clientes):
     ]
 
 
+def test_nome_e_procurado_no_comeco_das_palavras(clientes):
+    # "upermercados" está no meio de "SUPERMERCADOS": não acha.
+    with pytest.raises(ValueError, match="não foi encontrado"):
+        cliente_data.resolver_empresas("upermercados")
+
+
 def test_nome_de_varias_empresas_pede_para_escolher(clientes):
     with pytest.raises(ValueError) as erro:
         cliente_data.resolver_empresas("Mateus")
@@ -243,3 +249,40 @@ def test_sem_limite_por_grupo_mantem_meses_em_ordem_e_variacao_em_reais(monkeypa
     assert [linha["mes"] for linha in resultado] == [5, 6, 7]
     # junho: % igual a maio (10%), mas o desconto caiu de 100 pra 20
     assert resultado[1]["percentual_mes_anterior"] == -80.0
+
+
+def test_faturamento_do_dia_por_cliente_vem_das_notas_com_a_devolucao(monkeypatch, clientes):
+    from core.repositories import venda_repository
+
+    fontes = catalogo.INDICADORES["faturamento_diario"]["fontes_por_dimensao"]
+    assert fontes["cliente"] is venda_repository.carregar_vendas_com_devolucao
+
+    notas = pd.DataFrame({
+        "DATA": pd.to_datetime(["2026-10-22", "2026-10-22", "2026-10-21"]),
+        "CODCLI": [202334, 191385, 202334], "CODFILIAL": 9, "FILIAL": "TIMON", "ESTADO": "MA",
+        "COD_RCA": 1, "NUMTRANSVENDA": [1, 2, 3], "VENDA_BRUTA": [300.0, 50.0, 999.0], "VALORDESC": 0.0,
+    }).merge(_clientes(), on="CODCLI")
+    # Devolução de 20,00 do cliente 202334 no dia 22.
+    devolucao = pd.DataFrame({
+        "CODFILIAL": [9], "DATA": ["2026-10-22"], "ANO": [2026], "MES": [10],
+        "CODCLI": [202334], "COD_RCA": [1], "VALOR_DEV": [20.0],
+    })
+    monkeypatch.setattr(venda_repository, "carregar_desconto_venda", lambda: notas)
+    monkeypatch.setattr(venda_repository, "ler_csv", lambda arquivo: devolucao.copy())
+    monkeypatch.setattr(venda_repository, "padronizar_filiais", lambda dados, codigos: dados.assign(FILIAL="TIMON", ESTADO="MA"))
+    monkeypatch.setattr(venda_repository, "ARQUIVO_DEVOLUCAO_CLIENTE", type("A", (), {"stat": lambda self: type("S", (), {"st_mtime": 1})()})())
+    monkeypatch.setitem(venda_repository._cache_com_devolucao, "versao", None)
+    monkeypatch.setitem(catalogo.INDICADORES["faturamento_diario"], "rca_requer_meta_cadastrada", False)
+
+    resultado = orq.executar_consulta({
+        "indicador": "faturamento_diario", "agrupar_por": ["cliente"],
+        "periodo": "personalizado", "periodo_personalizado": {"data_inicial": "2026-10-22"},
+        "ordenar_por": {"campo": "venda_bruta", "limite": 1},
+    })
+
+    linha = resultado["resultados"][0]
+    assert linha["cliente"] == 202334
+    assert linha["venda_bruta"] == 300.0
+    assert linha["faturamento"] == 280.0   # 300 − 20 de devolução
+    assert linha["quantidade_notas"] == 1
+

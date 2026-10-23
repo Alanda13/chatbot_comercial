@@ -23,10 +23,22 @@ NÃO inclui forma de pagamento (`COBRANCA`) — esse dado é mais complexo
 ainda não entendido) e fica pendente, tratado à parte. O arquivo
 `carregar_faturamento_8302_cobranca` continua manual por enquanto.
 
+nao inclui forma de pagamento - ncobranca - esse dado é mais complexo
+a devolução árece ser akicada por forma de pagamento de um jeito
+ainda nao entendido e fica pendente, tratado a parte.
+
+nao inclui forma de pagamento - cobranca - esse dado é mais complexo
+a devolucao parece ser alocada por forma de pagamento de um jeito
+ainda nao entendido e fica pendente, tratado a parte.
+
 Uso:
     python scripts/atualizar_faturamento_diario_oracle.py
     python scripts/atualizar_faturamento_diario_oracle.py --desde 2024-01-01 --saida dados/teste.csv
 """
+
+import argparse 
+from datetime import date
+from pathlib import Path
 import argparse
 from datetime import date
 from pathlib import Path

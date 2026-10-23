@@ -253,13 +253,14 @@ def _normalizar(texto) -> str:
 
 def _empresas_pelo_nome(nome: str) -> pd.DataFrame:
     """
-    Empresas com algum cadastro cujo nome ou fantasia contém o nome
-    procurado — uma linha por empresa, a que mais compra primeiro.
+    Empresas com algum cadastro cujo nome ou fantasia tem o nome procurado
+    no começo de uma palavra ("EDP" acha "EDP INFRAESTRUTURA", não
+    "MEDPLUS") — uma linha por empresa, a que mais compra primeiro.
     """
     clientes = carregar_clientes()
-    procurado = _normalizar(nome)
-    achou = clientes["CLIENTE"].map(_normalizar).str.contains(procurado, regex=False) | (
-        clientes["FANTASIA"].map(_normalizar).str.contains(procurado, regex=False)
+    procurado = " " + _normalizar(nome)
+    achou = (" " + clientes["CLIENTE"].map(_normalizar)).str.contains(procurado, regex=False) | (
+        (" " + clientes["FANTASIA"].map(_normalizar)).str.contains(procurado, regex=False)
     )
     empresas = clientes[clientes["EMPRESA"].isin(clientes.loc[achou, "EMPRESA"])]
 
