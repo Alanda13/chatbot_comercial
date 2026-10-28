@@ -314,7 +314,7 @@ FERRAMENTAS_DISPONIVEIS = {
             "'total_de_todas_as_linhas' (soma de TODAS as linhas, mesmo "
             "as cortadas pelo limite) — use esse total, NUNCA some a "
             "lista você mesma(o).\n"
-            "Indicadores que NÃO estão nessa lista (ex: inadimplência) "
+            "Indicadores que NÃO estão nessa lista "
             "ainda não estão disponíveis — "
             "nesse caso escolha 'fora_do_escopo'."
         ),

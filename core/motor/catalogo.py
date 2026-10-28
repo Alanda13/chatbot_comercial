@@ -41,9 +41,6 @@ prompt_claude_code_migracao.md, adaptados às fontes de dado reais do
 projeto: CSV via pandas para faturamento/faturamento diário/meta/meta de
 tonelada, e Azure SQL (carregado inteiro pro pandas) para o NPS.
 
-Indicadores sem "carregar" real (inadimplencia)
-ainda não têm nenhuma fonte de dado conectada.
-
 Este arquivo é a ÚNICA fonte de verdade sobre o que o motor genérico
 (orquestrador.py) sabe consultar. A IA nunca deve referenciar um
 indicador ou dimensão que não esteja aqui.
@@ -55,6 +52,7 @@ from core.repositories.cliente_repository import (
 )
 from core.repositories.faturamento_repository import carregar_faturamento_mensal
 from core.repositories.cliente_produto_repository import carregar_cliente_produto
+from core.repositories.inadimplencia_repository import carregar_inadimplencia, descrever_fechamento
 from core.repositories.situacao_cliente_repository import (
     carregar_situacao_clientes,
     periodo_da_frequencia,
@@ -611,15 +609,45 @@ INDICADORES = {
             "venda_bruta": {"tipo": "moeda", "rotulo": "Venda Bruta", "palavras": ["venda bruta"]},
         },
     },
-    # Abaixo, indicadores registrados no catálogo mas SEM fonte real
-    # conectada ainda ("carregar": None) — documentam o que o sistema
-    # deveria ter (inadimplencia: ainda sem nenhuma fonte
-    # real, CSV ou view Oracle/WinThor, no projeto).
+    # Títulos vencidos e não pagos (regras em
+    # core/repositories/inadimplencia_repository.py). Mês/ano = do
+    # vencimento. "Oficial" = fechamento da controladoria (dia 10, 2 meses
+    # depois); "em atraso" = hoje.
     "inadimplencia": {
-        "carregar": None,
+        "carregar": carregar_inadimplencia,
         "granularidade_periodo": "mensal",
-        "campos": {"valor_inadimplente": None, "faturamento_liquido": None},
-        "dimensoes": {"filial": None},
+        "campos": {
+            "valor_inadimplente": ("VALOR_INADIMPLENTE", "sum"),
+            "titulos_inadimplentes": ("TITULO_INADIMPLENTE", "sum"),
+            "clientes_inadimplentes": ("CLIENTE_INADIMPLENTE", "nunique", {"conta": "cliente"}),
+            # O da filial no mês (o mesmo em todo título dela): somado uma
+            # vez por filial/mês. Por cliente/RCA, o % é a parte dele no
+            # faturamento da filial, como na controladoria.
+            "faturamento_liquido": ("FATURAMENTO_LIQ", "sum", {"unico_por": ("FILIAL", "ANO", "MES")}),
+            "valor_em_atraso": ("VALOR_EM_ATRASO", "sum"),
+            "titulos_em_atraso": ("TITULO_EM_ATRASO", "sum"),
+            "clientes_em_atraso": ("CLIENTE_EM_ATRASO", "nunique", {"conta": "cliente"}),
+            # Agrupado (filial, cliente): o título mais atrasado.
+            "dias_de_atraso": ("DIAS_DE_ATRASO", "max"),
+            "clientes_em_risco_de_bloqueio": ("CLIENTE_EM_RISCO_DE_BLOQUEIO", "nunique", {"conta": "cliente"}),
+            "dias_para_o_bloqueio": ("DIAS_PARA_O_BLOQUEIO", "min"),
+        },
+        "dimensoes": {
+            "filial": "FILIAL", "estado": "ESTADO", "rca": "COD_RCA",
+            "supervisor": "COD_SUPERVISOR", "mes": "MES", "ano": "ANO",
+            "cliente": "CODCLI", "empresa": "EMPRESA",
+        },
+        "resolver_dimensao": {
+            "filial": resolver_nome_filial,
+            "estado": resolver_estado,
+            "rca": resolver_codigos_rca,
+            "supervisor": resolver_codigos_supervisor,
+            "cliente": resolver_codigos_cliente,
+            "empresa": resolver_empresas,
+        },
+        "rca_nome_mapa": construir_mapa_rca_nome,
+        # Sem "rca_requer_meta_cadastrada": o título fica com o RCA mesmo
+        # sem meta (ou desligado), e a soma dos RCAs fecha com a filial.
         "derivados": [
             {
                 "nome": "percentual_inadimplencia",
@@ -627,7 +655,46 @@ INDICADORES = {
                 "campos": ("valor_inadimplente", "faturamento_liquido"),
             },
         ],
-        "unidade": "%",
+        "campo_principal": "valor_inadimplente",
+        "unidade": "R$",
+        "periodo_dos_campos": {
+            "campos": ("valor_inadimplente", "titulos_inadimplentes", "clientes_inadimplentes", "percentual_inadimplencia"),
+            "nome": "a inadimplência oficial",
+            "aviso": "fechamento_da_inadimplencia",
+            "descrever": descrever_fechamento,
+        },
+        "como_ler": (
+            "Mês/ano = do VENCIMENTO do título. Inadimplência OFICIAL (valor_inadimplente, "
+            "titulos_inadimplentes, clientes_inadimplentes, "
+            "percentual_inadimplencia) = o fechamento da controladoria: todo "
+            "dia 10 fecha o mês de 2 meses antes (títulos vencidos nele e "
+            "ainda em aberto no dia 10) — as datas vêm em "
+            "fechamento_da_inadimplencia; mês ainda não fechado tem oficial "
+            "zero: diga que ainda não fechou, não que não há inadimplência. "
+            "percentual_inadimplencia = valor_inadimplente ÷ "
+            "faturamento_liquido (o da filial nos meses fechados). EM ATRASO "
+            "HOJE (valor_em_atraso, titulos_em_atraso, clientes_em_atraso, "
+            "dias_de_atraso) = vencidos e não pagos agora, inclusive os dos "
+            "meses ainda não fechados — é quem cobrar. Pergunta sem dizer "
+            "qual ('quanto Timon tem de inadimplência?'): dê o oficial e o "
+            "em atraso hoje, cada um com o nome. Risco de bloqueio: o "
+            "cliente é bloqueado com 30 dias de atraso; em risco = o título "
+            "mais atrasado dele tem de 20 a 29 dias (dias_para_o_bloqueio = "
+            "quantos faltam)."
+        ),
+        "exibicao": {
+            "valor_inadimplente": {"tipo": "moeda", "rotulo": "Inadimplência oficial", "palavras": ["inadimpl"]},
+            "percentual_inadimplencia": {"tipo": "percentual", "rotulo": "% Inadimplência", "palavras": ["inadimpl", "%", "percent"]},
+            "titulos_inadimplentes": {"tipo": "texto", "rotulo": "Títulos (oficial)", "palavras": ["título", "titulo"]},
+            "clientes_inadimplentes": {"tipo": "texto", "rotulo": "Clientes (oficial)", "palavras": ["inadimplentes"]},
+            "faturamento_liquido": {"tipo": "moeda", "rotulo": "Faturamento Líquido", "palavras": ["fatur"]},
+            "valor_em_atraso": {"tipo": "moeda", "rotulo": "Em atraso hoje", "palavras": ["atraso", "atrasad", "devend", "deve", "cobr"]},
+            "titulos_em_atraso": {"tipo": "texto", "rotulo": "Títulos em atraso", "palavras": ["título", "titulo"]},
+            "clientes_em_atraso": {"tipo": "texto", "rotulo": "Clientes em atraso", "palavras": ["clientes em atraso", "clientes devendo"]},
+            "dias_de_atraso": {"tipo": "texto", "rotulo": "Dias de atraso", "palavras": ["dias"]},
+            "clientes_em_risco_de_bloqueio": {"tipo": "texto", "rotulo": "Em risco de bloqueio", "palavras": ["bloque"]},
+            "dias_para_o_bloqueio": {"tipo": "texto", "rotulo": "Dias para o bloqueio", "palavras": ["bloque"]},
+        },
     },
 }
 

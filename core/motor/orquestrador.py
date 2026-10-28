@@ -1048,6 +1048,28 @@ def _atributos_por_item(dados: pd.DataFrame, dimensao: str, coluna: str):
     return atributos, dados.groupby(coluna)[list(atributos.values())].first()
 
 
+def _sem_linhas_so_da_filial(
+    dados: pd.DataFrame, campos: dict, colunas_agrupamento: list[str]
+) -> pd.DataFrame:
+    """
+    Linha sem o item agrupado (ex: sem cliente) que só traz valor de um
+    campo "unico_por" (ex: o faturamento do mês da filial, num mês sem
+    título) não vira item ("nan") — ela existe pra esse valor entrar na
+    filial/no total.
+    """
+    sem_item = dados[colunas_agrupamento].isna().any(axis=1)
+
+    if not sem_item.any():
+        return dados
+
+    do_item = [
+        coluna for coluna, _, opcoes in map(_desempacotar_campo, campos.values())
+        if not opcoes.get("unico_por")
+    ]
+    vazia = dados[do_item].fillna(0).eq(0).all(axis=1)
+    return dados[~(sem_item & vazia)]
+
+
 def _aplicar_agrupamento(
     dados: pd.DataFrame, indicador_def: dict, agrupar_por: list[str]
 ) -> list[dict]:
@@ -1069,6 +1091,7 @@ def _aplicar_agrupamento(
     # Sem agrupamento: uma coluna constante, pra usar o mesmo caminho.
     if agrupar_por:
         colunas_agrupamento = [indicador_def["dimensoes"][d] for d in agrupar_por]
+        dados = _sem_linhas_so_da_filial(dados, campos, colunas_agrupamento)
     else:
         dados = dados.assign(_total=0)
         colunas_agrupamento = ["_total"]

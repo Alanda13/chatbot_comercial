@@ -168,9 +168,14 @@ def test_resolver_periodo_nao_suportado_gera_erro():
 # --- executar_consulta: indicador sem fonte real conectada ---
 
 
-def test_executar_consulta_indicador_sem_fonte_real_gera_erro():
+def test_executar_consulta_indicador_sem_fonte_real_gera_erro(monkeypatch):
+    monkeypatch.setitem(
+        catalogo.INDICADORES, "sem_fonte",
+        {"carregar": None, "granularidade_periodo": "mensal", "campos": {}, "dimensoes": {}},
+    )
+
     with pytest.raises(ConsultaInvalida):
-        orq.executar_consulta({"indicador": "inadimplencia"})
+        orq.executar_consulta({"indicador": "sem_fonte"})
 
 
 # --- executar_consulta: desconto ---

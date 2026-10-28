@@ -1505,3 +1505,22 @@ Decisão da supervisora: continuam as 18 lojas, mas a venda do CD de São Luís 
 - 2026 até 23/10: CD R$ 14.551.356,21, repassado R$ 14.540.524,93 (Tibiri 5,59 mi, Guajajaras 3,16 mi, Areinha 2,62 mi, Aracagy 1,59 mi, Maiobão 1,58 mi), igual em todas as bases. Fica fora R$ 10.831,28: supervisores 33 e 36, sem RCA em loja (Edimilson Imperatriz, Arcelia, Adriel FL33, Mikaele F33).
 - Os RCAs "F33" continuam códigos à parte (sem meta → fora dos rankings de RCA); juntar com o código da loja do mesmo vendedor é decisão pendente da supervisora.
 - Os clientes que compram pelo CD contam na loja do supervisor (novos, recuperados, ativos, frequência).
+
+## Inadimplência (28/10/2026)
+
+Indicador `inadimplencia` ligado (antes só registrado, sem fonte). Regras levantadas com a Controladoria e a supervisora (27–28/10/2026).
+
+- Fonte: view `FNORTE.GFN_VIEW_CONTAS_RECEBER_8188` (a PCPREST não é acessível pelo TICONSULTA). Espelho da rotina 120, sem títulos cancelados e desdobrados (DESD). Conferida com a 120 (Timon, vencimento 01/01/2025 a 26/10/2026, ref. 27/10/2026): 425 títulos / R$ 776.177,46, igual cobrança por cobrança. A carteira da 120 tem ~51 títulos / R$ 115 mil a mais: títulos de 2013 que a view não traz (na base da Controladoria, Timon: 40 / R$ 114.823).
+- Base da Controladoria (PostgreSQL `dados_credito`, esquema `inadimplencia`: `titulo_receber` = cópia da view; `titulo_aberto_diario` = foto diária; `faturamento_mensal` = igual ao VENDA_LIQ do chatbot, no centavo): usada só pra conferir. O chatbot não depende dela.
+- `inadimplencia_repository`: `data/titulos_receber.csv` (~19 mil títulos, 13 s, sempre inteiro) = vencidos em aberto + pagos só depois do fechamento do mês deles. Na leitura, a partir de hoje:
+  - **oficial** (fechamento da Controladoria): todo dia 10 fecha o mês de vencimento de 2 meses antes (10/10 → agosto), com os títulos ainda em aberto nesse dia (`DTPAG` vazio ou depois do dia 10). Mês sem fechamento: oficial zero;
+  - **% = oficial ÷ faturamento líquido da filial no mês** (`FATURAMENTO_LIQ`, só meses fechados; campo `unico_por` filial/ano/mês). Por cliente/RCA, o % é a parte dele no faturamento da filial, como na view `vw_top5_clientes_ano_atual` da Controladoria. Mês fechado sem título ganha uma linha só com o faturamento;
+  - **em atraso hoje**: vencidos e não pagos agora, com `DIAS_DE_ATRASO`;
+  - **risco de bloqueio**: bloqueio com 30 dias de atraso (supervisora); em risco = o título mais atrasado do cliente (em qualquer filial) tem 20 a 29 dias (usuária). `DIAS_PARA_O_BLOQUEIO` = 30 − esse atraso.
+- Valor = o do título (VALOR), todas as cobranças (cartão incluído), como a 120. CD 33 → loja do supervisor do RCA. Empresa do cadastro dos clientes; quem não comprou desde 2020, pelo CNPJ do título.
+- `periodo_dos_campos` → `fechamento_da_inadimplencia` na resposta (último e próximo fechamento) e `como_ler` com as duas leituras.
+- Sem período (usuária, 28/10/2026): o oficial e o faturamento do % são só do último mês fechado (`so_o_ultimo_mes_fechado`, com os filtros passados ao loader); o em atraso hoje junta todos os vencimentos. Antes, "qual a inadimplência de Timon?" somava os fechamentos de todos os meses desde 2017 (R$ 1.946.061,42, 0,33%) — número de nenhum relatório. Agora: agosto/2026, R$ 26.288,79 (0,27%), e R$ 942.906,60 em atraso hoje.
+- Por RCA (28/10/2026): sem `rca_requer_meta_cadastrada` — o título fica com o RCA mesmo sem meta ou desligado. Antes, em Timon faltavam 3 RCAs (8673, 8903, 9801; R$ 56.721,09 em atraso) e a soma dos RCAs não fechava com a filial.
+- Motor (`orquestrador._sem_linhas_so_da_filial`): linha sem o item agrupado que só traz campo `unico_por` (o faturamento do mês sem título) não vira item "nan" na lista; continua no total.
+- Conferido: em atraso hoje por mês de vencimento = foto atual da Controladoria (jan/2025 a ago/2026). Ex: % oficial jan/2026: Araguaína 3,51%, Timon 2,04%, Tibiri 1,65%.
+- Pendente: títulos ESTR (valor negativo, R$ −3,5 mi desde 2017; nenhum em aberto hoje) entram no oficial de meses antigos (Timon jul/2025 ficou −R$ 133.774) — conferir com `vw_fat_inad_filial_mes_fechamento` se a Controladoria os conta; histórico de pagamentos (período a definir).

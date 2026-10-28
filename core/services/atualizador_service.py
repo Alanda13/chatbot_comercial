@@ -57,6 +57,7 @@ def _bases():
     from core.repositories import cliente_repository as cliente_data
     from core.repositories import faturamento_repository as faturamento_data
     from core.repositories import faturamento_diario_repository as faturamento_diario_data
+    from core.repositories import inadimplencia_repository
     from core.repositories import produto_repository as produto_data
     from core.repositories import rca_repository
     from core.repositories import situacao_cliente_repository
@@ -80,6 +81,8 @@ def _bases():
         ("compras dos clientes", situacao_cliente_repository.atualizar,
          [situacao_cliente_repository.ARQUIVO_COMPRAS_CLIENTES]),
         ("cadastro de RCAs", rca_repository.atualizar, [rca_repository.ARQUIVO_RCAS]),
+        ("títulos a receber", inadimplencia_repository.atualizar,
+         [inadimplencia_repository.ARQUIVO_TITULOS_RECEBER]),
     ]
 
 
