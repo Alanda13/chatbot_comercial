@@ -164,9 +164,13 @@ def _sem_periodo(filtros: dict | None) -> bool:
 def so_o_ultimo_mes_fechado(dados: pd.DataFrame, hoje: date) -> pd.DataFrame:
     """Sem período na pergunta, o oficial (e o faturamento do %) é o do
     último mês fechado — a soma de todos os meses não é a inadimplência de
-    nenhum relatório. O em atraso continua com todos os vencimentos."""
+    nenhum relatório. O em atraso continua com todos os vencimentos; o
+    título de outro mês que já foi pago sai (senão o cliente/RCA dele
+    aparecia na lista, zerado)."""
     ano, mes = mes_do_ultimo_fechamento(hoje)
     outro_mes = (dados["ANO"] != ano) | (dados["MES"] != mes)
+    dados = dados[~outro_mes | (dados["TITULO_EM_ATRASO"] == 1)].copy()
+    outro_mes = outro_mes[dados.index]
     dados.loc[outro_mes, ["VALOR_INADIMPLENTE", "TITULO_INADIMPLENTE"]] = 0
     dados.loc[outro_mes, "CLIENTE_INADIMPLENTE"] = pd.NA
     dados.loc[outro_mes, "FATURAMENTO_LIQ"] = float("nan")
@@ -212,6 +216,31 @@ def carregar_inadimplencia(filtros: dict | None = None) -> pd.DataFrame:
 carregar_inadimplencia.recebe_filtros = True
 
 
+_NOMES_DOS_MESES = [
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
+    "agosto", "setembro", "outubro", "novembro", "dezembro",
+]
+
+
+def _periodo_sem_periodo(hoje: date) -> str:
+    ano, mes = mes_do_ultimo_fechamento(hoje)
+    return (
+        f"a inadimplência oficial (valor, títulos, clientes e %) é a do último "
+        f"mês fechado, {_NOMES_DOS_MESES[mes - 1]} de {ano}; o em atraso hoje "
+        "junta todos os vencimentos"
+    )
+
+
+def descrever_sem_periodo(hoje: date | None = None) -> str:
+    """O período de uma pergunta sem período (ver so_o_ultimo_mes_fechado),
+    curto pra caber no meio da frase da resposta."""
+    ano, mes = mes_do_ultimo_fechamento(hoje or date.today())
+    return (
+        f"sem filtro de período (oficial: {_NOMES_DOS_MESES[mes - 1]} de {ano}, "
+        "último mês fechado; em atraso: situação de hoje)"
+    )
+
+
 def descrever_fechamento(filtros: dict | None = None, hoje: date | None = None) -> str:
     """O último fechamento e o próximo, prontos pra resposta — e, sem
     período, que o oficial é o do último mês fechado."""
@@ -219,24 +248,16 @@ def descrever_fechamento(filtros: dict | None = None, hoje: date | None = None) 
     ultimo = ultimo_fechamento(hoje)
     fechado = ultimo - pd.DateOffset(months=MESES_ATE_O_FECHAMENTO)
     proximo = ultimo + pd.DateOffset(months=1)
-    nomes = [
-        "janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
-        "agosto", "setembro", "outubro", "novembro", "dezembro",
-    ]
     aberto = fechado + pd.DateOffset(months=1)
     texto = (
         f"Último fechamento: {ultimo:%d/%m/%Y} — vencimentos até "
-        f"{nomes[fechado.month - 1]} de {fechado.year} fechados. "
-        f"{nomes[aberto.month - 1].capitalize()} de {aberto.year} fecha em "
+        f"{_NOMES_DOS_MESES[fechado.month - 1]} de {fechado.year} fechados. "
+        f"{_NOMES_DOS_MESES[aberto.month - 1].capitalize()} de {aberto.year} fecha em "
         f"{proximo:%d/%m/%Y}; vencimentos depois disso ainda não têm "
         "inadimplência oficial (só 'em atraso hoje')."
     )
 
     if _sem_periodo(filtros):
-        texto += (
-            f" A pergunta não disse o período: o oficial (valor, títulos, "
-            f"clientes e %) é o do último mês fechado, {nomes[fechado.month - 1]} "
-            f"de {fechado.year}; o em atraso hoje junta todos os vencimentos."
-        )
+        texto += f" A pergunta não disse o período: {_periodo_sem_periodo(hoje)}."
 
     return texto

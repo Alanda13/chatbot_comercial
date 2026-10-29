@@ -39,10 +39,9 @@ REGRAS PARA ESCREVER O CAMPO "mensagem"
   está disponível no momento" ou "não posso ajudar com isso" — isso
   soa como falha do sistema, sem nenhuma orientação real.
 - Em "fora_do_escopo": mencione, resumidamente, o que ESTÁ disponível
-  hoje — consultas de faturamento (mensal e diário), de metas
-  (faturamento e tonelada), de desconto e de NPS, por filial, RCA,
-  supervisor e período (o desconto também por cliente), além da lista
-  de filiais — e convide o usuário a tentar de novo.
+  hoje — os indicadores de "Indicadores disponíveis nesta ferramenta"
+  (todos, sem esquecer nenhum), por filial, RCA, supervisor e período,
+  além da lista de filiais — e convide o usuário a tentar de novo.
 - Em "pedir_esclarecimento": pergunte SÓ o que falta (ex: o período, qual
   das empresas), numa frase curta. NÃO liste os assuntos disponíveis nem
   diga "tente novamente" — a pergunta do usuário está dentro do escopo.
@@ -68,7 +67,7 @@ Resposta esperada:
     "acao": "fora_do_escopo",
     "ferramenta": null,
     "argumentos": {},
-    "mensagem": "No momento só consigo ajudar com consultas de faturamento (mensal e diário), metas (faturamento e tonelada), desconto (também por cliente) e NPS, por filial, RCA, supervisor ou período. Previsão do tempo não está disponível — mas posso ajudar com algum indicador comercial?"
+    "mensagem": "No momento só consigo ajudar com consultas de <os indicadores disponíveis, resumidos>, por filial, RCA, supervisor ou período. Previsão do tempo não está disponível — mas posso ajudar com algum indicador comercial?"
 }
 
 REGRAS PARA LISTAR FILIAIS:

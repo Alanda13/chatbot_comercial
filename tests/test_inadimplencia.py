@@ -70,7 +70,10 @@ def test_percentual_por_filial_e_lista_de_clientes_sem_linha_vazia(monkeypatch):
     dados = dados.assign(FILIAL="TIMON", ESTADO="MA")
     monkeypatch.setitem(catalogo.INDICADORES["inadimplencia"], "carregar", lambda: dados)
 
-    total = orq.executar_consulta({"indicador": "inadimplencia"})["resultados"][0]
+    resposta = orq.executar_consulta({"indicador": "inadimplencia"})
+    # Sem período, o oficial é o do último mês fechado, não "todo o histórico".
+    assert "último mês fechado" in resposta["periodo_consultado"]["descricao"]
+    total = resposta["resultados"][0]
     # 1.500 oficiais ÷ 150.000 de faturamento (julho + agosto).
     assert total["percentual_inadimplencia"] == 1.0
     assert total["clientes_em_risco_de_bloqueio"] == 1
@@ -79,12 +82,34 @@ def test_percentual_por_filial_e_lista_de_clientes_sem_linha_vazia(monkeypatch):
     assert sorted(linha["cliente"] for linha in clientes) == [ZE, ANA, BIA]
 
 
+def test_percentual_por_rca_divide_pelo_faturamento_da_filial_no_periodo_todo(monkeypatch):
+    dados = inadimplencia.marcar_situacao(_titulos(), HOJE)
+    dados["COD_RCA"] = dados["CODCLI"].map({ZE: 10, ANA: 20, BIA: 20})
+    faturamento = pd.DataFrame({
+        "CODFILIAL": TIMON, "ANO": 2026, "MES": [7, 8], "VENDA_LIQ": [70000.0, 80000.0],
+    })
+    dados = inadimplencia.com_faturamento(dados, faturamento, HOJE).assign(FILIAL="TIMON", ESTADO="MA")
+    monkeypatch.setitem(catalogo.INDICADORES["inadimplencia"], "carregar", lambda: dados)
+    monkeypatch.delitem(catalogo.INDICADORES["inadimplencia"], "rca_nome_mapa")
+
+    resposta = orq.executar_consulta({"indicador": "inadimplencia", "agrupar_por": ["rca"]})
+    por_rca = {linha["rca"]: linha for linha in resposta["resultados"]}
+
+    # O RCA 10 só tem título em agosto, mas divide por julho + agosto.
+    assert por_rca[10]["faturamento_liquido"] == 150000.0
+    assert por_rca[10]["percentual_inadimplencia"] == 1.0
+    # Sem título em mês fechado: 0%, não vazio.
+    assert por_rca[20]["percentual_inadimplencia"] == 0.0
+
+
 def test_sem_periodo_o_oficial_e_o_do_ultimo_mes_fechado():
     titulos = pd.concat([
         _titulos(),
         pd.DataFrame({
-            "CODCLI": [ANA], "DTVENC": [pd.Timestamp("2026-05-10")], "DTPAG": [pd.NaT],
-            "VALOR": [700.0], "CODFILIAL": [TIMON],
+            # Maio: um aberto e um pago depois do fechamento (10/07).
+            "CODCLI": [ANA, 9], "DTVENC": pd.to_datetime(["2026-05-10", "2026-05-12"]),
+            "DTPAG": pd.to_datetime([None, "2026-09-01"]),
+            "VALOR": [700.0, 400.0], "CODFILIAL": [TIMON, TIMON],
         }),
     ], ignore_index=True)
     dados = inadimplencia.marcar_situacao(titulos, HOJE)
@@ -97,6 +122,7 @@ def test_sem_periodo_o_oficial_e_o_do_ultimo_mes_fechado():
     assert dados["FATURAMENTO_LIQ"].dropna().unique().tolist() == [80000.0]
     assert dados["VALOR_EM_ATRASO"].sum() == 2300.0         # o em atraso junta tudo
     assert set(dados["CLIENTE_INADIMPLENTE"].dropna()) == {ZE}
+    assert 9 not in set(dados["CODCLI"])                   # já pagou: não vira cliente zerado
 
 
 def test_descrever_fechamento():

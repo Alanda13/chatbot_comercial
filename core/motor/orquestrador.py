@@ -955,7 +955,47 @@ def buscar_dados_brutos(
         )
         dados = dados[chaves.isin(rcas_validos)]
 
-    return dados, rcas_validos
+    return dados, rcas_validos, _tabela_da_filial(brutos, indicador_def, filtros_resolvidos)
+
+
+def _campos_da_filial(indicador_def: dict) -> dict[str, tuple[str, tuple, set]]:
+    """Campos "unico_por" com o período na chave (ex: o faturamento do mês
+    da filial): valores da filial, não do item — {campo: (coluna, chave,
+    colunas do período na chave)}."""
+    periodo = {indicador_def["dimensoes"].get(dimensao) for dimensao in _DIMENSOES_DO_PERIODO}
+    campos = {}
+
+    for nome_campo, especificacao in indicador_def["campos"].items():
+        coluna, agregacao, opcoes = _desempacotar_campo(especificacao)
+        chave = opcoes.get("unico_por") or ()
+
+        if agregacao == "sum" and not opcoes.get("foto_por") and periodo & set(chave):
+            campos[nome_campo] = (coluna, chave, periodo & set(chave))
+
+    return campos
+
+
+def _tabela_da_filial(
+    brutos: pd.DataFrame, indicador_def: dict, filtros_resolvidos: dict
+) -> pd.DataFrame | None:
+    """
+    As linhas com os campos da filial, só com os filtros da chave deles
+    (ex: filial e período): filtrado por RCA ou cliente, o faturamento da
+    filial continua o do período inteiro, não só dos meses em que o item
+    tem linha.
+    """
+    colunas = {coluna for _, chave, _ in _campos_da_filial(indicador_def).values() for coluna in chave}
+
+    if not colunas:
+        return None
+
+    for dimensao, valores in filtros_resolvidos.items():
+        coluna = indicador_def["dimensoes"].get(dimensao)
+
+        if coluna in colunas:
+            brutos = brutos[brutos[coluna].isin(valores)]
+
+    return brutos
 
 
 # --- agrupamento -------------------------------------------------------------
@@ -1070,8 +1110,35 @@ def _sem_linhas_so_da_filial(
     return dados[~(sem_item & vazia)]
 
 
+def _valores_da_filial(
+    dados: pd.DataFrame,
+    colunas_agrupamento: list[str],
+    coluna: str,
+    chave: tuple,
+    periodo: set,
+    da_filial: pd.DataFrame,
+) -> pd.Series:
+    """
+    Campo da filial (ver _campos_da_filial) de cada grupo: a soma do valor
+    das filiais em que o grupo tem linha, no período inteiro da tabela da
+    filial — ou só no mês/ano do grupo, quando agrupado por eles. Ex: o RCA
+    com título só em março divide pelo faturamento da filial no ano todo.
+    """
+    tabela = da_filial.drop_duplicates(subset=list(chave))
+    ligacao = [c for c in chave if c in colunas_agrupamento or c not in periodo]
+    pares = dados[list(dict.fromkeys([*colunas_agrupamento, *ligacao]))].drop_duplicates()
+    return (
+        pares.merge(tabela[[*ligacao, coluna]], on=ligacao)
+        .groupby(colunas_agrupamento, dropna=False)[coluna]
+        .sum()
+    )
+
+
 def _aplicar_agrupamento(
-    dados: pd.DataFrame, indicador_def: dict, agrupar_por: list[str]
+    dados: pd.DataFrame,
+    indicador_def: dict,
+    agrupar_por: list[str],
+    da_filial: pd.DataFrame | None = None,
 ) -> list[dict]:
     """
     Soma os campos por agrupamento. Sempre devolve uma LISTA (sem
@@ -1125,6 +1192,13 @@ def _aplicar_agrupamento(
             nome: 0 for nome, especificacao in campos.items()
             if _desempacotar_campo(especificacao)[1] not in ("max", "min", "mean")
         })
+
+    if da_filial is not None:
+        for nome_campo, (coluna, chave, periodo) in _campos_da_filial(indicador_def).items():
+            if nome_campo in campos:
+                agrupado[nome_campo] = _valores_da_filial(
+                    dados, colunas_agrupamento, coluna, chave, periodo, da_filial
+                ).reindex(agrupado.index, fill_value=0)
 
     agrupado = agrupado.reset_index()
     resultados = []
@@ -1306,7 +1380,7 @@ def _consultar_periodo(
       pra escolher os N maiores (ver _aplicar_ordenacao_por_grupo).
     """
     filtros = _filtros_efetivos(indicador_def, consulta)
-    dados, rcas_validos = buscar_dados_brutos(
+    dados, rcas_validos, da_filial = buscar_dados_brutos(
         indicador_def, agrupar_por, filtros, rcas_validos, _dimensoes_dos_campos(consulta, indicador_def)
     )
 
@@ -1318,7 +1392,7 @@ def _consultar_periodo(
     # Derivados (NPS, % de atingimento...) calculados em cada período,
     # antes de comparar — assim dá pra comparar os campos calculados.
     resultado = _aplicar_derivados(
-        _aplicar_agrupamento(dados, indicador_def, agrupar_por), indicador_def
+        _aplicar_agrupamento(dados, indicador_def, agrupar_por, da_filial), indicador_def
     )
 
     if extras is not None:
@@ -1326,12 +1400,12 @@ def _consultar_periodo(
 
         if agrupar_por and extras.get("calcular_total"):
             extras["total"] = _aplicar_derivados(
-                _aplicar_agrupamento(dados, indicador_def, []), indicador_def
+                _aplicar_agrupamento(dados, indicador_def, [], da_filial), indicador_def
             )[0]
 
         if extras.get("total_por"):
             extras["totais_por_grupo"] = _aplicar_derivados(
-                _aplicar_agrupamento(dados, indicador_def, [extras["total_por"]]),
+                _aplicar_agrupamento(dados, indicador_def, [extras["total_por"]], da_filial),
                 indicador_def,
             )
 
@@ -2472,6 +2546,16 @@ def _tabela_da_tela(
         for linha in resposta["tabela"]:
             linha.setdefault("_legenda", legenda)
 
+    # Sem período, num indicador que descreve o dele (ex: a inadimplência):
+    # a legenda é essa descrição, não um ano achado no texto da resposta.
+    sem_periodo = _descricao_sem_periodo(indicador_def)
+
+    if (resposta.get("periodo_consultado") or {}).get("descricao") == sem_periodo and (
+        (indicador_def.get("periodo_dos_campos") or {}).get("sem_periodo")
+    ):
+        for linha in resposta["tabela"]:
+            linha.setdefault("_legenda", sem_periodo[0].upper() + sem_periodo[1:])
+
 
 _DIMENSOES_DO_PERIODO = ("ano", "mes", "dia")
 
@@ -2529,6 +2613,12 @@ def _participacao(resposta: dict, consulta: dict) -> None:
             "(R$ 1.451.888,37 de R$ 112.114.507,37)\"."
         ),
     }
+
+
+def _descricao_sem_periodo(indicador_def: dict) -> str:
+    """Campo com período próprio (ex: a inadimplência oficial) diz o dele."""
+    sem_periodo = (indicador_def.get("periodo_dos_campos") or {}).get("sem_periodo")
+    return sem_periodo() if sem_periodo else "todo o histórico disponível (sem filtro de período)"
 
 
 def executar_consulta(consulta: dict) -> dict:
@@ -2589,7 +2679,7 @@ def executar_consulta(consulta: dict) -> dict:
         # "há mais de 730 dias" e a conferência de números aceita o 730.
         "filtros_sobre_a_metrica": consulta.get("filtros_calculados") or None,
         "periodo_consultado": contexto["periodo_consultado"] or {
-            "descricao": "todo o histórico disponível (sem filtro de período)"
+            "descricao": _descricao_sem_periodo(indicador_def)
         },
         "agrupar_por": consulta.get("agrupar_por") or None,
         "resultados": resultado,

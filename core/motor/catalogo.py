@@ -52,7 +52,11 @@ from core.repositories.cliente_repository import (
 )
 from core.repositories.faturamento_repository import carregar_faturamento_mensal
 from core.repositories.cliente_produto_repository import carregar_cliente_produto
-from core.repositories.inadimplencia_repository import carregar_inadimplencia, descrever_fechamento
+from core.repositories.inadimplencia_repository import (
+    carregar_inadimplencia,
+    descrever_fechamento,
+    descrever_sem_periodo,
+)
 from core.repositories.situacao_cliente_repository import (
     carregar_situacao_clientes,
     periodo_da_frequencia,
@@ -662,6 +666,8 @@ INDICADORES = {
             "nome": "a inadimplência oficial",
             "aviso": "fechamento_da_inadimplencia",
             "descrever": descrever_fechamento,
+            # Sem período, o oficial não é "todo o histórico".
+            "sem_periodo": descrever_sem_periodo,
         },
         "como_ler": (
             "Mês/ano = do VENCIMENTO do título. Inadimplência OFICIAL (valor_inadimplente, "
