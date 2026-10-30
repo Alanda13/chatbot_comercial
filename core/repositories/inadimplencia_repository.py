@@ -3,7 +3,9 @@ Inadimplência: os títulos a receber vencidos e não pagos.
 
 Fonte: a view FNORTE.GFN_VIEW_CONTAS_RECEBER_8188 (espelho da rotina 120,
 sem os títulos cancelados e desdobrados). Valor = o do título (VALOR),
-de todas as cobranças, cartão incluído — como a 120.
+cartão incluído. Como na base e no BI da controladoria, ficam de fora os
+valores negativos (estornos, ESTR) e as cobranças que não são dívida do
+cliente (COBRANCAS_FORA: devolução, bonificação, crédito, desdobrado).
 
 Duas leituras dos mesmos títulos, pelo mês de VENCIMENTO:
 - inadimplência oficial (fechamento da controladoria): todo dia 10 fecha o
@@ -20,7 +22,7 @@ vencidos em aberto e os pagos só depois do fechamento do mês deles (eles
 estavam em aberto no dia 10). Quem é oficial, quem está em atraso e os
 dias contam a partir de hoje, na leitura.
 """
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -36,6 +38,8 @@ DIA_DO_FECHAMENTO = 10
 MESES_ATE_O_FECHAMENTO = 2
 DIAS_PARA_BLOQUEIO = 30
 DIAS_EM_RISCO_DE_BLOQUEIO = 20
+# As mesmas do BI da controladoria (medida Valor_Inadimplência_v2).
+COBRANCAS_FORA = ("DEVP", "DEVT", "BNF", "BNFT", "BNFR", "BNTR", "BNRP", "CRED", "DESD")
 
 COLUNAS_TITULOS = [
     "CODFILIAL", "CODCLI", "CLIENTE", "CNPJ", "CIDADE", "COD_RCA", "CODCOB",
@@ -48,6 +52,7 @@ def atualizar(completa: bool) -> None:
     """O arquivo é pequeno (~19 mil títulos): sempre lido inteiro."""
     from core.repositories.oracle import get_connection
 
+    cobrancas_fora = ", ".join(f"'{cobranca}'" for cobranca in COBRANCAS_FORA)
     conexao = get_connection()
 
     try:
@@ -60,6 +65,8 @@ def atualizar(completa: bool) -> None:
                    DTPAG, VALOR
             FROM FNORTE.GFN_VIEW_CONTAS_RECEBER_8188
             WHERE DTVENC < TRUNC(SYSDATE)
+              AND VALOR > 0
+              AND NVL(TRIM(CODCOB), '-') NOT IN ({cobrancas_fora})
               AND (DTPAG IS NULL
                    OR DTPAG > ADD_MONTHS(TRUNC(DTVENC, 'MM'), {MESES_ATE_O_FECHAMENTO})
                               + {DIA_DO_FECHAMENTO - 1})
@@ -152,8 +159,8 @@ def com_faturamento(dados: pd.DataFrame, faturamento: pd.DataFrame, hoje: date) 
     return dados.merge(por_mes, on=chave, how="left")
 
 
-def mes_do_ultimo_fechamento(hoje: date) -> tuple[int, int]:
-    mes = ultimo_fechamento(hoje) - pd.DateOffset(months=MESES_ATE_O_FECHAMENTO)
+def mes_do_ultimo_fechamento(hoje: date | None = None) -> tuple[int, int]:
+    mes = ultimo_fechamento(hoje or date.today()) - pd.DateOffset(months=MESES_ATE_O_FECHAMENTO)
     return mes.year, mes.month
 
 
@@ -254,7 +261,9 @@ def descrever_fechamento(filtros: dict | None = None, hoje: date | None = None) 
         f"{_NOMES_DOS_MESES[fechado.month - 1]} de {fechado.year} fechados. "
         f"{_NOMES_DOS_MESES[aberto.month - 1].capitalize()} de {aberto.year} fecha em "
         f"{proximo:%d/%m/%Y}; vencimentos depois disso ainda não têm "
-        "inadimplência oficial (só 'em atraso hoje')."
+        "inadimplência oficial (só 'em atraso hoje'). Em atraso hoje = "
+        f"vencidos até ontem ({hoje - timedelta(days=1):%d/%m/%Y}) e não pagos, "
+        "dentro do período consultado, inclusive os meses que ainda não fecharam."
     )
 
     if _sem_periodo(filtros):

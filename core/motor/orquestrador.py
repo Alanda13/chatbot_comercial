@@ -1391,23 +1391,22 @@ def _consultar_periodo(
 
     # Derivados (NPS, % de atingimento...) calculados em cada período,
     # antes de comparar — assim dá pra comparar os campos calculados.
-    resultado = _aplicar_derivados(
-        _aplicar_agrupamento(dados, indicador_def, agrupar_por, da_filial), indicador_def
-    )
+    def agrupar(por: list[str]) -> list[dict]:
+        return _sem_o_que_nao_fechou(
+            _aplicar_derivados(_aplicar_agrupamento(dados, indicador_def, por, da_filial), indicador_def),
+            indicador_def, por, filtros,
+        )
+
+    resultado = agrupar(agrupar_por)
 
     if extras is not None:
         extras["itens_filtrados"] = _itens_filtrados(dados, indicador_def, filtros)
 
         if agrupar_por and extras.get("calcular_total"):
-            extras["total"] = _aplicar_derivados(
-                _aplicar_agrupamento(dados, indicador_def, [], da_filial), indicador_def
-            )[0]
+            extras["total"] = agrupar([])[0]
 
         if extras.get("total_por"):
-            extras["totais_por_grupo"] = _aplicar_derivados(
-                _aplicar_agrupamento(dados, indicador_def, [extras["total_por"]], da_filial),
-                indicador_def,
-            )
+            extras["totais_por_grupo"] = agrupar([extras["total_por"]])
 
     # Código da filial em cada linha: sem ele a IA adivinha pelo nome e erra.
     if "filial" in agrupar_por:
@@ -1415,6 +1414,33 @@ def _consultar_periodo(
             linha["codigo_filial"] = CODIGO_POR_NOME.get(linha["filial"])
 
     return resultado, rcas_validos
+
+
+def _sem_o_que_nao_fechou(
+    resultado: list[dict], indicador_def: dict, agrupar_por: list[str], filtros: dict
+) -> list[dict]:
+    """Campos com período próprio que fecha depois (ex: a inadimplência
+    oficial): vazios, não zero, nas linhas só de meses ainda não fechados
+    — senão a variação mostrava -100%."""
+    proprio = indicador_def.get("periodo_dos_campos") or {}
+
+    if "ultimo_mes_fechado" not in proprio:
+        return resultado
+
+    ultimo = proprio["ultimo_mes_fechado"]()
+    anos = [int(ano) for ano in _como_lista(filtros.get("ano") or [])]
+    meses = [int(mes) for mes in _como_lista(filtros.get("mes") or [])] or list(range(1, 13))
+
+    for linha in resultado:
+        anos_da_linha = [int(linha["ano"])] if "ano" in agrupar_por else anos
+        meses_da_linha = [int(linha["mes"])] if "mes" in agrupar_por else meses
+
+        if anos_da_linha and all((ano, mes) > ultimo for ano in anos_da_linha for mes in meses_da_linha):
+            for campo in proprio["campos"]:
+                if campo in linha:
+                    linha[campo] = None
+
+    return resultado
 
 
 def _juntar_indicadores(
@@ -2211,8 +2237,17 @@ def _avisos_para_a_ia(
     # Campo com período próprio (ex: a frequência de compra): as datas que
     # ele usou, prontas.
     proprio = indicador_def.get("periodo_dos_campos")
+    # Ordenada/filtrada por um campo vazio (ex: mês ainda não fechado), a
+    # lista sai vazia — o aviso diz o porquê.
+    pedidos = {
+        (ordenar_por or {}).get("campo"),
+        *(filtro.get("campo") for filtro in consulta.get("filtros_calculados") or []),
+    }
 
-    if proprio and any(campo in linha for linha in resposta["resultados"][:1] for campo in proprio["campos"]):
+    if proprio and (
+        any(campo in linha for linha in resposta["resultados"][:1] for campo in proprio["campos"])
+        or pedidos & set(proprio["campos"])
+    ):
         resposta[proprio["aviso"]] = proprio["descrever"](_filtros_efetivos(indicador_def, consulta))
 
     if contexto["mesmos_meses"]:

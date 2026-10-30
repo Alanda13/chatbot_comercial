@@ -56,6 +56,7 @@ from core.repositories.inadimplencia_repository import (
     carregar_inadimplencia,
     descrever_fechamento,
     descrever_sem_periodo,
+    mes_do_ultimo_fechamento,
 )
 from core.repositories.situacao_cliente_repository import (
     carregar_situacao_clientes,
@@ -662,12 +663,17 @@ INDICADORES = {
         "campo_principal": "valor_inadimplente",
         "unidade": "R$",
         "periodo_dos_campos": {
-            "campos": ("valor_inadimplente", "titulos_inadimplentes", "clientes_inadimplentes", "percentual_inadimplencia"),
+            "campos": (
+                "valor_inadimplente", "titulos_inadimplentes", "clientes_inadimplentes",
+                "percentual_inadimplencia", "faturamento_liquido",
+            ),
             "nome": "a inadimplência oficial",
             "aviso": "fechamento_da_inadimplencia",
             "descrever": descrever_fechamento,
             # Sem período, o oficial não é "todo o histórico".
             "sem_periodo": descrever_sem_periodo,
+            # Depois desse mês os campos ficam vazios, não zero.
+            "ultimo_mes_fechado": mes_do_ultimo_fechamento,
         },
         "como_ler": (
             "Mês/ano = do VENCIMENTO do título. Inadimplência OFICIAL (valor_inadimplente, "
@@ -675,8 +681,8 @@ INDICADORES = {
             "percentual_inadimplencia) = o fechamento da controladoria: todo "
             "dia 10 fecha o mês de 2 meses antes (títulos vencidos nele e "
             "ainda em aberto no dia 10) — as datas vêm em "
-            "fechamento_da_inadimplencia; mês ainda não fechado tem oficial "
-            "zero: diga que ainda não fechou, não que não há inadimplência. "
+            "fechamento_da_inadimplencia; mês ainda não fechado tem o oficial "
+            "vazio: diga que ainda não fechou, não que não há inadimplência. "
             "percentual_inadimplencia = valor_inadimplente ÷ "
             "faturamento_liquido (o da filial nos meses fechados). EM ATRASO "
             "HOJE (valor_em_atraso, titulos_em_atraso, clientes_em_atraso, "

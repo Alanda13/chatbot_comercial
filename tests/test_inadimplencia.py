@@ -102,6 +102,23 @@ def test_percentual_por_rca_divide_pelo_faturamento_da_filial_no_periodo_todo(mo
     assert por_rca[20]["percentual_inadimplencia"] == 0.0
 
 
+
+def test_mes_nao_fechado_fica_vazio_sem_variacao_de_100(monkeypatch):
+    dados = inadimplencia.marcar_situacao(_titulos(), HOJE)
+    faturamento = pd.DataFrame({"CODFILIAL": TIMON, "ANO": 2026, "MES": [8], "VENDA_LIQ": [80000.0]})
+    dados = inadimplencia.com_faturamento(dados, faturamento, HOJE).assign(FILIAL="TIMON", ESTADO="MA")
+    monkeypatch.setitem(catalogo.INDICADORES["inadimplencia"], "carregar", lambda: dados)
+    monkeypatch.setitem(catalogo.INDICADORES["inadimplencia"]["periodo_dos_campos"], "ultimo_mes_fechado", lambda: (2026, 8))
+
+    resposta = orq.executar_consulta({"indicador": "inadimplencia", "filtros": {"ano": [2026]}, "agrupar_por": ["mes"]})
+    por_mes = {linha["mes"]: linha for linha in resposta["resultados"]}
+
+    assert por_mes[8]["valor_inadimplente"] == 1500.0
+    assert por_mes[9]["valor_inadimplente"] is None           # ainda não fechou: vazio, não zero
+    assert por_mes[9]["faturamento_liquido"] is None
+    assert por_mes[9]["percentual_valor_inadimplente_mes_anterior"] is None   # e não -100%
+    assert por_mes[9]["valor_em_atraso"] == 300.0             # o em atraso continua
+
 def test_sem_periodo_o_oficial_e_o_do_ultimo_mes_fechado():
     titulos = pd.concat([
         _titulos(),
@@ -132,3 +149,4 @@ def test_descrever_fechamento():
     assert "Setembro de 2026 fecha em 10/11/2026" in texto
     assert "último mês fechado, agosto de 2026" in texto
     assert "último mês fechado" not in inadimplencia.descrever_fechamento({"ano": [2026]}, hoje=HOJE)
+
